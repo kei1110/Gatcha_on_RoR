@@ -23,6 +23,14 @@ Rails 8 / PostgreSQL 17 / Hotwire(Turbo+Stimulus)+ViewComponent / Devise / acts_
 - `/spec-check` — SPEC↔実装の整合 ／ `/multi-perspective-review` — 多視点並列 critique
 - `/legal-citation-audit` — 労務法令を jp-labor-evidence MCP で原典照合 ／ `/preflight` — push 前 CI 等価チェック（rails new 後に有効）
 
+## フック（.claude/settings.json → scripts/claude-hooks/）
+PreToolUse/PostToolUse の開発ガード（**Claude Code 再起動＋承認**で有効化）:
+- `guard-git-identity`（Bash）— commit/push を kei1110(eoh2145@gmail.com) identity・`github-kei1110` remote 以外で中断
+- `block-secrets`（Edit/Write）— master.key・credentials の鍵・.env を保護
+- `block-schema-edit`（Edit/Write）— db/schema.rb の手編集を禁止（migration 経由を強制）
+- `check-tenant-scope`（Write）— app/models の `acts_as_tenant` 欠落を警告（§3.6）
+- `rubocop-autoformat`（Edit/Write）— .rb を自動整形（rails new 後）
+
 ## Gotchas（非自明・重要）
 - **OpenSSL:** `~/.zshrc` に Intel 時代の openssl@1.1 設定が残存（chezmoi 管理・未修正）。Ruby ビルド時は `RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@3)"` ＋ `LDFLAGS=/CPPFLAGS=/PKG_CONFIG_PATH=` のクリアで回避。グローバル ruby 2.7.2 は openssl@1.1 欠落で壊れている（本リポジトリは 3.3.11 ゆえ無関係）
 - **rails MCP:** `rails-mcp-server`（rbenv shim）は cwd の `.ruby-version` で Ruby を解決 → プロジェクト直下で起動されること
