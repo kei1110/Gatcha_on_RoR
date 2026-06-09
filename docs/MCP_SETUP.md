@@ -6,6 +6,7 @@
 
 | サーバー | 役割 | 状態 | 有効化の前提 |
 |---------|------|------|------------|
+| **jp-labor-evidence** | 日本の労基法・労安法・行政通達の原文エビデンス取得 | ✅ 即利用可（前提なし・npx） | なし |
 | **sentry** | エラー追跡・原因調査 | ✅ 即利用可（初回 OAuth） | Sentry アカウント / 組織 |
 | **rails** | Rails プロジェクト解析（モデル・ルート・スキーマ） | ⏳ 前提待ち | Ruby 3.3+ + `gem install rails-mcp-server` + `projects.yml` |
 | **postgres** | スキーマ参照・クエリ・性能解析 | ⏳ 前提待ち | Postgres 本体 + `gatcha_development` DB |
@@ -52,6 +53,16 @@ bin/rails db:create
 - 追加設定不要。Claude Code で初回利用時に `https://mcp.sentry.dev/mcp` への **OAuth 認可**が走る
 - 利用には Sentry の org / project が必要
 - 労務・給与に隣接する本 SaaS では実行時エラー = 法的 / 給与リスク。**本番運用期（ロードマップ Phase 5〜）**に効く
+
+## jp-labor-evidence — 日本労務法令エビデンス MCP（sub-account）
+
+- リポジトリ: <https://github.com/sub-account/jp-labor-evidence-mcp>（Node.js / TypeScript）
+- **追加設定不要・前提なし**。`.mcp.json` の `npx -y jp-labor-evidence-mcp` が初回にパッケージを取得して起動する（API キー不要。任意で `LABOR_LAW_INDEX_DIR` でインデックス保存先を変更可）
+- 提供ツール:
+  - 法令原文: `resolve_law` / `get_article` / `search_law` / `get_evidence_bundle` / `diff_revision`（改正差分）
+  - 行政通達: `search_mhlw_tsutatsu`・`get_mhlw_tsutatsu`（厚労省）/ `search_jaish_tsutatsu`・`get_jaish_tsutatsu`
+  - 観測: `get_observability_snapshot`
+- 用途: 仕様書 §5・§8 の労務ロジック（労基法 34/37/39/41 条・36 協定・労安法 66 条の 8 等）の**典拠を原文・ソース URL・監査メタデータ付きで取得**。実装・レビュー時のエビデンス照合に使う
 
 ## 接続確認
 

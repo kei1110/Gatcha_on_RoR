@@ -1,5 +1,9 @@
 {
   "mcpServers": {
+    "jp-labor-evidence": {
+      "command": "npx",
+      "args": ["-y", "jp-labor-evidence-mcp"]
+    },
     "rails": {
       "command": "rails-mcp-server"
     },
