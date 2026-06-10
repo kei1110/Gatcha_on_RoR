@@ -74,7 +74,7 @@ Salesforce に依存しない、日本の労働基準法・労働安全衛生法
 | 認証 | Devise | `User` モデル |
 | マルチテナント | acts_as_tenant | 行レベル分離・`organization_id`・`validates_uniqueness_to_tenant` |
 | 認可 | Pundit | ロール × テナントスコープのポリシー |
-| フロントエンド | Hotwire（Turbo + Stimulus）+ ViewComponent | サーバーレンダリング・レスポンシブ / PWA |
+| フロントエンド | Hotwire（Turbo + Stimulus）+ ViewComponent + Tailwind CSS | サーバーレンダリング・レスポンシブ / PWA |
 | リアルタイム | Action Cable（SolidCable）+ Turbo Streams | ベル通知 |
 | バックグラウンドジョブ | Active Job + **SolidQueue** | `config/recurring.yml` で日次/週次/月次バッチ |
 | メール | Action Mailer（`deliver_later`） | 二重 opt-in |

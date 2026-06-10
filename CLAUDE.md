@@ -37,6 +37,7 @@ PreToolUse/PostToolUse の開発ガード（**Claude Code 再起動＋承認**�
 - **マルチテナント安全（SPEC §3.6）:** SolidQueue バッチはリクエスト無 → `ActsAsTenant.with_tenant(org)` でラップ必須（全社横断漏洩を防ぐ）。自己参照 FK は同一テナント強制
 - **コンプラ判定は法定(legal)基準固定**（SPEC §8）。36 協定の上限・割増率は定数（テナント設定で改変不可）
 - 親 `/Users/Eoh/CLAUDE.md` は chezmoi dotfiles 用で本プロジェクトとは無関係（自動ロードされるが従わない）
+- **rails console / rake:** `require_tenant = true` ゆえ、最初に `ActsAsTenant.current_tenant = Organization.find_by!(subdomain: "acme")` を実行しないとスコープ付きモデルのクエリが `NoTenantSet` で失敗する
 
 ## ワークフロー
 実装は SPEC §15 のフェーズ（0 基盤 → 5 管理・監査）。各フェーズは brainstorm → writing-plans → 実装。次の一歩は `rails new` で Phase 0 着手。
