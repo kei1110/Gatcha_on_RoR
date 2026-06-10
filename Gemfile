@@ -41,7 +41,9 @@ gem "devise"
 gem "pundit"
 
 # Use Active Storage variants [https://guides.rubyonrails.org/active_storage_overview.html#transforming-images]
-gem "image_processing", "~> 1.2"
+gem "image_processing", "~> 2.0"
+# libvips backend for image_processing (soft dependency since 2.0); require: false so boot doesn't need libvips (lazy-loaded on variant use)
+gem "ruby-vips", "~> 2.0", require: false
 
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
