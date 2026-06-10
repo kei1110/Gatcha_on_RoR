@@ -233,7 +233,7 @@ Expected: エラーなし
 
 ## Deferred Task（CI 整備後・現時点では実行しない）: 必須ステータスチェックの登録
 
-> ⛔ **DO NOT RUN YET.** このタスクは `rails new` 後に CI ワークフロー（`.github/workflows/`）を追加し、CI と CodeRabbit のチェックが PR 上で **最低 1 回実行された後**にのみ実行する。今実行すると、存在しないチェックを待ち続けて全 PR がマージ不能になる（設計 §9 の警告）。
+> ⛔ **DO NOT RUN YET.** このタスクは `rails new` 後に CI ワークフロー（`.github/workflows/`）を追加し、CI のチェックが PR 上で **最低 1 回実行された後**にのみ実行する。今実行すると、存在しないチェックを待ち続けて全 PR がマージ不能になる（設計 §9 の警告）。
 
 実行手順（将来の参照用・context 名は実チェックから取得して埋めること）:
 
@@ -241,7 +241,7 @@ Expected: エラーなし
 ```bash
 gh api repos/kei1110/Gatcha_on_RoR/commits/<sha>/check-runs --jq '.check_runs[].name'
 ```
-これで CI ジョブ名（例: `test` / `rubocop`）と CodeRabbit のチェック名を確認する。
+これで CI ジョブ名（例: `test` / `rubocop`）を確認する。CodeRabbit のチェックは required に**含めない**（2026-06-10 改訂: 外部サービス障害で merge が塞がるため参考レビューに留める）。
 
 2. **既存 ruleset の id を取得する**:
 ```bash
@@ -255,8 +255,7 @@ RULESET_ID=$(gh api repos/kei1110/Gatcha_on_RoR/rulesets --jq '.[] | select(.nam
   "parameters": {
     "strict_required_status_checks_policy": true,
     "required_status_checks": [
-      { "context": "<CI ジョブ名>" },
-      { "context": "<CodeRabbit チェック名>" }
+      { "context": "<CI ジョブ名>" }
     ]
   }
 }
@@ -280,7 +279,7 @@ gh auth switch --hostname github.com --user sub-account
   - conversation resolution → Task 4 `required_review_thread_resolution: true` ✅
   - 承認数を要求しない → Task 4 `required_approving_review_count: 0` ✅
   - Squash のみ / Merge・Rebase 無効 / Auto-delete head branches → Task 2 ✅
-  - 必須ステータスチェック（CI＋CodeRabbit）→ Deferred Task（§9 段階導入に合致）✅
+  - 必須ステータスチェック（CI のみ。CodeRabbit は参考）→ Deferred Task（§9 段階導入に合致）✅
   - gh アカウント食い違いの回避 → Task 1 / Task 5 ✅
 - **Placeholder scan:** アクティブな Task 1〜5 にプレースホルダなし。Deferred Task の `<sha>` / context 名は CI 不在ゆえ現時点で確定不能で、これは仕様上の段階分離であり実行可能タスクの穴ではない。
 - **Type consistency:** リポジトリ識別子 `kei1110/Gatcha_on_RoR`、ruleset 名 `main`、一時ファイル `/tmp/main-ruleset.json` を全タスクで一貫使用。

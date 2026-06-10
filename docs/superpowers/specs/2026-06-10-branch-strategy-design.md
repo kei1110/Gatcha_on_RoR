@@ -68,7 +68,7 @@ main から feat/xxx を切る
 有効化する:
 
 - ✅ Require a pull request before merging
-- ✅ Require status checks to pass：**CI ＋ CodeRabbit のチェックを required 登録**
+- ✅ Require status checks to pass：**自前 CI（RuboCop / Brakeman / RSpec）のチェックのみ required 登録**。CodeRabbit は全 PR を自動レビューするが required にしない（外部サービスの障害・遅延で merge が物理的に塞がるため。2026-06-10 多視点レビューで改訂）
 - ✅ Require linear history（merge commit を排除）
 - ✅ Require conversation resolution before merging
 - ✅ Block direct pushes（bypass 不可。緊急時のみ一時的に解除）
@@ -79,7 +79,7 @@ main から feat/xxx を切る
 
 - ⛔ **人間の承認数（Required approvals）は要求しない**。
   単独開発では GitHub の仕様上、自分の PR を自分で Approve できず、承認数を必須にすると永久にマージできなくなる。
-  ゲートは**ステータスチェック（CI 緑＋CodeRabbit）**で張る。
+  ゲートは**ステータスチェック（CI 緑）**で張る。
 
 ## 7. ホットフィックス
 
@@ -104,7 +104,7 @@ CI が未整備の現在を踏まえ、二段で導入する。
 ### `rails new` ＋ CI 整備後
 
 - CI ワークフロー（`.github/workflows/`）を追加。
-- Branch protection の **required status checks に CI と CodeRabbit を登録**し、機械的に強制。
+- Branch protection の **required status checks に自前 CI のみ登録**し、機械的に強制（CodeRabbit は non-required の参考レビュー）。
 
 ```
 注意: 「Require status checks」は "最低 1 回そのチェックが走った実績"
@@ -117,7 +117,7 @@ CI が未整備の現在を踏まえ、二段で導入する。
 | ツール | 役割 | タイミング |
 |---|---|---|
 | `/preflight` | ローカル CI 等価の静的検証 | push 前 |
-| CodeRabbit / `/code-review` | AI コードレビュー（必須ゲート） | PR 上 |
+| CodeRabbit / `/code-review` | AI コードレビュー（参考。required にしない） | PR 上 |
 | `/clean_gone` | リモート削除済みローカルブランチの掃除 | マージ後 |
 | `guard-git-identity` フック | commit/push の identity・remote を強制 | commit/push 時 |
 
