@@ -1,9 +1,10 @@
 # CLAUDE.md
 
-Salesforce 2GP 勤怠パッケージ「Gatcha」を **Ruby on Rails 8 マルチテナント SaaS** へ再設計するプロジェクト。**勤怠ドメインのみ**（工数管理 Gatcha Work は範囲外）。現在は**仕様策定フェーズ**（`rails new` 前・アプリコード未生成）。
+Salesforce 2GP 勤怠パッケージ「Gatcha」を **Ruby on Rails 8 マルチテナント SaaS** へ再設計するプロジェクト。**勤怠ドメインのみ**（工数管理 Gatcha Work は範囲外）。現在は **Phase 0a（基盤）マージ済み・次は Phase 0b（マスタ CRUD）**。進行管理は docs/ROADMAP.md。
 
 ## ドキュメント地図（SSOT）
 - [docs/SPEC.md](docs/SPEC.md) — 仕様の single source of truth（§0〜§16・多視点レビュー反映・原典照合済み・SF 知識なしで自立）
+- [docs/ROADMAP.md](docs/ROADMAP.md) — 進行管理の SSOT（フェーズ→スライス分解・現在地・1 スライス = 1 PR）
 - [docs/LABOR_LAW_REVIEW_NOTES.md](docs/LABOR_LAW_REVIEW_NOTES.md) — 社労士確認事項（解釈・運用判断）
 - [docs/MCP_SETUP.md](docs/MCP_SETUP.md) — MCP サーバー設定と有効化手順
 - [docs/MIGRATION_FROM_SF.md](docs/MIGRATION_FROM_SF.md) — SF 版からの移植対応表（歴史的経緯・参照任意。SF 版原典 `../Gatcha/docs/SPEC.md` が手元に無くても支障なし）
@@ -40,4 +41,4 @@ PreToolUse/PostToolUse の開発ガード（**Claude Code 再起動＋承認**�
 - **rails console / rake:** `require_tenant = true` ゆえ、最初に `ActsAsTenant.current_tenant = Organization.find_by!(subdomain: "acme")` を実行しないとスコープ付きモデルのクエリが `NoTenantSet` で失敗する
 
 ## ワークフロー
-実装は SPEC §15 のフェーズ（0 基盤 → 5 管理・監査）。各フェーズは brainstorm → writing-plans → 実装。次の一歩は `rails new` で Phase 0 着手。
+実装は SPEC §15 のフェーズを docs/ROADMAP.md のスライス（1 スライス = 1 ブランチ = 1 PR・squash マージ）で進める。各スライスは brainstorm →（大物は specs/ に設計 + 多視点レビュー）→ writing-plans → 実装 → `/preflight` → PR。**PR に ROADMAP の該当行更新（チェック + PR 番号）を含めてからマージ**。設計・計画は docs/superpowers/{specs,plans}/ に日付付きで蓄積。次の一歩は Phase 0b-1（ユーザー管理）。
