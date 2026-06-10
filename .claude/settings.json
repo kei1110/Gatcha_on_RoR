@@ -11,7 +11,8 @@
         "matcher": "Edit|Write",
         "hooks": [
           { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/claude-hooks/block-secrets.sh" },
-          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/claude-hooks/block-schema-edit.sh" }
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/claude-hooks/block-schema-edit.sh" },
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/claude-hooks/block-gemfile-lock-edit.sh" }
         ]
       }
     ],
