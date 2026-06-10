@@ -1,6 +1,6 @@
 # 勤怠管理 SaaS「Gatcha on Rails」仕様書
 
-> **由来:** 本仕様は Salesforce 2GP パッケージ版 Gatcha（`../Gatcha/docs/SPEC.md`）を Ruby on Rails 向けに再設計したもの。労務コンプライアンスのドメインロジックは一片も削らず、Salesforce 固有の実装制約（ガバナ制限・2GP・Platform Event・LWC・承認プロセス・共有モデル）を Rails のイディオムへ翻訳し直している。
+> **由来:** 本仕様は Salesforce 上で稼働していた勤怠管理パッケージ「Gatcha」のドメインロジックを、Ruby on Rails 向けに再設計したもの。本書は移植元の知識なしで自立して読める。移植時の概念対応・引き継いだ設計判断の記録は [docs/MIGRATION_FROM_SF.md](MIGRATION_FROM_SF.md)（歴史的経緯・参照任意）。
 >
 > **作成日:** 2026-06-09 / **対象 Rails:** 8.x / **対象 Ruby:** 3.3+
 
@@ -10,31 +10,51 @@
 
 ### 0.1 スコープ
 
-- **対象:** 勤怠管理ドメイン（出退勤・休暇・申請承認・月次締め・労務コンプライアンス）= SF 版 `Gatcha` パッケージ相当
-- **対象外:** 工数管理（日報・人員配置・予実・SES 精算）= SF 版 `Gatcha Work` パッケージ。別サイクルで設計する。本仕様では「連携の継ぎ目」（§14）のみ定義する
+- **対象:** 勤怠管理ドメイン（出退勤・休暇・申請承認・月次締め・労務コンプライアンス）
+- **対象外:** 工数管理（日報・人員配置・予実・SES 精算）= 姉妹プロダクト「Gatcha Work」の領域。別サイクルで設計する。本仕様では「連携の継ぎ目」（§14）のみ定義する
 - **成果物:** 本仕様書（設計合意のための SSOT）。実装コードは本サイクルの対象外
 
-### 0.2 SF 版との根本的な違い（再設計の前提）
-
-| 観点 | Salesforce 版 | Rails 版（本仕様） |
-|------|--------------|-------------------|
-| テナント | 1 社 1 組織（シングルテナント） | **マルチテナント SaaS**（行レベル分離・単一 DB） |
-| ユーザー | 標準 `User` オブジェクト | **自前 `User` モデル**（Devise）+ `organization_id` |
-| 認可 | OWD + 共有ルール + Permission Set + Path C 5 層 | **テナントスコープ + Pundit ポリシー**（2 層） |
-| 配布 | 2GP マネージドパッケージ（AppExchange） | **デプロイ型 SaaS**（「インストール」= 組織オンボーディング） |
-| 実装制約 | ガバナ制限（DML 150 / SOQL 50000 / OFFSET 2000 / CPU 10s / Batch 5 / 通知 10/txn） | **制約なし**（通常の DB トランザクション） |
-
-### 0.3 非ゴール
+### 0.2 非ゴール
 
 - 給与計算そのもの（基本給・手当・控除・実支給額の算出）。本システムは**勤務実績データ**を提供し、給与システムへの CSV 連携までを担う（労基法 108 条の賃金台帳は給与システムの責務）
 - 工数・契約・請求管理（Gatcha Work 領域）
 - v1 では時間単位の有給取得（労基法 39 条 4 項）には非対応。データモデルは将来拡張可能な構造を保つ
+- 多言語対応（v1 は日本語 UI のみ。Rails の i18n 基盤は既定のまま温存し、文言のハードコードは避ける）
+- 課金・契約・プラン管理（テナント開設は §16.7 の運用手順で代替）
+- モバイルネイティブアプリ（レスポンシブ + PWA まで・§12.4）
+- セルフサービスのテナント登録（公開サインアップ画面は作らない。§16.7）
+
+### 0.3 用語集
+
+定義の正本は各セクションの本文にある。本表は初読時の道標（要約 + 参照先）であり、本文と齟齬がある場合は本文が優先する。
+
+| 用語 | 要約 | 正本 |
+|------|------|------|
+| テナント | 導入企業 1 社 = `Organization`。全データは行レベルで分離される | §3.1 |
+| 打刻 | 出勤・退勤の時刻記録。`AttendanceRecord` を作成/更新する | §6.1 |
+| 締め | 月次勤怠の提出 → 確定プロセス。確定月は編集ロック | §6.6 |
+| 月次サマリ | 月単位の集計確定値（`MonthlyAttendanceSummary`）。永久保持で長期参照の基点 | §4.13 |
+| 半休 | 午前半休 / 午後半休。所定労働の半分を休む（時間単位有給とは別物・v1 非対応） | §6.2 |
+| 欠勤確定 | 無打刻・無申請の日を管理者が欠勤として確定する操作 | §6.10 |
+| 代理打刻 | 管理者が対象社員に代わって行う打刻。承認不要・履歴記録必須 | §6.1 |
+| 取消（キャンセル） | **承認前**の申請を申請者自身が取り下げること（終端） | §13.2 |
+| 撤回 | **承認済み**の申請を取り消すこと。管理者の承認と状態復元処理を伴う | §7.6 |
+| 二重 opt-in | 組織設定と個人設定の両方が ON のときだけメール通知を送る方式 | §9.4 |
+| 法定休日 / 所定休日 | 法定休日 = 労基法 35 条の週 1 日（労働は 35% 割増・60h カウント外）。所定休日 = 会社が定めるその他の休日（土曜等） | §4.7 |
+| 法定残業 / 所定外残業 | 法定残業 = 実労働 − 所定（8h 超・割増とコンプラ判定の基準）。所定外残業 = 退勤 − 所定終業（表示用に併存） | §5.2 |
+| 振替休日 / 代休 | 振替 = **事前**に休日を別日へ振替（同一週内なら割増不要）。代休 = 休日出勤の**事後**の休み（35% 割増は消滅しない） | §6.11 |
+| 管理監督者 | 労基法 41 条 2 号の地位（`exempt_from_overtime`）。残業割増の対象外だが**深夜割増と面談対象からは除外されない**。`manager` ロール（システム権限）とは別概念 | §3.3・§8.3 |
+| 36 協定 / 特別条項 | 時間外労働の労使協定。通常 月 45h/年 360h、特別条項でも 月 100h 未満・年 720h・2–6 ヶ月平均 80h が法定上限 | §8.2 |
+| 勤務間インターバル | 前日退勤から当日出勤までの休息時間（既定 11h）。不足は警告・記録（打刻はブロックしない） | §6.9 |
+| 深夜労働 | 22:00〜翌 5:00 の労働。全労働者に 25% 割増（管理監督者も対象） | §5.3 |
+| 有給 5 日取得義務 | 年 10 日以上付与の労働者に付与日から 1 年で 5 日の取得を課す義務（違反は 1 人 30 万円以下の罰金） | §8.6 |
+| 産業医面談 | 月 80h 超の時間外労働者への面談機会の提供義務（労安法 66 条の 8）。本人の申出が起点 | §8.7 |
 
 ---
 
 ## 1. 製品概要
 
-Salesforce に依存しない、日本の労働基準法・労働安全衛生法に準拠したマルチテナント型勤怠管理 SaaS。複数企業（テナント）が 1 つの Rails アプリを共有し、各社の社員が打刻・休暇申請を行い、管理者が承認・締め・コンプライアンス監視を行う。
+日本の労働基準法・労働安全衛生法に準拠したマルチテナント型勤怠管理 SaaS。複数企業（テナント）が 1 つの Rails アプリを共有し、各社の社員が打刻・休暇申請を行い、管理者が承認・締め・コンプライアンス監視を行う。
 
 ### 1.1 主要機能（社員向け）
 
@@ -85,11 +105,11 @@ Salesforce に依存しない、日本の労働基準法・労働安全衛生法
 
 ### 2.2 設計原則
 
-1. **計算ロジックは純粋オブジェクトへ分離する。** 労働時間・残業・深夜・遅刻早退の計算は `app/calculators/` 配下の AR 非依存な PORO（Plain Old Ruby Object）に切り出す。引数は値（時刻・分・パターン）、戻り値は値。これにより DB なしで網羅的な単体テストが書ける（SF 版では Apex トリガー内に埋もれて検証が困難だった部分）。
-2. **複雑な業務ロジックは Service Object へ。** 「休暇承認」「撤回復元」「月次再集計」のような多段の副作用を伴う処理は `app/services/` のサービスクラスにまとめ、トランザクション境界を明示する。軽微な値セット（OwnerId 相当・初期ステータス）のみ AR コールバックを使う。
-3. **状態遷移は AASM で宣言的に。** 申請の承認ステータス・月次締めステータスを AASM で定義し、遷移時フック（`after`）で副作用サービスを呼ぶ。SF 版の Mermaid 状態遷移図（§13）がそのまま AASM 定義に対応する。
-4. **認可は Pundit に一元化。** SF の OWD/共有ルール/Permission Set/`without sharing`/ElevatedDml の 5 層は、Rails では「**テナントスコープ（acts_as_tenant）+ Pundit ポリシー**」の 2 層に集約される。
-5. **ガバナ制限回避の記述を持ち込まない。** 再帰ガード・Bulkification 必須・OFFSET 禁止・Queueable チェーン分割といった SF 固有の回避策は、Rails では不要。大量処理は `find_each` / `insert_all` / `upsert_all` を「必要な箇所だけ」選ぶ設計判断とする。
+1. **計算ロジックは純粋オブジェクトへ分離する。** 労働時間・残業・深夜・遅刻早退の計算は `app/calculators/` 配下の AR 非依存な PORO（Plain Old Ruby Object）に切り出す。引数は値（時刻・分・パターン）、戻り値は値。これにより DB なしで網羅的な単体テストが書ける（労務計算は誤実装が法令違反に直結するため、検証容易性を最優先する）。
+2. **複雑な業務ロジックは Service Object へ。** 「休暇承認」「撤回復元」「月次再集計」のような多段の副作用を伴う処理は `app/services/` のサービスクラスにまとめ、トランザクション境界を明示する。軽微な値セット（所有者 `user_id` の既定セット〔§3.5〕・初期ステータス）のみ AR コールバックを使う。
+3. **状態遷移は AASM で宣言的に。** 申請の承認ステータス・月次締めステータスを AASM で定義し、遷移時フック（`after`）で副作用サービスを呼ぶ。状態遷移の全体像は §13 に図示し、AASM 定義と 1 対 1 に対応させる。
+4. **認可は Pundit に一元化。** 認可判定は「**テナントスコープ（acts_as_tenant）+ Pundit ポリシー**」の 2 層に集約し、それ以外の独自認可層を作らない。
+5. **過剰な防御・最適化コードを書かない。** 再帰ガードや無条件の一括化強制のような「制約ありき」の防御パターンを常用せず、大量処理は `find_each` / `insert_all` / `upsert_all` を「必要な箇所だけ」選ぶ設計判断とする。
 6. **マルチテナント安全性をデフォルトに。** 全ドメインモデルに `acts_as_tenant(:organization)` を付与（テナントルートの `Organization` 自身は対象外）。`ApplicationController` で `set_current_tenant_through_filter` によりリクエストごとのテナントを確定する。ただし**リクエスト文脈を持たない経路**（SolidQueue ジョブ・自己参照 FK 代入・Devise のメール起点フロー）は自動スコープが効かないため、§3.6 の明示防御を必須とする。`ActsAsTenant.configure { |c| c.require_tenant = true }` でテナント未設定クエリを例外化し、ラップ漏れを構造的に検出する。
 
 ### 2.3 ディレクトリ構成（主要部）
@@ -134,7 +154,7 @@ config/
 
 ## 3. マルチテナント・認証・認可（Rails で新規構築）
 
-> SF 版が標準 `User` と OWD/共有/PS で「タダ」で提供していた領域。Rails では自前構築するため、本仕様で最も新規性が高いセクション。
+> 認証・認可・テナント分離はフレームワークが「タダ」では提供しない自前構築領域であり、誤りが即データ漏洩につながる。本仕様で最も精密に定義するセクション。
 
 ### 3.1 テナントモデル
 
@@ -159,17 +179,15 @@ end
 
 ### 3.3 ロールと上長階層
 
-SF 版の Permission Set 3 種と `User.IsManagerRole__c`、ロール階層を以下へ集約:
+ロール・管理監督者・上長階層は以下の 3 要素で表現する:
 
-| SF | Rails |
-|----|-------|
-| AttendanceUser PS | `role: :employee` |
-| AttendanceManager PS | `role: :manager` |
-| AttendanceAdmin PS | `role: :hr_admin` |
-| `User.IsManagerRole__c`（管理監督者・労基法 41 条） | `User#manager_supervisor?`（`exempt_from_overtime` フラグ） |
-| ロール階層 / `User.ManagerId` | `User belongs_to :manager, class_name: 'User'`（自己参照 `manager_id`） |
+| 要素 | 表現 | 役割 |
+|------|------|------|
+| ロール | `role` enum（employee / manager / hr_admin） | システム権限（閲覧・操作の範囲） |
+| 管理監督者 | `exempt_from_overtime`（boolean）・`User#manager_supervisor?` | 労基法 41 条 2 号の労働法上の地位（割増計算の分岐） |
+| 上長階層 | `User belongs_to :manager, class_name: 'User'`（自己参照 `manager_id`） | 承認ルート解決・上長への可視性 |
 
-> **重要な区別:** `role`（システム権限：閲覧・操作の範囲）と `exempt_from_overtime`（**管理監督者**：割増賃金の適用除外＝労基法 41 条 2 号の労働法上の地位）は**別概念**。SF 版でも `IsManagerRole__c` は割増計算の分岐に使われ、PS とは独立していた。Rails でも `role` enum と `exempt_from_overtime`（boolean）を分離する。
+> **重要な区別:** `role`（システム権限：閲覧・操作の範囲）と `exempt_from_overtime`（**管理監督者**：割増賃金の適用除外＝労基法 41 条 2 号の労働法上の地位）は**別概念**であり、独立したカラムとして分離する。「manager ロールだから管理監督者」という混同は割増賃金の誤計算（未払い）に直結する。
 
 - `role`: `enum role: { employee: 0, manager: 1, hr_admin: 2 }`
 - `manager_id`: 直属上長。承認ルート解決と上長への可視性に使用
@@ -177,7 +195,7 @@ SF 版の Permission Set 3 種と `User.IsManagerRole__c`、ロール階層を�
 
 ### 3.4 認可（Pundit）
 
-SF の 5 層防衛（checkPermission + verifyOwner/verifyManager + ElevatedDml + OWD + 共有）は、Rails では **2 層**に簡素化される:
+認可は **2 層**で構成する:
 
 1. **テナント層:** `acts_as_tenant` が `organization_id` で全クエリを自動スコープ（他社データは構造的に不可視）
 2. **認可層:** Pundit ポリシーで「ロール × 所有 × 上長関係」を判定
@@ -190,13 +208,13 @@ SF の 5 層防衛（checkPermission + verifyOwner/verifyManager + ElevatedDml +
 | マスタ管理 | `hr_admin?` |
 | 代理打刻 | `manager?` かつ部下 |
 
-- **`scope`:** 一覧系は `Pundit::Scope` で「自分 + 部下」に絞る（SF の OwnerId ポリシー / ロール階層共有に相当）。**一覧・一括・CSV エクスポート系は生 `where` を禁止し `policy_scope` 起点とする**。`params[:user_id]` 等の対象指定は scope に対する `find` で解決し、scope 外は 404（IDOR 対策）。代理打刻・欠勤確定・月次一括確定も対象集合を scope で固定する。
+- **`scope`:** 一覧系は `Pundit::Scope` で「自分 + 部下」に絞る。**一覧・一括・CSV エクスポート系は生 `where` を禁止し `policy_scope` 起点とする**。`params[:user_id]` 等の対象指定は scope に対する `find` で解決し、scope 外は 404（IDOR 対策）。代理打刻・欠勤確定・月次一括確定も対象集合を scope で固定する。
 - **Pundit の強制:** `ApplicationController` で `after_action :verify_authorized, :verify_policy_scoped` をデフォルト ON とし、明示 skip のみ列挙する。2 層防衛ゆえポリシー網羅漏れ＝即バイパスとなるため、強制フックを必須とする。
 - **自己承認防止:** §7.3 参照（申請者＝承認者の直接ケースに加え、代理承認の循環・第 1=第 2 段階同一・撤回承認にも適用）。
 
-### 3.5 オーナーシップ（SF の OwnerId ポリシー相当）
+### 3.5 オーナーシップ（当事者アクセスの担保）
 
-SF 版は OWD=Private 下で「当事者が自分のレコードを見られる」ことを `OwnerId` 明示セットで担保していた。Rails では **`user_id`（対象社員の外部キー）+ Pundit スコープ**でこれを表現する。代理打刻・バッチ生成でも `user_id` は必ず対象社員にセットし、操作者は `AttendanceHistory` 側に別途記録する（オーナーと操作者の分離）。
+「当事者が自分のレコードを見られる」ことは **`user_id`（対象社員の外部キー）+ Pundit スコープ**で表現する。代理打刻・バッチ生成でも `user_id` は必ず対象社員にセットし、操作者は `AttendanceHistory` 側に別途記録する（オーナーと操作者の分離）。
 
 ### 3.6 リクエスト文脈を持たない経路のテナント保証（最重要）
 
@@ -215,13 +233,47 @@ SF 版は OWD=Private 下で「当事者が自分のレコードを見られる�
 
 ## 4. データモデル
 
+**モデル関係の俯瞰（ER 図）。** 全ドメインモデルは `Organization` に `belongs_to` する（acts_as_tenant・§3.1）ため、図では Organization からの線を省略し、直接の親子として意味を持つ 3 本（OrganizationSetting / CompanyCalendar / ReasonTemplate）のみ描く:
+
+```mermaid
+erDiagram
+    ORGANIZATION ||--|| ORGANIZATION_SETTING : "設定 1 行"
+    ORGANIZATION ||--o{ COMPANY_CALENDAR : "カレンダー"
+    ORGANIZATION ||--o{ REASON_TEMPLATE : "理由テンプレート"
+
+    USER }o--o| USER : "manager（自己参照・同一テナント強制）"
+    USER ||--o{ USER_WORK_PATTERN : "パターン割当"
+    WORK_PATTERN ||--o{ USER_WORK_PATTERN : ""
+    USER ||--o{ ATTENDANCE_RECORD : "勤怠記録"
+    WORK_PATTERN ||--o{ ATTENDANCE_RECORD : "打刻時スナップショット"
+    USER ||--o{ LEAVE_REQUEST : "休暇申請"
+    LEAVE_TYPE ||--o{ LEAVE_REQUEST : ""
+    USER ||--o{ LEAVE_BALANCE : "休暇残高（年度×種別）"
+    LEAVE_TYPE ||--o{ LEAVE_BALANCE : ""
+    USER ||--o{ CLOCK_CHANGE_REQUEST : "打刻変更申請"
+    ATTENDANCE_RECORD |o--o{ CLOCK_CHANGE_REQUEST : "対象記録（new_entry は null）"
+    USER ||--o{ HOLIDAY_WORK_REQUEST : "休日出勤申請"
+    LEAVE_TYPE ||--o{ HOLIDAY_WORK_REQUEST : "代償休暇種別"
+    USER ||--o{ MONTHLY_ATTENDANCE_SUMMARY : "月次サマリ（永久保持）"
+    USER ||--o{ ATTENDANCE_HISTORY : "監査証跡（追記専用）"
+    ATTENDANCE_HISTORY }o--o| LEAVE_REQUEST : "source（polymorphic）"
+    APPROVAL_ASSIGNMENT }o--|| USER : "approver（同一テナント検証）"
+    APPROVAL_ASSIGNMENT }o--|| LEAVE_REQUEST : "approvable（polymorphic・CCR/HWR も同様）"
+    USER ||--o{ NOTIFICATION : "通知先"
+    NOTIFICATION ||--o{ NOTIFICATION_DELIVERY : "配信記録"
+    USER ||--o| USER_NOTIFICATION_PREFERENCE : "個人通知設定"
+    USER ||--o{ TODO : "個人 TODO（parent_id で自己参照）"
+```
+
+polymorphic 関連（`ApprovalAssignment.approvable` / `AttendanceHistory.source`)は代表として LeaveRequest への線のみ描いているが、実際は ClockChangeRequest・HolidayWorkRequest（approvable）等にも張られる。
+
 ### 4.1 命名規約と共通方針
 
-- SF の `__c` サフィックス・API 名は廃止し、Rails の snake_case カラムに翻訳する（例: `ClockIn__c` → `clock_in`、`IsActive__c` → `active`）。
+- カラム名は Rails 標準の snake_case（例: `clock_in`、`active`）。
 - **全ドメインモデルに `organization_id`**（NOT NULL・FK・複合インデックス先頭）。
-- 時刻はすべて `timestamptz`（UTC 保存）。**労働法判定はユーザー組織のタイムゾーン**（`Organization#time_zone`、既定 `Asia/Tokyo`）に変換してから行う（SF 版の `DateUtil.getUserLocalDate()` パターンに相当）。深夜帯判定・日付確定はこの変換が肝。
+- 時刻はすべて `timestamptz`（UTC 保存）。**労働法判定はユーザー組織のタイムゾーン**（`Organization#time_zone`、既定 `Asia/Tokyo`）に変換してから行う。深夜帯判定・日付確定はこの変換が肝。
 - 金額は扱わない。時間は分（整数）で中間計算し、最終表示・保存のみ時間単位（`decimal(6,2)`）。
-- SF の Formula フィールドは Rails の算出メソッドで表現する。**Postgres の STORED 生成列は同一行の immutable な算術のみ**（`CURRENT_DATE` 等の volatile 関数・他生成列参照は不可）。同一行算術（残日数等）は生成列可だが NULL 伝播を `COALESCE` で防ぐ。「期限超過」「あと何日」等の*時刻依存判定*は生成列にできず、算出メソッド or バッチ評価とする。
+- 導出値は算出メソッド or 生成列で表現する。**Postgres の STORED 生成列は同一行の immutable な算術のみ**（`CURRENT_DATE` 等の volatile 関数・他生成列参照は不可）。同一行算術（残日数等）は生成列可だが NULL 伝播を `COALESCE` で防ぐ。「期限超過」「あと何日」等の*時刻依存判定*は生成列にできず、算出メソッド or バッチ評価とする。
 
 ### 4.2 Organization（テナント・新規）
 
@@ -230,7 +282,7 @@ SF 版は OWD=Private 下で「当事者が自分のレコードを見られる�
 | name | string | 企業名 |
 | subdomain | string | テナント識別子（ユニーク） |
 | time_zone | string | 既定 `Asia/Tokyo`。労働法判定の基準 TZ |
-| fiscal_year_end_month | integer | 年度終了月（3 or 12 など。SF: `FiscalYearEndMonth__c`） |
+| fiscal_year_end_month | integer | 年度終了月（3 or 12 など） |
 | active | boolean | 契約有効フラグ |
 
 ### 4.3 User（社員・新規 / Devise）
@@ -248,7 +300,7 @@ SF 版は OWD=Private 下で「当事者が自分のレコードを見られる�
 | email_enabled | boolean | 個人メール通知 opt-in（既定 false） |
 
 > **v2 送り:** 年少者深夜制限（労基法 61 条）用の `birth_date` は v2（§8.8 と同時）。v1 スキーマには持たない。
-| active | boolean | 在籍フラグ（退職で false。SF の `User.IsActive` 相当） |
+| active | boolean | 在籍フラグ（退職で false） |
 
 > **退職処理:** `active=false` で論理退職。`UserWorkPattern` を無効化、`LeaveBalance` は退職後 5 年保持、`MonthlyAttendanceSummary` は永久保持（§11.2）。
 
@@ -335,7 +387,7 @@ SF 版は OWD=Private 下で「当事者が自分のレコードを見られる�
 | note | text | 備考（代理打刻・インターバル不足の自動追記先） |
 | archived | boolean | アーカイブ済み（§11） |
 
-> **計算列の方針:** `actual_work_hours` 等は**サービスで算出して保存**（打刻・打刻変更承認・休暇承認時に再計算）。理由は CSV 出力・集計クエリでの再計算コストを避け、SF 版と同じ「常時保存」運用にするため。算出は §5 の計算オブジェクトに委譲。
+> **計算列の方針:** `actual_work_hours` 等は**サービスで算出して保存**（打刻・打刻変更承認・休暇承認時に再計算）する「常時保存」運用。理由は CSV 出力・集計クエリでの再計算コストを避けるため。算出は §5 の計算オブジェクトに委譲。
 
 ### 4.9 LeaveRequest（休暇申請）
 
@@ -367,7 +419,7 @@ SF 版は OWD=Private 下で「当事者が自分のレコードを見られる�
 
 - **残日数（算出）:** `granted_days + carry_over_days - used_days`。メソッド or STORED 生成列（生成列なら `COALESCE` で NULL 伝播を防ぐ）。
 - **取得義務期限（算出）:** `granted_on + 365 日`。期限の*日付*は値だが、「**期限超過**」「あと何日」の判定は `CURRENT_DATE` 依存ゆえ生成列にできない（§4.1）。算出メソッド or 週次バッチで評価し、`granted_on` が NULL の残高は NULL safe に扱う。
-- **同時実行制御:** 承認時は `LeaveBalance` を `lock!`（`FOR UPDATE`）で取得し、`used_days + days_requested > granted_days + carry_over_days` ならエラー（並行承認による残日数マイナス防止）。SF 版の `FOR UPDATE` をそのまま `ActiveRecord#lock!` に翻訳。
+- **同時実行制御:** 承認時は `LeaveBalance` を `lock!`（`FOR UPDATE`）で取得し、`used_days + days_requested > granted_days + carry_over_days` ならエラー（並行承認による残日数マイナス防止）。
 - **繰越:** 年度更新時 `min(前年度残日数, organization_setting.carry_over_limit)` を翌年度 `carry_over_days` に設定。
 
 ### 4.11 ClockChangeRequest（打刻変更申請）
@@ -445,11 +497,11 @@ SF 版は OWD=Private 下で「当事者が自分のレコードを見られる�
 | previous_early_leave_minutes / new_early_leave_minutes | integer | 前後の早退分数 |
 | note | text | 操作者情報・撤回理由等 |
 
-> **設計意図:** SF の Field History Tracking（18 ヶ月で自動削除）の上位互換。撤回時の状態復元はこのログを参照する（§7.6）。5 年保持。
+> **設計意図:** 撤回時の状態復元はこのログを参照する（§7.6）。5 年保持（§11.2 の法的保存要件を自前で満たす）。
 
-### 4.15 OrganizationSetting（組織設定）— SF の AttendanceSettings__mdt 相当
+### 4.15 OrganizationSetting（組織設定）
 
-テナントごとに 1 行。SF の Custom Metadata Type を**型付きの設定テーブル**へ翻訳（key-value ではなくバリデーション可能なカラムとする）。管理者が管理画面から編集。
+テナントごとに 1 行。key-value ではなく**バリデーション可能な型付きカラム**で構成する設定テーブル。管理者が管理画面から編集。
 
 | カラム | 型 | 既定 | 説明 |
 |--------|-----|------|------|
@@ -496,9 +548,9 @@ SF 版は OWD=Private 下で「当事者が自分のレコードを見られる�
 | holiday_block_enabled | boolean | 個人の休日ブロック |
 | email_enabled | boolean | 個人メール opt-in（組織側が true のときのみ有効・二重 opt-in） |
 
-### 4.18 Notification / NotificationDelivery（通知）— SF の NotificationQueue + Custom Notification 相当
+### 4.18 Notification / NotificationDelivery（通知）
 
-SF の「Custom Notification（10 件/txn 上限）+ NotificationQueue__c」を、Rails では「**ベル通知（永続 + Turbo Streams）+ 配信ジョブ**」へ翻訳。10 件/txn のような上限はない。
+通知は「**ベル通知（永続 + Turbo Streams）+ 配信ジョブ**」の 2 モデルで構成する。
 
 **Notification（ベル通知の実体）:**
 
@@ -541,7 +593,7 @@ Gatcha Work 連携用の Outbox（`IntegrationEvent`）は **v1 では作らな�
 
 ## 5. 労働時間計算エンジン（純粋計算オブジェクト）
 
-> SF 版では Apex トリガー内に埋もれ検証困難だった計算群を、AR 非依存の PORO に切り出す。入力は値、出力は値。DB なしで網羅的に単体テストする。各計算は**分単位（整数）で中間計算し、最終値のみ時間単位（`decimal(6,2)`）へ HALF_UP 変換**する（丸めルール統一）。すべての時刻比較は**組織 TZ へ変換後**に行う。
+> 労働時間計算は AR 非依存の PORO に切り出す（§2.2-1）。入力は値、出力は値。DB なしで網羅的に単体テストする。各計算は**分単位（整数）で中間計算し、最終値のみ時間単位（`decimal(6,2)`）へ HALF_UP 変換**する（丸めルール統一）。すべての時刻比較は**組織 TZ へ変換後**に行う。
 >
 > **入力契約（重要）:** 計算オブジェクトには**組織 TZ に変換済みの `ActiveSupport::TimeWithZone`** を渡す（`clock_in`/`clock_out` は `in_time_zone(org.time_zone)` 変換、`WorkPattern` の `time` 型は当日日付 + 組織 TZ で合成）。夜勤の `end_time + 24h` は `time` の加算ではなく `Time.zone` 上の `+1.day` 合成で行う。**v1 は組織 TZ を `Asia/Tokyo` 固定（DST 無）**とし、任意 TZ 許容は将来課題（DST 跨ぎの深夜帯ずれを別途設計）。
 
@@ -660,7 +712,7 @@ start_date〜end_date の全日から除外:
 - **年度跨ぎ申請:** `LeaveBalance` 加算は `start_date` の属する年度に統一（日割り分割しない）
 - 締め済み月への申請は §6.7 の制限に従う
 
-> **Rails での簡素化:** SF 版は「複数日承認で 60 DML 超」を避けるため同期/非同期を分離していた。Rails ではガバナ制限がないため、承認サービスを 1 トランザクションで実行できる（大量日数時のみ `insert_all` でバルク化を選択）。将来の Gatcha Work 連携 publish は after_commit フック 1 点に差し込む（§14・v1 では実装しない）。
+> **トランザクション境界:** 承認サービスは 1 トランザクションで実行する（大量日数時のみ `insert_all` でバルク化を選択）。将来の Gatcha Work 連携 publish は after_commit フック 1 点に差し込む（§14・v1 では実装しない）。
 
 ### 6.3 打刻時刻変更依頼
 
@@ -679,7 +731,7 @@ start_date〜end_date の全日から除外:
   - **CSV ≠ 賃金台帳:** 本 CSV は勤務実績データ。賃金台帳（基本給・手当・控除）は給与システムの責務
 - **集計タイミング 2 種:**
   - **日次バッチ（前日分積み上げ）:** `daily_batch_hour` 時に前日分加算（月中は概算）
-  - **提出時全件再集計:** 「提出」時に対象月を正確に再集計し確定値保存。対象月の `AttendanceRecord` を 1 クエリで取得し `MonthlySummaryService` で計算（SF の「ループ内 SOQL 禁止」は Rails では自然な書き方で達成）
+  - **提出時全件再集計:** 「提出」時に対象月を正確に再集計し確定値保存。対象月の `AttendanceRecord` を 1 クエリで取得し `MonthlySummaryService` で計算
 - 提出前に退勤未入力日があれば警告（提出は可能）
 
 ### 6.5 残業時間自動計算
@@ -697,12 +749,12 @@ AASM で `MonthlyAttendanceSummary.status` を管理:
 | finalized（確定） | 全ロック | 差戻し → deferred |
 | deferred（差戻し） | 制限解除・再度操作可 | 再提出 → submitted |
 
-- **状態遷移はカスタム実装**（SF の標準 Reject は「却下・終了」で差戻し→修正→再提出に不適合という事情は Rails でも同じ。AASM で素直に表現）
+- **状態遷移はカスタム実装**（汎用の承認 gem の「却下＝終了」は「差戻し→修正→再提出」のループに不適合。AASM で素直に表現）
 - **差戻し:** `deferral_reason` 必須・社員へ通知・「集計中」には戻さない
 - **承認時の締めステータス再チェック:** 申請作成後に締めが submitted/finalized へ遷移した場合、承認操作時に再検証しロック中なら承認エラー（CCR / LR / HWR の全 3 種。§7）
 - **提出前チェック:** 承認進行中（プロセス起動済み未完了）の申請があれば提出ボタン非活性 + 対象一覧表示。申請中（未起動）はキャンセルで提出可
 - 編集制御はサーバー側バリデーション + UI（Turbo で disable）の二重
-- **月次一括確定:** 複数社員分は SolidQueue ジョブで分割（Rails では DML 制限はないが、応答性のためバックグラウンド化）
+- **月次一括確定:** 複数社員分は SolidQueue ジョブで分割（応答性のためバックグラウンド化）
 
 ### 6.7 締めステータスによる申請制限（横断ルール）
 
@@ -761,9 +813,9 @@ SolidQueue 定期ジョブ（毎日 `daily_batch_hour` 時）で前日分を検�
 
 ---
 
-## 7. 承認エンジン（自作 / SF 標準承認プロセスの代替）
+## 7. 承認エンジン（自作）
 
-> SF 版は標準 Approval Process（2GP 非対応で導入先が手動作成）を使っていた。Rails には標準機構がないため**自作**するが、その分テナント別に柔軟・透明な承認フローを構築できる。
+> Rails には標準の承認機構がないため**自作**する。その分テナント別に柔軟・透明な承認フローを構築できる。
 
 ### 7.1 構成モデル
 
@@ -929,7 +981,7 @@ CCR 承認時、`original_clock_in/out` と現在の `AttendanceRecord` 値を�
 
 ## 9. 通知設計
 
-通知は **ベル通知（Notification + Turbo Streams で即時表示）** と **メール（Action Mailer）** の 2 チャネル。SF の「Custom Notification 10 件/txn 上限」「Platform Event 二重 publish 回避」は Rails では存在しない。
+通知は **ベル通知（Notification + Turbo Streams で即時表示）** と **メール（Action Mailer）** の 2 チャネル。
 
 ### 9.1 社員向け通知
 
@@ -957,7 +1009,7 @@ CCR 承認時、`original_clock_in/out` と現在の `AttendanceRecord` 値を�
 
 ### 9.3 通知抑制モード（オフタイム）
 
-送信前に対象ユーザー設定を参照（`UserNotificationPreference` → なければ `OrganizationSetting`）。抑制時間帯（`quiet_hours_start`〜`quiet_hours_end`）or `holiday_block_enabled` かつカレンダー休日に該当する通知は **`scheduled_at` を抑制終了後に計算し、`NotificationDelivery` をキューイング**。Active Job の `set(wait_until: scheduled_at).perform_later` で後送する（SF の NotificationQueue バッチ処理を ActiveJob の遅延実行へ翻訳）。
+送信前に対象ユーザー設定を参照（`UserNotificationPreference` → なければ `OrganizationSetting`）。抑制時間帯（`quiet_hours_start`〜`quiet_hours_end`）or `holiday_block_enabled` かつカレンダー休日に該当する通知は **`scheduled_at` を抑制終了後に計算し、`NotificationDelivery` をキューイング**。Active Job の `set(wait_until: scheduled_at).perform_later` で後送する。
 
 ### 9.4 優先度と二重 opt-in
 
@@ -977,7 +1029,7 @@ CCR 承認時、`original_clock_in/out` と現在の `AttendanceRecord` 値を�
 
 ## 10. バックグラウンドジョブ（SolidQueue）
 
-SF の Scheduled Apex / Queueable / Batch Apex を Active Job + SolidQueue へ翻訳。定期ジョブは `config/recurring.yml`（Fugit 構文）。
+バッチ処理は Active Job + SolidQueue で構成する。定期ジョブは `config/recurring.yml`（Fugit 構文）。
 
 ```yaml
 # config/recurring.yml
@@ -998,14 +1050,7 @@ production:
 
 > **テナント反復は必須（§3.6・最重要）:** 定期ジョブはリクエストが無く `current_tenant = nil`。**各ジョブは「ディスパッチャ → テナント別子ジョブ」構造**にする: `Organization.active.find_each { |org| 子Job.perform_later(org.id) }`（`Organization` はスコープ外で列挙）→ 子ジョブ内で `ActsAsTenant.with_tenant(org) { ... }`。ラップを忘れて `find_each` すると**全テナント横断**になり集計・通知が他社データを混入する。`require_tenant = true` でラップ漏れを例外検出する。
 
-> **Rails での簡素化:** SF は「Batch 同時 5 件」「InstallHandler で初回スケジュール」「Custom Notification チェーン」等の制約に縛られていた。SolidQueue は DB ベースで同時実行数を `config/queue.yml` で自由設定でき、recurring.yml が宣言的スケジューラを兼ねる。大量処理は `find_each` / `insert_all` で素直に書ける。
-
-| SF 機構 | Rails 置換 |
-|---------|-----------|
-| Scheduled Apex（日次/週次） | SolidQueue recurring task |
-| Queueable チェーン（通知 10 件分割） | 通常の Active Job（分割不要） |
-| Batch Apex（月次一括確定） | Active Job + `find_each`（分割は性能判断） |
-| GatchaInstallHandler（初回スケジュール） | recurring.yml（コード同梱・組織オンボーディングは seed） |
+> **運用ノート:** SolidQueue は DB ベースで同時実行数を `config/queue.yml` で設定でき、recurring.yml が宣言的スケジューラを兼ねる。大量処理は `find_each` / `insert_all` で素直に書く。初回スケジュールはコード同梱（recurring.yml）、組織オンボーディングは seed で行う。
 
 ---
 
@@ -1072,7 +1117,7 @@ production:
 - **重要（週次）:** 残業統計（60h 接近ハイライト）・36 協定管理タブ・連続勤務超過・インターバル違反・全員カレンダー・遅刻早退統計
 - **管理（月次）:** 月次未提出者・有給 5 日未取得者（期限超過は別セクション）・有給失効予定者・パターン未割当者・産業医面談管理
 
-> **Rails での解放:** SF は「標準レポート 2,000 行上限」「OFFSET 2,000 上限」「SOQL 50,000 行」に縛られダッシュボードを全て LWC で自作していた。Rails は通常の SQL + ページネーション（kaminari 等）で素直に実装でき、行数制限の設計負荷は消える。`AttendanceHistory` の大量参照もインデックス + キーセット/オフセットを性能で選べる。
+> **実装ノート:** ダッシュボードは通常の SQL + ページネーション（kaminari 等）で実装する。`AttendanceHistory` の大量参照はインデックス + キーセット/オフセットを性能で選ぶ。
 
 ### 12.3 マスタ管理
 
@@ -1080,32 +1125,142 @@ production:
 
 ### 12.4 モバイル / PWA
 
-レスポンシブ + PWA（ホーム追加・オフライン打刻キューは将来）。打刻ボタンは大きめ。SF Mobile App 依存を排し、ブラウザで完結。
+レスポンシブ + PWA（ホーム追加・オフライン打刻キューは将来）。打刻ボタンは大きめ。専用アプリは持たず、ブラウザで完結。
 
 ---
 
 ## 13. 状態遷移（AASM）
 
-**SF 版 SPEC（`../Gatcha/docs/SPEC.md`）§13 の Mermaid 状態遷移図**を、本書では AASM 定義へ対応づける（本書 §13 は図を持たず、下記の状態 × イベント × 副作用で表現する）。
+各状態機械を Mermaid 図 + 補足で定義する。図は AASM 定義と 1 対 1 に対応させる（§2.2-3）。
 
-- **AttendanceRecord.status:** working →（退勤打刻）clocked_out。休暇承認で on_leave / morning_half / afternoon_half。欠勤確定で absent。absent →（打刻追加承認 = new_entry。退勤込みなら clocked_out、出勤のみなら working）／（事後有給）on_leave。終端は持たない（記録は更新され続ける）
-- **LeaveRequest / ClockChangeRequest.approval_status:** applying →（承認）approved /（却下）rejected /（キャンセル）canceled。approved →（撤回操作）withdrawal_requested →（撤回承認）withdrawn /（撤回却下）approved。**終端:** rejected / canceled / withdrawn。段階（第 1/第 2）は `ApprovalAssignment` から導出（status には持たない）
-- **HolidayWorkRequest.approval_status:** applying →（承認）approved /（却下）rejected /（キャンセル）canceled。**撤回フローは持たない**（4 値・§4.12）。終端: approved / rejected / canceled
-- **MonthlyAttendanceSummary.status:** aggregating → submitted ⇄ deferred、submitted → finalized → deferred（§6.6）
+### 13.1 AttendanceRecord.status
 
-**イベント × `after` 副作用（重要）:** 副作用は*状態*ではなく*イベント*に紐付ける。同じ `approved` に入っても、`approve`（承認）は「AttendanceRecord 更新・残高加算・履歴記録」を撃つが、`reject_withdrawal`（撤回却下で approved へ戻す）は**副作用を撃たない**。これにより残高二重加算・履歴二重記録を防ぐ（§7.6）。
+```mermaid
+stateDiagram-v2
+    [*] --> working : 出勤打刻
+    [*] --> on_leave : 全休の休暇承認
+    [*] --> morning_half : 午前半休の休暇承認
+    [*] --> afternoon_half : 午後半休の休暇承認
+    [*] --> absent : 欠勤確定（管理者・§6.10）
+
+    working --> clocked_out : 退勤打刻
+    working --> morning_half : 午前半休の事後承認
+    working --> afternoon_half : 午後半休の事後承認
+    morning_half --> morning_half : 午後の出勤・退勤打刻（時刻を記録・status 維持）
+    afternoon_half --> afternoon_half : 午前の出勤・退勤打刻（時刻を記録・status 維持）
+    clocked_out --> clocked_out : 打刻変更承認（時刻を修正）
+    absent --> working : 打刻追加承認（new_entry・出勤のみ）
+    absent --> clocked_out : 打刻追加承認（new_entry・退勤込み）
+    absent --> on_leave : 事後有給の承認
+```
+
+終端状態は持たない（記録は更新され続ける）。
+
+### 13.2 LeaveRequest / ClockChangeRequest.approval_status
+
+```mermaid
+stateDiagram-v2
+    [*] --> applying : 申請作成（before_create・§7.7）
+
+    applying --> approved : 最終承認
+    applying --> rejected : 却下
+    applying --> canceled : 申請者キャンセル
+
+    approved --> withdrawal_requested : 撤回申請（withdrawal_reason 必須）
+    withdrawal_requested --> withdrawn : 撤回承認（復元処理・§7.6）
+    withdrawal_requested --> approved : 撤回却下（副作用なし）
+
+    rejected --> [*]
+    canceled --> [*]
+    withdrawn --> [*]
+```
+
+- **終端:** rejected / canceled / withdrawn
+- **段階情報（第 1/第 2 段階待ち）は status に持たない:** 承認進行中も `applying` を維持し、段階は `ApprovalAssignment` 群から導出する（§7.1）
+- `withdrawal_requested` では承認イベントを**未定義**とし、承認エンジンの再起動を `InvalidTransition` で構造的に防ぐ（§7.6）
+
+### 13.3 HolidayWorkRequest.approval_status
+
+```mermaid
+stateDiagram-v2
+    [*] --> applying : 申請作成
+    applying --> approved : 承認（is_holiday_work 予約・代休残高 +1）
+    applying --> rejected : 却下
+    applying --> canceled : 申請者キャンセル
+    approved --> [*]
+    rejected --> [*]
+    canceled --> [*]
+```
+
+**撤回フローは持たない**（4 値・§4.12）。終端: approved / rejected / canceled。
+
+### 13.4 MonthlyAttendanceSummary.status
+
+```mermaid
+stateDiagram-v2
+    [*] --> aggregating : 月初 or 初回打刻で自動作成
+    aggregating --> submitted : 提出（社員・全件再集計）
+    submitted --> finalized : 確定（管理者）
+    submitted --> deferred : 差戻し（deferral_reason 必須）
+    finalized --> deferred : 差戻し（確定後の修正時）
+    deferred --> submitted : 再提出（社員）
+```
+
+差戻しは「集計中（aggregating）」には戻さない（§6.6）。
+
+### 13.5 オブジェクト間の連携（俯瞰）
+
+状態機械単体ではなく、操作がモデル間で何を引き起こすかの鳥瞰図:
+
+```mermaid
+flowchart TD
+    subgraph 社員の操作
+        A[出勤/退勤打刻] --> AR["AttendanceRecord<br>working / clocked_out"]
+        C[休暇申請] --> LR["LeaveRequest<br>applying"]
+        D[打刻変更申請] --> CR["ClockChangeRequest<br>applying"]
+        E[休日出勤申請] --> HR["HolidayWorkRequest<br>applying"]
+        F[月次提出] --> MS["MonthlyAttendanceSummary<br>submitted"]
+    end
+
+    subgraph 承認エンジン（§7）
+        LR -->|固定 2 段承認| LR_OK["LeaveRequest<br>approved"]
+        CR -->|競合チェック + 承認| CR_OK["ClockChangeRequest<br>approved"]
+        HR -->|承認| HR_OK["HolidayWorkRequest<br>approved"]
+    end
+
+    subgraph 承認の自動処理（サービス・1 トランザクション）
+        LR_OK -->|作成/更新| AR2["AttendanceRecord<br>on_leave / 半休"]
+        LR_OK -->|"used_days 加算（lock!）"| LB[LeaveBalance]
+        CR_OK -->|時刻更新 + §5 再計算| AR
+        HR_OK -->|granted_days +1| LB
+        LR_OK & CR_OK -->|追記| AH["AttendanceHistory<br>（追記専用・5 年）"]
+        AR -->|退勤時に §5 計算| CALC["実労働/残業/深夜/遅刻早退<br>→ AttendanceRecord に保存"]
+    end
+
+    subgraph バッチ（§10・テナント別子ジョブ）
+        BAT1[日次] -->|退勤漏れ/欠勤候補 検知| N1[Notification]
+        BAT2[週次] -->|45h 残業/滞留/有給 5 日| N1
+        BAT3[月次] -->|36 協定/HWR 未打刻/繰越| N1
+        CALC -->|前日分 積み上げ| MS
+        N1 --> ND["NotificationDelivery<br>（抑制後送・email）"]
+    end
+```
+
+### 13.6 イベント × `after` 副作用（重要）
+
+副作用は*状態*ではなく*イベント*に紐付ける。同じ `approved` に入っても、`approve`（承認）は「AttendanceRecord 更新・残高加算・履歴記録」を撃つが、`reject_withdrawal`（撤回却下で approved へ戻す）は**副作用を撃たない**。これにより残高二重加算・履歴二重記録を防ぐ（§7.6）。
 
 ---
 
 ## 14. Gatcha Work 連携の継ぎ目
 
-SF 版は `LeaveApproved__e` / `LeaveRevoked__e`（Platform Event）で疎結合連携していた。**v1 では連携テーブル（Outbox）も配信ジョブも実装しない**——購読者（Gatcha Work）が範囲外で存在せず、誰も読まないテーブルに溜めるだけになるため（YAGNI・§4.20）。
+**v1 では連携テーブル（Outbox）も配信ジョブも実装しない**——購読者（Gatcha Work）が範囲外で存在せず、誰も読まないテーブルに溜めるだけになるため（YAGNI・§4.20）。
 
 **v1 が残すのは「継ぎ目の位置」だけ:**
 1. 休暇承認/撤回サービスは、副作用の最後に **`after_commit` フック 1 点**を持つ（現状は `AttendanceHistory` への `leave_approved`/`leave_withdrawn` 記録がそれを兼ねる）
 2. 将来 Gatcha Work を設計する際、この after_commit 点に Outbox（`IntegrationEvent` テーブル + 配信ジョブ）を差し込む。payload は user_id・対象日・工数時間・休暇種別を想定
 
-> Outbox を採る場合、「同一トランザクションでイベント行を作成 → after_commit で配信」により「1 トランザクション 1 イベント・確実に 1 回」を担保できる（SF の Platform Event 制約の Rails 版解）。**配信ジョブはテナントごとに `with_tenant` で実行**すること（§3.6）。
+> Outbox を採る場合、「同一トランザクションでイベント行を作成 → after_commit で配信」により「1 トランザクション 1 イベント・確実に 1 回」を担保できる。**配信ジョブはテナントごとに `with_tenant` で実行**すること（§3.6）。
 
 ---
 
@@ -1126,30 +1281,80 @@ SF 版は `LeaveApproved__e` / `LeaveRevoked__e`（Platform Event）で疎結合
 
 ---
 
-## 16. 付録：Salesforce → Rails 対応表（早見）
+## 16. 非機能要件・運用
 
-| Salesforce | Rails | 備考 |
-|-----------|-------|------|
-| Custom Object（`__c`） | ActiveRecord モデル | snake_case カラム |
-| Lookup(User) | `belongs_to :user` | FK |
-| Apex Trigger（複雑） | Service Object | 軽微のみ AR callback |
-| 標準 User オブジェクト | `User`（Devise）+ `organization_id` | 自前認証 |
-| OWD Private / 共有ルール / Apex Managed Sharing | acts_as_tenant + Pundit Scope | 2 層に集約 |
-| Permission Set ×3 | `role` enum + Pundit Policy | employee/manager/hr_admin |
-| `without sharing` + ElevatedDml（Path C 5 層） | Pundit ポリシー | 「sharing 迂回」概念が消滅 |
-| `IsManagerRole__c` | `exempt_from_overtime`（管理監督者） | 割増計算の分岐 |
-| Custom Metadata Type | `OrganizationSetting`（型付きテーブル） | テナント別・1 行 |
-| 標準承認プロセス | AASM + ApprovalAssignment（固定 2 段） | v1 は manager 階層固定・ルート設定化は v2 |
-| Custom Notification（ベル・10/txn） | Notification + Turbo Streams | 上限なし |
-| NotificationQueue__c | NotificationDelivery + ActiveJob `wait_until` | 抑制後送 |
-| Platform Event（`__e`） | after_commit フック点（Outbox は v2） | v1 は継ぎ目の位置のみ |
-| Scheduled/Queueable/Batch Apex | SolidQueue + recurring.yml | 制約なし |
-| Field History Tracking（18 ヶ月削除） | AttendanceHistory（5 年）+ paper_trail（補助） | 法的根拠は前者 |
-| Formula フィールド | 算出メソッド / 生成列 | 残日数・取得義務期限 |
-| LWC | Hotwire + ViewComponent | サーバーレンダリング |
-| ガバナ制限（DML/SOQL/OFFSET/CPU/Batch） | — | 通常のトランザクション |
-| 2GP / InstallHandler / namespace | デプロイ型 SaaS / seed | パッケージング概念が消滅 |
-| Big Objects（アーカイブ） | Postgres パーティション / S3 退避 | §11.4 |
+### 16.1 想定規模（v1 前提）
+
+| 項目 | 前提値 |
+|------|--------|
+| テナント数 | 〜100 社 |
+| 1 テナントの社員数 | 〜300 名 |
+| 全体ユーザー数 | 〜1 万 |
+| 打刻データ量 | 約 20 万行/月・250 万行/年（`AttendanceRecord`） |
+
+この規模では**単一 PostgreSQL で十分**であり、v1 でパーティショニング・リードレプリカは導入しない。前提を超える成長時の再設計ポイントはパーティショニング（§11.4）とキーセットページネーション（§12.2）に局所化してある。
+
+### 16.2 性能目標
+
+| 対象 | 目標 |
+|------|------|
+| 打刻操作（出勤/退勤） | p95 < 300ms |
+| 主要画面（ホーム・一覧・ダッシュボード） | p95 < 500ms |
+| CSV エクスポート・月次再集計・一括確定 | 対象外（非同期化・ストリーミングで応答性を担保） |
+
+- **負荷の形:** 打刻は始業・終業 ±15 分に集中する。この瞬間ピークが性能設計の基準（平均値ではなく）
+- 目標未達は機能削減ではなく**クエリ・インデックスで解決**する（§4 の複合インデックス方針）。開発時は rack-mini-profiler 等で計測し、本番計測は §16.5
+- 打刻という行為の性質上、体感応答性（ボタン押下→Turbo での即時フィードバック）を最優先する
+
+### 16.3 可用性・メンテナンス
+
+- **稼働率目標 99.5%**（月間許容停止 約 3.6 時間）・単一リージョン構成。冗長化（マルチ AZ）は v2 判断
+- **勤怠 SaaS は始業・終業時刻の停止が致命的**（打刻できない = 法定の労働時間記録が欠ける）。計画メンテ・デプロイは打刻ピーク帯（目安 8:30–9:15 / 17:45–19:15、テナントの勤務パターンにより前後）を避け、深夜帯に行う。ただし日次バッチ帯（`daily_batch_hour` 既定 2:00）との重複も避ける
+- デプロイはゼロダウンタイムを*目標*とする（必須要件ではない。migration の後方互換は実装フェーズの規約で扱う）
+- 障害で打刻できなかった時間帯の救済は既存機能で吸収する: 代理打刻（§6.1）・打刻変更申請（§6.3）
+
+### 16.4 バックアップ・復旧
+
+| 項目 | 目標 |
+|------|------|
+| 方式 | 日次フルバックアップ + WAL アーカイブ（PITR: ポイントインタイムリカバリ） |
+| RPO（失ってよいデータ量） | ≤ 5 分 |
+| RTO（復旧所要時間） | ≤ 4 時間 |
+
+- 根拠: 打刻は**再入力が困難な一次記録**であり、かつ労基法 109 条の 5 年保存義務（§11.2）の対象。日次バックアップのみ（RPO 24h）では最大 1 営業日分の打刻が失われ、復元不能な記録欠損になる
+- 復旧手順はドキュメント化し、**復旧演習を年 1 回**実施する
+- バックアップ媒体にも個人情報保護法の保持期間（§11.2）を適用する
+
+### 16.5 監視・ロギング
+
+- **エラー監視:** Sentry（例外集約・リリース追跡）。打刻系コントローラ・承認サービス・バッチの例外は即時通知
+- **ジョブ監視:** SolidQueue の失敗ジョブ・リトライ枯渇を監視。**recurring ジョブの実行欠落**（スケジュールされたのに走っていない）は集計・検知の沈黙故障になるため、最終実行時刻の死活監視を入れる
+- **責務の区別:** `AttendanceHistory`（§4.14）は*ドメインの監査証跡*（労基署対応・5 年）。システムログ（アプリログ・アクセスログ）は*運用の調査用*であり、両者を混ぜない
+- **PII 方針:** アプリログに氏名・メール・打刻時刻等の個人情報を出力しない（id で参照）。Sentry にも PII スクラビングを設定
+
+### 16.6 セキュリティ運用（Devise 設定の確定値）
+
+§3.2 で列挙した Devise モジュールの運用値を以下に確定する（§3 の認可*設計*とは別の、変更容易な*運用値*）:
+
+| 項目 | 値 | モジュール |
+|------|-----|-----------|
+| セッションタイムアウト | 12 時間（操作なしで失効） | timeoutable |
+| ログイン保持 | 14 日 | rememberable |
+| パスワード最低長 | 12 文字 | validatable（`config.password_length`） |
+| アカウントロック | 連続 10 回失敗で 15 分ロック・メールで解除可 | lockable |
+| サインイン記録 | 最終ログイン時刻・IP を記録 | trackable |
+
+### 16.7 テナントオンボーディング（v1 運用）
+
+セルフサインアップは作らない（§0.2）。テナント開設は**運用者（サービス提供者）が seed タスク or rails console で実施**する:
+
+1. `Organization` 作成 — `subdomain` 払い出し（グローバル一意・§3.1）・`time_zone`/`fiscal_year_end_month` 設定
+2. `OrganizationSetting` を既定値で生成（§4.15）
+3. 初期 `hr_admin` ユーザーを作成し、パスワード設定メール（Devise recoverable の招待的利用・リンクにサブドメイン込み・§3.2）を送付
+4. 以降のマスタ（勤務パターン・休暇種別・カレンダー・パターン割当）と社員登録は、テナント内の hr_admin が管理画面で実施（§12.3）
+
+- **解約:** `Organization.active = false` → テナント解決が 404 で打ち切り（§3.1）。データは §11 の保持期間に従い保全 → アーカイブ
+- console 操作は §3.6 の `require_tenant = true` 下にあるため、`ActsAsTenant.current_tenant` 設定（または `with_tenant`）を伴う運用手順書を用意する
 
 ---
 
@@ -1159,3 +1364,5 @@ SF 版は `LeaveApproved__e` / `LeaveRevoked__e`（Platform Event）で疎結合
 |------|------|
 | 2026-06-09 | 初版。SF 2GP 版 Gatcha（勤怠ドメイン）を Rails 8 マルチテナント SaaS 向けに再設計 |
 | 2026-06-09 | 多視点レビュー反映: ①テナント 3 経路の防御（§2.2/§3.1/§3.2/§3.6・バッチ `with_tenant`・自己参照 FK 同一テナント・Devise メールスコープ・サブドメイン解決順序）②コンプラ判定の法定基準固定＋36 協定 2 系統・週 40h・産業医母数（§5.2/§8）③法定休日特定（§4.7）④監査ログ DB レベル不変（§4.14）⑤生成列の限界（§4.1/§4.10）⑥計算の TZ 入力契約（§5）⑦承認エンジン簡素化・自己承認拡張（§7）⑧YAGNI 削減（Outbox→v2・v2 列削除・OrganizationSetting 法定値定数化・通知責務整理） |
+| 2026-06-10 | SF 版ドキュメントへの依存を解消: 状態遷移図を Rails の状態名で §13 にインライン化（半休日の打刻自己ループ・事後半休承認の遷移を補完）、SF 対応表・移植経緯を docs/MIGRATION_FROM_SF.md へ分離（旧 §0.2・旧 §16）、本文の SF 由来の根拠説明を自立した記述へ書換。仕様の実質変更なし |
+| 2026-06-10 | 単体成立性の強化: 用語集（§0.3）・ER 図（§4 冒頭）・オブジェクト間連携俯瞰図（§13.5・旧 13.5 は 13.6 へ）・非機能要件と運用（§16: 想定規模〜100 テナント・性能 p95・可用性 99.5%・PITR RPO≤5 分/RTO≤4h・監視・Devise 運用値・テナントオンボーディング）・非ゴール拡充（多言語/課金/ネイティブアプリ/セルフサインアップ）。仕様の実質追加は §16.6 の Devise 運用値と §16.7 の開設手順 |

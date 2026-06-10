@@ -3,10 +3,10 @@
 Salesforce 2GP 勤怠パッケージ「Gatcha」を **Ruby on Rails 8 マルチテナント SaaS** へ再設計するプロジェクト。**勤怠ドメインのみ**（工数管理 Gatcha Work は範囲外）。現在は**仕様策定フェーズ**（`rails new` 前・アプリコード未生成）。
 
 ## ドキュメント地図（SSOT）
-- [docs/SPEC.md](docs/SPEC.md) — 仕様の single source of truth（§0〜§16・多視点レビュー反映・原典照合済み）
+- [docs/SPEC.md](docs/SPEC.md) — 仕様の single source of truth（§0〜§16・多視点レビュー反映・原典照合済み・SF 知識なしで自立）
 - [docs/LABOR_LAW_REVIEW_NOTES.md](docs/LABOR_LAW_REVIEW_NOTES.md) — 社労士確認事項（解釈・運用判断）
 - [docs/MCP_SETUP.md](docs/MCP_SETUP.md) — MCP サーバー設定と有効化手順
-- SF 版原典（移植元・参照のみ）: `../Gatcha/docs/SPEC.md`
+- [docs/MIGRATION_FROM_SF.md](docs/MIGRATION_FROM_SF.md) — SF 版からの移植対応表（歴史的経緯・参照任意。SF 版原典 `../Gatcha/docs/SPEC.md` が手元に無くても支障なし）
 
 ## スタック
 Rails 8 / PostgreSQL 17 / Hotwire(Turbo+Stimulus)+ViewComponent / Devise / acts_as_tenant（行レベル）/ Pundit / SolidQueue(recurring) / SolidCable / AASM。Ruby 3.3.11。
