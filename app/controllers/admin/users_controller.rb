@@ -1,5 +1,7 @@
 module Admin
   class UsersController < BaseController
+    include Admin::Deactivatable
+
     before_action :set_user, only: %i[show edit update deactivate activate resend_invitation]
 
     def index
@@ -56,26 +58,6 @@ module Admin
       end
     end
 
-    def deactivate
-      authorize [ :admin, @user ]
-      if @user.update(active: false)
-        redirect_to admin_user_path(@user), status: :see_other, notice: "#{@user.name} を無効化しました"
-      else
-        redirect_to admin_user_path(@user), status: :see_other,
-                    alert: @user.errors.full_messages.join("。")
-      end
-    end
-
-    def activate
-      authorize [ :admin, @user ]
-      if @user.update(active: true)
-        redirect_to admin_user_path(@user), status: :see_other, notice: "#{@user.name} を再有効化しました"
-      else
-        redirect_to admin_user_path(@user), status: :see_other,
-                    alert: @user.errors.full_messages.join("。")
-      end
-    end
-
     def resend_invitation
       authorize [ :admin, @user ] # resend_invitation? が 3 条件をサーバ側強制（policy 参照）
       begin
@@ -94,6 +76,8 @@ module Admin
     def set_user
       @user = policy_scope([ :admin, User ]).find(params[:id])
     end
+
+    def deactivatable_record = @user
 
     # role / manager_id / exempt_from_overtime の permit は Admin 名前空間限定（0b-1 設計 §0）。
     # active は permit しない — deactivate / activate メンバーアクション専用

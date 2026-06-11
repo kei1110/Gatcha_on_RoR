@@ -25,9 +25,9 @@
 > 完了条件: hr_admin が画面から全マスタを整備でき、§16.7 のオンボーディング手順が seed + 画面で一周する
 
 - [x] **0b-1 ユーザー管理**（PR #9）: 社員 CRUD（hr_admin 専用）・`role` / `manager_id` / `exempt_from_overtime` の変更 UI（Admin 名前空間限定の明示 permit — 設計 §0 で「専用アクション」方式を supersede）・招待メール（recoverable 転用・§16.7-3）
-- [ ] **0b-2 WorkPattern + LeaveType**: CRUD・法定休憩バリデーション（§4.4・労基法 34 条）・night_shift×flextime 警告
+- [x] **0b-2 WorkPattern + LeaveType**（PR #12）: CRUD・法定休憩バリデーション（§4.4・労基法 34 条）・night_shift×flextime 警告 + i18n 日本語化・タブ active 修正・dev seed
 - [ ] **0b-3 CompanyCalendar**: CRUD・CSV 一括インポート（RFC 4180）・`CompanyCalendarResolver`（PORO・未登録日フォールバック §4.7）・legal_holiday 運用
-- [ ] **0b-4 UserWorkPattern**: 割当 CRUD・期間重複バリデーション（§4.6）
+- [ ] **0b-4 UserWorkPattern**: 割当 CRUD・期間重複バリデーション（§4.6）**+ 割当済み WorkPattern の無効化ガード要否を判断**（User ガード②と同型の論点 — 0b-2 設計 §0）
 - [ ] **0b-5 OrganizationSetting + ReasonTemplate**: 設定画面（v1 は項目を絞る・§4.15 YAGNI 注記）・テンプレート CRUD
 
 ### Phase 1 — 打刻と計算エンジン
@@ -75,8 +75,11 @@
 
 ### 横断バックログ（スライス外の小タスク・発見時にここへ追記）
 
-- [ ] **エラーメッセージの i18n**: default locale が `:en` のため `:manager_id` 系の full_messages が「Manager は循環しています」と英日混在（0b-1 レビューで検出）。ja.yml + `default_locale` の方針判断が要る — 0b の早期に
-- [ ] **Admin タブの active 表示**: `current_page?` は完全一致のため show/edit ページでタブのハイライトが外れる。0b-2 でタブが増えると顕在化 — `request.path.start_with?` 等へ（app/components/admin/nav_component.html.erb）
+- [x] **エラーメッセージの i18n**: default locale が `:en` のため `:manager_id` 系の full_messages が「Manager は循環しています」と英日混在（0b-1 レビューで検出）。ja.yml + `default_locale` の方針判断が要る — 0b の早期に（0b-2・PR #12 で回収）
+- [x] **Admin タブの active 表示**: `current_page?` は完全一致のため show/edit ページでタブのハイライトが外れる。0b-2 でタブが増えると顕在化 — `request.path.start_with?` 等へ（app/components/admin/nav_component.html.erb）（0b-2・PR #12 で回収）
+- [ ] **マスタのインライン編集（SPEC §12.3）**: 0b-2 はページ遷移型 edit で機能要件を充足。Turbo 化は UX 改善として後送り
+- [ ] **実労働ベースの法定休憩再判定**: マスタ検証は必要条件のみ（所定 8h・休憩 45 分は残業 1 分で 60 分不足）。Phase 1/4 の事後アラートとして検討（打刻ブロック不可・社労士確認 #8）
+- [ ] **LeaveType の annual×paid_leave 整合警告**: §8.6 の有給 5 日義務判定への影響。Phase 4 着手時に再検討
 - [ ] **production のエラーページ**: RecordNotFound 等が plain text 応答（0b-1 で controller 層 404 化した際の暫定）。Phase 5 の管理 UI 仕上げで専用ページへ
 
 ## 横断ルール（順序の根拠）

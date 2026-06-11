@@ -1,0 +1,30 @@
+<div class="mb-4 flex justify-between">
+  <h2 class="text-lg font-bold">勤務パターン</h2>
+  <%= link_to "新規登録", new_admin_work_pattern_path, class: "rounded bg-gray-800 px-4 py-2 text-white" %>
+</div>
+
+<table class="w-full text-left text-sm">
+  <thead>
+    <tr class="border-b font-bold">
+      <th class="p-2">パターン名</th><th class="p-2">所定時刻</th><th class="p-2">休憩</th>
+      <th class="p-2">所定労働</th><th class="p-2">区分</th><th class="p-2">状態</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @work_patterns.each do |wp| %>
+      <tr class="border-b">
+        <td class="p-2"><%= link_to wp.name, admin_work_pattern_path(wp), class: "underline" %></td>
+        <td class="p-2"><%= t_time(wp.start_time) %>–<%= t_time(wp.end_time) %></td>
+        <td class="p-2"><%= wp.break_minutes %> 分</td>
+        <td class="p-2"><%= wp.standard_work_hours %> h</td>
+        <td class="p-2">
+          <%= "夜勤" if wp.night_shift? %> <%= "フレックス" if wp.flextime? %>
+          <% if wp.mode_conflict? %>
+            <span class="rounded bg-yellow-100 px-2 py-0.5 text-yellow-800">夜勤・フレックス併用</span>
+          <% end %>
+        </td>
+        <td class="p-2"><%= wp.active? ? "有効" : "無効" %></td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>

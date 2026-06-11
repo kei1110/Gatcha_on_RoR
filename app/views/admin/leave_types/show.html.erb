@@ -1,0 +1,17 @@
+<h2 class="mb-4 text-lg font-bold"><%= @leave_type.name %></h2>
+<dl class="space-y-2 text-sm">
+  <div><dt class="inline font-bold">区分:</dt> <dd class="inline"><%= t_system_type(@leave_type.system_type) %></dd></div>
+  <div><dt class="inline font-bold">半日取得:</dt> <dd class="inline"><%= @leave_type.allow_half_day? ? "可" : "不可" %></dd></div>
+  <div><dt class="inline font-bold">有給消化対象:</dt> <dd class="inline"><%= @leave_type.paid_leave? ? "対象（残高から減算）" : "対象外" %></dd></div>
+  <div><dt class="inline font-bold">説明:</dt> <dd class="inline"><%= @leave_type.description.presence || "—" %></dd></div>
+  <div><dt class="inline font-bold">状態:</dt> <dd class="inline"><%= @leave_type.active? ? "有効" : "無効" %></dd></div>
+</dl>
+<div class="mt-6 flex gap-2">
+  <%= link_to "編集", edit_admin_leave_type_path(@leave_type), class: "rounded border px-4 py-2" %>
+  <% if @leave_type.active? %>
+    <%= button_to "無効化", deactivate_admin_leave_type_path(@leave_type), method: :patch,
+          data: { turbo_confirm: "#{@leave_type.name} を無効化しますか？" }, class: "rounded bg-red-700 px-4 py-2 text-white" %>
+  <% else %>
+    <%= button_to "再有効化", activate_admin_leave_type_path(@leave_type), method: :patch, class: "rounded bg-gray-800 px-4 py-2 text-white" %>
+  <% end %>
+</div>

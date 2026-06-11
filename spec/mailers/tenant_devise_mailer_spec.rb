@@ -10,19 +10,19 @@ RSpec.describe TenantDeviseMailer, type: :mailer do
       mail = ActsAsTenant.with_tenant(org_b) do
         TenantDeviseMailer.invitation_instructions(user, "RAWTOKEN123")
       end
-      body = mail.body.encoded
+      body = mail.body.decoded
       expect(body).to include("orga.example.com")
       expect(body).not_to include("orgb.example.com")
     end
 
     it "文面に期限の案内と自己再設定（パスワードを忘れた）の導線を含む" do
-      body = TenantDeviseMailer.invitation_instructions(user, "RAWTOKEN123").body.encoded
+      body = TenantDeviseMailer.invitation_instructions(user, "RAWTOKEN123").body.decoded
       expect(body).to include("6 時間")
       expect(body).to include("再設定")
     end
 
     it "本文に内部パスワード片（hex 64 文字）を含まない" do
-      body = TenantDeviseMailer.invitation_instructions(user, "RAWTOKEN123").body.encoded
+      body = TenantDeviseMailer.invitation_instructions(user, "RAWTOKEN123").body.decoded
       expect(body).not_to match(/[0-9a-f]{64}/)
     end
 
@@ -30,6 +30,11 @@ RSpec.describe TenantDeviseMailer, type: :mailer do
       from = TenantDeviseMailer.invitation_instructions(user, "RAWTOKEN123").from.first
       expect(from).not_to include("please-change-me")
       expect(from).to match(URI::MailTo::EMAIL_REGEXP)
+    end
+
+    it "件名が ja.yml の定義どおり（humanize フォールバックでない）" do
+      mail = TenantDeviseMailer.invitation_instructions(user, "RAWTOKEN123")
+      expect(mail.subject).to eq("【Gatcha】アカウント登録のご案内")
     end
   end
 end

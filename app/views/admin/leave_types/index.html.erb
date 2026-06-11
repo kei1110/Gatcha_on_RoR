@@ -1,0 +1,24 @@
+<div class="mb-4 flex justify-between">
+  <h2 class="text-lg font-bold">休暇種別</h2>
+  <%= link_to "新規登録", new_admin_leave_type_path, class: "rounded bg-gray-800 px-4 py-2 text-white" %>
+</div>
+
+<table class="w-full text-left text-sm">
+  <thead>
+    <tr class="border-b font-bold">
+      <th class="p-2">種別名</th><th class="p-2">区分</th><th class="p-2">半日取得</th>
+      <th class="p-2">有給消化</th><th class="p-2">状態</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @leave_types.each do |lt| %>
+      <tr class="border-b">
+        <td class="p-2"><%= link_to lt.name, admin_leave_type_path(lt), class: "underline" %></td>
+        <td class="p-2"><%= t_system_type(lt.system_type) %></td>
+        <td class="p-2"><%= lt.allow_half_day? ? "可" : "—" %></td>
+        <td class="p-2"><%= lt.paid_leave? ? "対象" : "—" %></td>
+        <td class="p-2"><%= lt.active? ? "有効" : "無効" %></td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>

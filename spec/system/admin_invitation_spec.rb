@@ -11,9 +11,9 @@ RSpec.describe "社員招待の E2E（0b-1 設計 §4 system）", type: :system 
 
     # hr_admin でログインし社員を招待
     visit new_user_session_path
-    fill_in "Email", with: admin.email
-    fill_in "Password", with: "adminpass1!"
-    click_button "Log in"
+    fill_in "メールアドレス", with: admin.email
+    fill_in "パスワード", with: "adminpass1!"
+    click_button "ログイン"
 
     visit new_admin_user_path
     fill_in "氏名", with: "新人 一郎"

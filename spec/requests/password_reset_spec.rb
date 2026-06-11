@@ -23,7 +23,7 @@ RSpec.describe "パスワードリセットのテナント分離（SPEC §3.2(3)
     expect(acme_user.reload.reset_password_token).to be_present
     expect(globex_user.reload.reset_password_token).to be_nil
 
-    mail_body = ActionMailer::Base.deliveries.last.body.encoded
+    mail_body = ActionMailer::Base.deliveries.last.body.decoded
     expect(mail_body).to include("acme.example.com")
     expect(mail_body).not_to include("globex.example.com")
   end

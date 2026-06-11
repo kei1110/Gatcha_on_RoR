@@ -329,6 +329,8 @@ polymorphic 関連（`ApprovalAssignment.approvable` / `AttendanceHistory.source
 
 半休用の休憩時間にも同様（半休の所定労働は `standard_work_hours / 2` で判定）。
 
+**書き込み時の不変条件（0b-2 で追加）:** `flextime=true` は `core_time_start/end` 必須（§5.4 の遅刻早退判定がコアタイム基準のため）。コアタイムの順序は非夜勤では `core_time_start < core_time_end` を強制し、`night_shift=true` では日跨ぎコアタイム（start > end）を許容する（`start == end` の縮退は常時拒否）。`night_shift=false` は `start_time < end_time` 必須（§5.1 の翌日換算は night_shift かつ start > end が前提）。
+
 `night_shift && flextime` の同時指定は**保存許可・警告バッジ表示**。優先ルール: 時刻計算は night_shift（翌日換算）、遅刻早退判定は flextime（コアタイム基準）。
 
 ### 4.5 LeaveType（休暇種別）
@@ -595,7 +597,7 @@ Gatcha Work 連携用の Outbox（`IntegrationEvent`）は **v1 では作らな�
 
 > 労働時間計算は AR 非依存の PORO に切り出す（§2.2-1）。入力は値、出力は値。DB なしで網羅的に単体テストする。各計算は**分単位（整数）で中間計算し、最終値のみ時間単位（`decimal(6,2)`）へ HALF_UP 変換**する（丸めルール統一）。すべての時刻比較は**組織 TZ へ変換後**に行う。
 >
-> **入力契約（重要）:** 計算オブジェクトには**組織 TZ に変換済みの `ActiveSupport::TimeWithZone`** を渡す（`clock_in`/`clock_out` は `in_time_zone(org.time_zone)` 変換、`WorkPattern` の `time` 型は当日日付 + 組織 TZ で合成）。夜勤の `end_time + 24h` は `time` の加算ではなく `Time.zone` 上の `+1.day` 合成で行う。**v1 は組織 TZ を `Asia/Tokyo` 固定（DST 無）**とし、任意 TZ 許容は将来課題（DST 跨ぎの深夜帯ずれを別途設計）。
+> **入力契約（重要）:** 計算オブジェクトには**組織 TZ に変換済みの `ActiveSupport::TimeWithZone`** を渡す（`clock_in`/`clock_out` は `in_time_zone(org.time_zone)` 変換、`WorkPattern` の `time` 型は当日日付 + 組織 TZ で合成）。夜勤の `end_time + 24h` は `time` の加算ではなく `Time.zone` 上の `+1.day` 合成で行う。コアタイムも同規則 — `night_shift=true` かつ `core_time_start > core_time_end` のときは `core_time_end` を翌日換算して合成する。**v1 は組織 TZ を `Asia/Tokyo` 固定（DST 無）**とし、任意 TZ 許容は将来課題（DST 跨ぎの深夜帯ずれを別途設計）。
 
 ### 5.1 WorkTimeCalculator（実労働時間）
 

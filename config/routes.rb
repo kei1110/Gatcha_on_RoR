@@ -17,6 +17,18 @@ Rails.application.routes.draw do
         patch :resend_invitation
       end
     end
+    resources :work_patterns, except: :destroy do
+      member do
+        patch :deactivate
+        patch :activate
+      end
+    end
+    resources :leave_types, except: :destroy do
+      member do
+        patch :deactivate
+        patch :activate
+      end
+    end
   end
 
   root "home#show"

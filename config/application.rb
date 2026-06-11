@@ -36,6 +36,9 @@ module Gatcha
     # config.time_zone = "Central Time (US & Canada)"
     # config.eager_load_paths << Rails.root.join("extras")
 
+    # UI は日本語のみ（SPEC §0.2 非ゴール: 多言語対応）
+    config.i18n.default_locale = :ja
+
     # Don't generate system test files.
     config.generators.system_tests = nil
   end

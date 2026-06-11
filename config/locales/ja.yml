@@ -1,0 +1,51 @@
+ja:
+  activerecord:
+    models:
+      organization: 組織
+      user: 社員
+      work_pattern: 勤務パターン
+      leave_type: 休暇種別
+    attributes:
+      user:
+        name: 氏名
+        email: メールアドレス
+        employee_code: 社員番号
+        password: パスワード
+        password_confirmation: パスワード（確認）
+        role: ロール
+        manager: 上長
+        manager_id: 上長
+        exempt_from_overtime: 管理監督者
+        active: 在籍
+      work_pattern:
+        name: パターン名
+        start_time: 始業時刻
+        end_time: 終業時刻
+        break_minutes: 休憩時間（分）
+        standard_work_hours: 所定労働時間
+        night_shift: 夜勤（日跨ぎ）
+        flextime: フレックスタイム制
+        core_time_start: コアタイム開始
+        core_time_end: コアタイム終了
+        morning_half_break_minutes: 午前半休時の休憩（分）
+        afternoon_half_break_minutes: 午後半休時の休憩（分）
+        active: 有効
+      leave_type:
+        name: 種別名
+        system_type: 種別区分
+        allow_half_day: 半日取得
+        paid_leave: 有給消化対象
+        description: 説明
+        active: 有効
+  leave_types:
+    system_types:
+      annual: 有給休暇
+      substitute_holiday: 振替休日
+      compensatory_leave: 代休
+      child_care: 育児休業
+      paternity_leave: 産後パパ育休
+      other: その他
+  devise:
+    mailer:
+      invitation_instructions:
+        subject: 【Gatcha】アカウント登録のご案内

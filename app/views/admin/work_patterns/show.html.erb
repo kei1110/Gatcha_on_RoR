@@ -1,0 +1,24 @@
+<h2 class="mb-4 text-lg font-bold"><%= @work_pattern.name %></h2>
+<% if @work_pattern.mode_conflict? %>
+  <p class="mb-4 rounded bg-yellow-100 p-3 text-sm text-yellow-800">
+    夜勤・フレックス併用パターンです（時刻計算は夜勤・遅刻早退はコアタイム基準 — SPEC §4.4）
+  </p>
+<% end %>
+<dl class="space-y-2 text-sm">
+  <div><dt class="inline font-bold">所定時刻:</dt> <dd class="inline"><%= t_time(@work_pattern.start_time) %>–<%= t_time(@work_pattern.end_time) %></dd></div>
+  <div><dt class="inline font-bold">休憩:</dt> <dd class="inline"><%= @work_pattern.break_minutes %> 分</dd></div>
+  <div><dt class="inline font-bold">所定労働時間:</dt> <dd class="inline"><%= @work_pattern.standard_work_hours %> h</dd></div>
+  <div><dt class="inline font-bold">夜勤:</dt> <dd class="inline"><%= @work_pattern.night_shift? ? "はい" : "いいえ" %></dd></div>
+  <div><dt class="inline font-bold">フレックス:</dt> <dd class="inline"><%= @work_pattern.flextime? ? "はい（コア #{t_time(@work_pattern.core_time_start)}–#{t_time(@work_pattern.core_time_end)}）" : "いいえ" %></dd></div>
+  <div><dt class="inline font-bold">半休休憩（午前/午後）:</dt> <dd class="inline"><%= @work_pattern.effective_morning_half_break_minutes %> / <%= @work_pattern.effective_afternoon_half_break_minutes %> 分</dd></div>
+  <div><dt class="inline font-bold">状態:</dt> <dd class="inline"><%= @work_pattern.active? ? "有効" : "無効" %></dd></div>
+</dl>
+<div class="mt-6 flex gap-2">
+  <%= link_to "編集", edit_admin_work_pattern_path(@work_pattern), class: "rounded border px-4 py-2" %>
+  <% if @work_pattern.active? %>
+    <%= button_to "無効化", deactivate_admin_work_pattern_path(@work_pattern), method: :patch,
+          data: { turbo_confirm: "#{@work_pattern.name} を無効化しますか？" }, class: "rounded bg-red-700 px-4 py-2 text-white" %>
+  <% else %>
+    <%= button_to "再有効化", activate_admin_work_pattern_path(@work_pattern), method: :patch, class: "rounded bg-gray-800 px-4 py-2 text-white" %>
+  <% end %>
+</div>

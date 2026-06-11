@@ -59,6 +59,12 @@ RSpec.describe "Admin::Users", type: :request do
       expect(response).to have_http_status(:not_found)
       expect(other_user.reload.active).to be(true) # 書き込み副作用なし
 
+      patch activate_admin_user_url(other_user, host: tenant_host(org))
+      expect(response).to have_http_status(:not_found)
+
+      get edit_admin_user_url(other_user, host: tenant_host(org))
+      expect(response).to have_http_status(:not_found)
+
       patch resend_invitation_admin_user_url(other_user, host: tenant_host(org))
       expect(response).to have_http_status(:not_found)
       expect(other_user.reload.reset_password_token).to be_nil # 書き込み副作用なしまで確認
@@ -86,7 +92,7 @@ RSpec.describe "Admin::Users", type: :request do
       expect {
         post admin_users_url(host: tenant_host(org)), params: valid_params
       }.to change { ActionMailer::Base.deliveries.count }.by(1)
-      expect(ActionMailer::Base.deliveries.last.body.encoded).to include("acme.example.com")
+      expect(ActionMailer::Base.deliveries.last.body.decoded).to include("acme.example.com")
     end
 
     it "バリデーション NG の作成ではメールが飛ばない（送付タイミングの固定）" do
@@ -270,6 +276,12 @@ RSpec.describe "Admin::Users", type: :request do
       sign_in second
       patch activate_admin_user_url(admin, host: tenant_host(org))
       expect(admin.reload.active).to be(true) # 再有効化にガードはない
+    end
+
+    it "ガード違反の deactivate は 303 で show へ戻る（concern 移行の検知網: status + location）" do
+      patch deactivate_admin_user_url(admin, host: tenant_host(org))
+      expect(response).to have_http_status(:see_other)
+      expect(response).to redirect_to(admin_user_url(admin, host: tenant_host(org)))
     end
 
     it "非アクティブ上長を持つユーザーの再有効化はガード④が拒否し alert 表示" do

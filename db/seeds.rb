@@ -38,6 +38,28 @@ end
       u.password = password
     end
 
+    # 初期マスタ（0b-2）。found 経路はバリデーションを通らないため再実行で落ちない（冪等）
+    WorkPattern.find_or_create_by!(name: "日勤") do |wp|
+      wp.start_time = "09:00"; wp.end_time = "18:00"
+      wp.break_minutes = 60; wp.standard_work_hours = 8
+    end
+    WorkPattern.find_or_create_by!(name: "夜勤") do |wp|
+      wp.start_time = "22:00"; wp.end_time = "07:00"
+      wp.break_minutes = 60; wp.standard_work_hours = 8; wp.night_shift = true
+    end
+    WorkPattern.find_or_create_by!(name: "フレックス") do |wp|
+      wp.start_time = "09:00"; wp.end_time = "18:00"
+      wp.break_minutes = 60; wp.standard_work_hours = 8
+      wp.flextime = true; wp.core_time_start = "10:00"; wp.core_time_end = "15:00"
+    end
+
+    LeaveType.find_or_create_by!(name: "有給休暇") do |lt|
+      lt.system_type = :annual; lt.paid_leave = true; lt.allow_half_day = true
+    end
+    LeaveType.find_or_create_by!(name: "慶弔休暇") { |lt| lt.system_type = :other }
+    LeaveType.find_or_create_by!(name: "振替休日") { |lt| lt.system_type = :substitute_holiday }
+    LeaveType.find_or_create_by!(name: "代休") { |lt| lt.system_type = :compensatory_leave }
+
     puts "==> #{org.name}: #{User.count} users (admin: #{admin.email})"
   end
 end

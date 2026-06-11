@@ -10,9 +10,24 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_10_023436) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_11_020349) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "leave_types", force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.boolean "allow_half_day", default: false, null: false
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.string "name", null: false
+    t.bigint "organization_id", null: false
+    t.boolean "paid_leave", default: false, null: false
+    t.integer "system_type", null: false
+    t.datetime "updated_at", null: false
+    t.index ["organization_id", "id"], name: "index_leave_types_on_organization_id_and_id", unique: true
+    t.index ["organization_id", "name"], name: "index_leave_types_on_organization_id_and_name", unique: true
+    t.index ["organization_id"], name: "index_leave_types_on_organization_id"
+  end
 
   create_table "organizations", force: :cascade do |t|
     t.boolean "active", default: true, null: false
@@ -57,6 +72,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_10_023436) do
     t.index ["unlock_token"], name: "index_users_on_unlock_token", unique: true
   end
 
+  create_table "work_patterns", force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.integer "afternoon_half_break_minutes"
+    t.integer "break_minutes", null: false
+    t.time "core_time_end"
+    t.time "core_time_start"
+    t.datetime "created_at", null: false
+    t.time "end_time", null: false
+    t.boolean "flextime", default: false, null: false
+    t.integer "morning_half_break_minutes"
+    t.string "name", null: false
+    t.boolean "night_shift", default: false, null: false
+    t.bigint "organization_id", null: false
+    t.decimal "standard_work_hours", precision: 4, scale: 2, null: false
+    t.time "start_time", null: false
+    t.datetime "updated_at", null: false
+    t.index ["organization_id", "id"], name: "index_work_patterns_on_organization_id_and_id", unique: true
+    t.index ["organization_id", "name"], name: "index_work_patterns_on_organization_id_and_name", unique: true
+    t.index ["organization_id"], name: "index_work_patterns_on_organization_id"
+  end
+
+  add_foreign_key "leave_types", "organizations"
   add_foreign_key "users", "organizations"
   add_foreign_key "users", "users", column: ["organization_id", "manager_id"], primary_key: ["organization_id", "id"]
+  add_foreign_key "work_patterns", "organizations"
 end

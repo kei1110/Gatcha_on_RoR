@@ -37,6 +37,10 @@ gem "acts_as_tenant"
 # Authentication（protected API・内部オーバーライド依存があるため悲観固定。メジャーアップは system spec を通してから）
 gem "devise", "~> 5.0"
 
+# 標準文言の日本語化（AR エラー・日付等 / devise flash）。手書き ja.yml は attributes 最小（0b-2 設計 §5）
+gem "rails-i18n", "~> 8.0"
+gem "devise-i18n", "~> 1.15"
+
 # Authorization
 gem "pundit"
 
