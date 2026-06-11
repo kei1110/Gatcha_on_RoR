@@ -73,6 +73,12 @@
 - [ ] **5-2 監査・保持の仕上げ**: AttendanceHistory の保持方針確認（アーカイブ実装は v1 不要 §11.4）・§14 after_commit 継ぎ目の文書化・`/spec-check` 全域
 - [ ] **5-3 運用整備（§16・デプロイ先決定後）**: Sentry 接続・PITR/バックアップ設定・復旧手順書・recurring 死活監視・Kamal/Thruster 再導入判断
 
+### 横断バックログ（スライス外の小タスク・発見時にここへ追記）
+
+- [ ] **エラーメッセージの i18n**: default locale が `:en` のため `:manager_id` 系の full_messages が「Manager は循環しています」と英日混在（0b-1 レビューで検出）。ja.yml + `default_locale` の方針判断が要る — 0b の早期に
+- [ ] **Admin タブの active 表示**: `current_page?` は完全一致のため show/edit ページでタブのハイライトが外れる。0b-2 でタブが増えると顕在化 — `request.path.start_with?` 等へ（app/components/admin/nav_component.html.erb）
+- [ ] **production のエラーページ**: RecordNotFound 等が plain text 応答（0b-1 で controller 層 404 化した際の暫定）。Phase 5 の管理 UI 仕上げで専用ページへ
+
 ## 横断ルール（順序の根拠）
 
 - **AttendanceHistory は §15 では Phase 5 だが、書き込み側は Phase 1 の代理打刻から始まる**ため、モデルと不変防御は 1-3 で前倒しする（Phase 2 の承認副作用が依存）

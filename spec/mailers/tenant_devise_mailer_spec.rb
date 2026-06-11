@@ -25,5 +25,11 @@ RSpec.describe TenantDeviseMailer, type: :mailer do
       body = TenantDeviseMailer.invitation_instructions(user, "RAWTOKEN123").body.encoded
       expect(body).not_to match(/[0-9a-f]{64}/)
     end
+
+    it "差出人が devise 生成時の placeholder のままでない（docs/RAILS_GOTCHAS.md「生成物・設定」）" do
+      from = TenantDeviseMailer.invitation_instructions(user, "RAWTOKEN123").from.first
+      expect(from).not_to include("please-change-me")
+      expect(from).to match(URI::MailTo::EMAIL_REGEXP)
+    end
   end
 end

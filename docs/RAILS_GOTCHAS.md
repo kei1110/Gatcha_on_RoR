@@ -96,6 +96,15 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 
 ---
 
+## 生成物・設定
+
+### 生成された initializer の placeholder はレビュー網をすり抜ける
+
+- **WHAT**: devise の `config.mailer_sender` が `please-change-me-at-...` のまま、丁寧に作り込んだ招待メールを送っていた
+- **WHY**: 設計・計画・多段レビューはすべて「変更 diff」を見る。生成済み設定の既定値は diff に現れず、誰の視界にも入らない
+- **HOW**: ENV 化（`ENV.fetch("MAILER_SENDER", ...)`）+ mailer spec で placeholder 不在を assert。新 gem 導入 PR では `grep -rn "change-me\|TODO\|example\.com" config/initializers/` を儀式に含める
+- verified: devise 5.0.4 / 2026-06-11（0b-1 マージ後のレトロスペクティブで発見）
+
 ## メタ原則
 
 - **レビューは書いた場所の近くに置く**: 設計レビューは設計の虫しか取れない。計画にコードを書くなら計画コードにレビューを、環境の虫（brakeman・CI）は各タスクの完了条件に

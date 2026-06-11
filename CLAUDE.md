@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Salesforce 2GP 勤怠パッケージ「Gatcha」を **Ruby on Rails 8 マルチテナント SaaS** へ再設計するプロジェクト。**勤怠ドメインのみ**（工数管理 Gatcha Work は範囲外）。現在は **Phase 0a（基盤）マージ済み・次は Phase 0b（マスタ CRUD）**。進行管理は docs/ROADMAP.md。
+Salesforce 2GP 勤怠パッケージ「Gatcha」を **Ruby on Rails 8 マルチテナント SaaS** へ再設計するプロジェクト。**勤怠ドメインのみ**（工数管理 Gatcha Work は範囲外）。現在は **Phase 0b（マスタ CRUD）進行中**。現在地・次の一歩は docs/ROADMAP.md が正。
 
 ## ドキュメント地図（SSOT）
 - [docs/SPEC.md](docs/SPEC.md) — 仕様の single source of truth（§0〜§16・多視点レビュー反映・原典照合済み・SF 知識なしで自立）

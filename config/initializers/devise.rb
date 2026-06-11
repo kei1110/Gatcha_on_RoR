@@ -24,7 +24,8 @@ Devise.setup do |config|
   # Configure the e-mail address which will be shown in Devise::Mailer,
   # note that it will be overwritten if you use your own mailer class
   # with default "from" parameter.
-  config.mailer_sender = "please-change-me-at-config-initializers-devise@example.com"
+  # 本番ドメイン確定までは ENV で差し替え可能な既定値（docs/RAILS_GOTCHAS.md「生成された initializer の placeholder」）
+  config.mailer_sender = ENV.fetch("MAILER_SENDER", "no-reply@gatcha.example.com")
 
   # Configure the class responsible to send e-mails.
   config.mailer = "TenantDeviseMailer"
