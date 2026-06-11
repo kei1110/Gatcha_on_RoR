@@ -142,6 +142,13 @@ RSpec.describe FooTenantJob, type: :job do
 end
 ```
 
+## 偽テスト防止の追加規約（0b-1 で学習・docs/RAILS_GOTCHAS.md 参照）
+
+1. **request/system の setup で裸のモデル操作をしない** — `user.update!(...)` 等は `ActsAsTenant.with_tenant(org) { ... }` で包む（テナント未設定文脈の `NoTenantSet` は正しい挙動。ガード側を緩めない）
+2. **セッション復元（cookie からの deserialize）を検証するときは 2 リクエスト目で踏む** — `sign_in`/`login_as` は user を直 set するため 1 リクエスト目では `serialize_from_session` が走らない（見本: spec/requests/authentication_spec.rb の回帰 spec）
+3. **mailer spec は別テナント文脈の鏡像を必須にする** — `ActsAsTenant.with_tenant(org_B)` 下で org_A 宛てメールを生成し、URL が org_A のサブドメインであること（`current_tenant` からホストを組む誤実装の検出）
+4. **メール本文は `body.decoded`・件数は change matcher** — `deliveries.last` 直読みと `body.encoded` + QP gsub は禁止（system spec は support の deliveries.clear 前提）
+
 ## 手順
 
 1. 対象（モデル / policy / コントローラ / ジョブ）と種別を確定する

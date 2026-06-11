@@ -5,6 +5,7 @@ Salesforce 2GP 勤怠パッケージ「Gatcha」を **Ruby on Rails 8 マルチ�
 ## ドキュメント地図（SSOT）
 - [docs/SPEC.md](docs/SPEC.md) — 仕様の single source of truth（§0〜§16・多視点レビュー反映・原典照合済み・SF 知識なしで自立）
 - [docs/ROADMAP.md](docs/ROADMAP.md) — 進行管理の SSOT（フェーズ→スライス分解・現在地・1 スライス = 1 PR）
+- [docs/RAILS_GOTCHAS.md](docs/RAILS_GOTCHAS.md) — 実際に踏んだ/仕留めた罠台帳（WHAT/WHY/HOW・verified 日付き）。**計画とレビューのプロンプトに注入し、新しい罠は修正と同じ PR で追記**
 - [docs/LABOR_LAW_REVIEW_NOTES.md](docs/LABOR_LAW_REVIEW_NOTES.md) — 社労士確認事項（解釈・運用判断）
 - [docs/MCP_SETUP.md](docs/MCP_SETUP.md) — MCP サーバー設定と有効化手順
 - [docs/MIGRATION_FROM_SF.md](docs/MIGRATION_FROM_SF.md) — SF 版からの移植対応表（歴史的経緯・参照任意。SF 版原典 `../Gatcha/docs/SPEC.md` が手元に無くても支障なし）
@@ -41,4 +42,10 @@ PreToolUse/PostToolUse の開発ガード（**Claude Code 再起動＋承認**�
 - **rails console / rake:** `require_tenant = true` ゆえ、最初に `ActsAsTenant.current_tenant = Organization.find_by!(subdomain: "acme")` を実行しないとスコープ付きモデルのクエリが `NoTenantSet` で失敗する
 
 ## ワークフロー
-実装は SPEC §15 のフェーズを docs/ROADMAP.md のスライス（1 スライス = 1 ブランチ = 1 PR・squash マージ）で進める。各スライスは brainstorm →（大物は specs/ に設計 + 多視点レビュー）→ writing-plans → 実装 → `/preflight` → PR。**PR に ROADMAP の該当行更新（チェック + PR 番号）を含めてからマージ**。設計・計画は docs/superpowers/{specs,plans}/ に日付付きで蓄積。次の一歩は Phase 0b-1（ユーザー管理）。
+実装は SPEC §15 のフェーズを docs/ROADMAP.md のスライス（1 スライス = 1 ブランチ = 1 PR・squash マージ）で進める。各スライスは brainstorm →（大物は specs/ に設計 + 多視点レビュー）→ writing-plans → 実装 → `/preflight` → PR。**PR に ROADMAP の該当行更新（チェック + PR 番号）を含めてからマージ**。設計・計画は docs/superpowers/{specs,plans}/ に日付付きで蓄積。現在地と次の一歩は ROADMAP が正。
+
+**サブエージェント運用の 3 か条**（フックはサブエージェントをすり抜けるため指示で補う）:
+1. ステップ完了ごとに**即コミット**（セッション上限による中断でもステージ未満の状態を残さない）
+2. 探索で触ったが不要だった編集は **revert してから報告**（デバッグ痕を成果に混ぜない）
+3. 完了条件に検証コマンドを明記 — `bundle exec rspec`・`bundle exec rubocop`、app/ に触れたら `bin/brakeman --no-pager` も
+- 計画・レビューのプロンプトには docs/RAILS_GOTCHAS.md を注入する（罠の再購入防止）
