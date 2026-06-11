@@ -1,0 +1,8 @@
+<% content_for :content do %>
+  <div class="w-full">
+    <h1 class="mb-4 text-xl font-bold">管理</h1>
+    <%= render Admin::NavComponent.new %>
+    <%= yield %>
+  </div>
+<% end %>
+<%= render template: "layouts/application" %>

@@ -1,0 +1,18 @@
+<h2 class="mb-4 text-lg font-bold"><%= @user.name %></h2>
+<dl class="space-y-2 text-sm">
+  <div><dt class="inline font-bold">社員番号:</dt> <dd class="inline"><%= @user.employee_code %></dd></div>
+  <div><dt class="inline font-bold">メール:</dt> <dd class="inline"><%= @user.email %></dd></div>
+  <div><dt class="inline font-bold">ロール:</dt> <dd class="inline"><%= t_role(@user.role) %></dd></div>
+  <div><dt class="inline font-bold">管理監督者:</dt> <dd class="inline"><%= @user.exempt_from_overtime ? "はい" : "いいえ" %></dd></div>
+  <div><dt class="inline font-bold">上長:</dt> <dd class="inline"><%= @user.manager&.name || "未設定" %></dd></div>
+  <div><dt class="inline font-bold">状態:</dt> <dd class="inline"><%= @user.active? ? "在籍" : "無効" %></dd></div>
+</dl>
+<div class="mt-6 flex gap-2">
+  <%= link_to "編集", edit_admin_user_path(@user), class: "rounded border px-4 py-2" %>
+  <% if @user.active? %>
+    <%= button_to "無効化", deactivate_admin_user_path(@user), method: :patch,
+          data: { turbo_confirm: "#{@user.name} を無効化しますか？" }, class: "rounded bg-red-700 px-4 py-2 text-white" %>
+  <% else %>
+    <%= button_to "再有効化", activate_admin_user_path(@user), method: :patch, class: "rounded bg-gray-800 px-4 py-2 text-white" %>
+  <% end %>
+</div>

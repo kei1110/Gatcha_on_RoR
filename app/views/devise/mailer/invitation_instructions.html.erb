@@ -1,0 +1,9 @@
+<p><%= @resource.name %> 様</p>
+
+<p><%= @resource.organization.name %> の勤怠管理システム Gatcha に招待されました。<br>
+以下のリンクからパスワードを設定してください。<strong>リンクの有効期限は <%= (Devise.reset_password_within / 1.hour).to_i %> 時間です。</strong></p>
+
+<p><%= link_to "パスワードを設定する", edit_password_url(@resource, reset_password_token: @token) %></p>
+
+<p>期限が切れた場合は、リンク先の「パスワードを忘れた方はこちら」から再設定できます。<br>
+このメール自体を紛失した場合は、管理者に招待の再送を依頼してください。</p>

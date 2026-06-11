@@ -18,6 +18,10 @@ class ApplicationController < ActionController::Base
   after_action :verify_policy_scoped, if: -> { action_name == "index" }, unless: :devise_controller?
 
   rescue_from Pundit::NotAuthorizedError, with: :render_forbidden
+  # controller 層で 404 を返す（ShowExceptions より手前）。
+  # ShowExceptions に任せると session commit が保証されず、同一テスト内の後続リクエストで
+  # Warden セッションが失われて authenticate_user! がリダイレクトする（302）。
+  rescue_from ActiveRecord::RecordNotFound, with: :render_not_found
 
   private
 
@@ -31,6 +35,11 @@ class ApplicationController < ActionController::Base
       raise ActiveRecord::RecordNotFound, "tenant not found"
     end
     set_current_tenant(organization)
+  end
+
+  def render_not_found
+    # rescue_from はコールバックチェーン崩壊後に走るため after_action(verify_*) はこの経路で実行されない
+    render plain: "見つかりません", status: :not_found
   end
 
   def render_forbidden

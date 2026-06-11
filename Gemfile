@@ -34,11 +34,14 @@ gem "bootsnap", require: false
 # Multitenancy at the row level
 gem "acts_as_tenant"
 
-# Authentication
-gem "devise"
+# Authentication（protected API・内部オーバーライド依存があるため悲観固定。メジャーアップは system spec を通してから）
+gem "devise", "~> 5.0"
 
 # Authorization
 gem "pundit"
+
+# UI 部品（SPEC §2.1。Admin タブナビが初出。devise と同じ悲観固定方針）
+gem "view_component", "~> 4.0"
 
 # Use Active Storage variants [https://guides.rubyonrails.org/active_storage_overview.html#transforming-images]
 gem "image_processing", "~> 2.0"

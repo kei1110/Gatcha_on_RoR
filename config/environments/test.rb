@@ -22,8 +22,12 @@ Rails.application.configure do
   config.consider_all_requests_local = true
   config.cache_store = :null_store
 
-  # Render exception templates for rescuable exceptions and raise for other exceptions.
-  config.action_dispatch.show_exceptions = :rescuable
+  # :none にして全例外をそのまま伝播させる。
+  # rescue_from で処理済みの例外（RecordNotFound・Pundit::NotAuthorizedError）は
+  # controller 層で 404/403 にレンダリングされるため middleware まで届かない。
+  # ActionController::RoutingError（DELETE 等・未定義ルート）は rescue_from の対象外なので
+  # 伝播し、spec の raise_error(ActionController::RoutingError) で捕捉できる。
+  config.action_dispatch.show_exceptions = :none
 
   # Disable request forgery protection in test environment.
   config.action_controller.allow_forgery_protection = false

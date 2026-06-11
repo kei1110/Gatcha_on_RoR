@@ -2,6 +2,9 @@
 # before_action ではなく Warden hook に置く理由: Devise のトークン経路・
 # remember cookie 復元は ApplicationController の before_action を通らずに
 # 認証が成立し得るため、認証確立の単一点で塞ぐ。
+# 注意: User.serialize_from_session は without_tenant で復元する（devise の prepend が
+# テナント解決より先に走るため）。クロステナント突合は本フックが唯一の防壁 —
+# event: フィルタの追加や run_callbacks: false の使用はこの前提を壊す
 Warden::Manager.after_set_user do |user, warden, opts|
   next unless user.is_a?(User)
 

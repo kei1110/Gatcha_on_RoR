@@ -24,7 +24,7 @@
 
 > 完了条件: hr_admin が画面から全マスタを整備でき、§16.7 のオンボーディング手順が seed + 画面で一周する
 
-- [ ] **0b-1 ユーザー管理**: 社員 CRUD（hr_admin 専用）・`role` / `manager_id` / `exempt_from_overtime` の変更 UI（mass-assignment 恒久除外の専用アクション）・招待メール（recoverable 転用・§16.7-3）
+- [x] **0b-1 ユーザー管理**（PR #9）: 社員 CRUD（hr_admin 専用）・`role` / `manager_id` / `exempt_from_overtime` の変更 UI（Admin 名前空間限定の明示 permit — 設計 §0 で「専用アクション」方式を supersede）・招待メール（recoverable 転用・§16.7-3）
 - [ ] **0b-2 WorkPattern + LeaveType**: CRUD・法定休憩バリデーション（§4.4・労基法 34 条）・night_shift×flextime 警告
 - [ ] **0b-3 CompanyCalendar**: CRUD・CSV 一括インポート（RFC 4180）・`CompanyCalendarResolver`（PORO・未登録日フォールバック §4.7）・legal_holiday 運用
 - [ ] **0b-4 UserWorkPattern**: 割当 CRUD・期間重複バリデーション（§4.6）

@@ -1,0 +1,10 @@
+{
+  "ignored_warnings": [
+    {
+      "fingerprint": "a9a5d06663049d28e48caaeeb61784f08712189e93fc21660d39aeb5bc7d8935",
+      "note": "設計 0b-1 §0 の意図的決定: role/manager_id/exempt_from_overtime の permit は hr_admin 専用の Admin 名前空間に限定（Admin::BaseController ゲート + Admin::UserPolicy）。一般経路では恒久除外"
+    }
+  ],
+  "updated": "2026-06-11",
+  "brakeman_version": "8.0.4"
+}

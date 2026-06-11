@@ -9,5 +9,15 @@ Rails.application.routes.draw do
   # get "manifest" => "rails/pwa#manifest", as: :pwa_manifest
   # get "service-worker" => "rails/pwa#service_worker", as: :pwa_service_worker
 
-  root "home#show" # HomeController は後続タスクで作成。現時点で root 到達は 500 でよい
+  namespace :admin do
+    resources :users, except: :destroy do
+      member do
+        patch :deactivate
+        patch :activate
+        patch :resend_invitation
+      end
+    end
+  end
+
+  root "home#show"
 end

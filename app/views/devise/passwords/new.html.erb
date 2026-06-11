@@ -1,0 +1,18 @@
+<h2>パスワードの再設定</h2>
+
+<p class="text-sm text-gray-600">招待リンクの期限が切れた方も、ここから自分でパスワードを設定できます。</p>
+
+<%= form_for(resource, as: resource_name, url: password_path(resource_name), html: { method: :post }) do |f| %>
+  <%= render "devise/shared/error_messages", resource: resource %>
+
+  <div class="field">
+    <p><%= f.label :email, "メールアドレス" %></p>
+    <p><%= f.email_field :email, autofocus: true, autocomplete: "email" %></p>
+  </div>
+
+  <div class="actions">
+    <%= f.submit "再設定メールを送る" %>
+  </div>
+<% end %>
+
+<%= render "devise/shared/links" %>

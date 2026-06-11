@@ -1,4 +1,10 @@
 class TenantDeviseMailer < Devise::Mailer
+  # 招待メール（Devise 標準外のカスタムアクション）。User#send_invitation_instructions から届く
+  def invitation_instructions(record, token, opts = {})
+    @token = token
+    devise_mail(record, :invitation_instructions, opts)
+  end
+
   protected
 
   # deliver_later はリクエストコンテキストを持たないため、

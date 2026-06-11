@@ -1,0 +1,28 @@
+<%= form_with model: [:admin, user], class: "max-w-md space-y-4 text-sm" do |f| %>
+  <% if user.errors.any? %>
+    <div class="rounded border border-red-400 bg-red-50 p-3 text-red-800">
+      <ul><% user.errors.full_messages.each do |msg| %><li><%= msg %></li><% end %></ul>
+    </div>
+  <% end %>
+
+  <div><%= f.label :name, "氏名", class: "block font-bold" %><%= f.text_field :name, class: "w-full rounded border p-2" %></div>
+  <div><%= f.label :email, "メールアドレス", class: "block font-bold" %><%= f.email_field :email, class: "w-full rounded border p-2" %></div>
+  <div><%= f.label :employee_code, "社員番号", class: "block font-bold" %><%= f.text_field :employee_code, class: "w-full rounded border p-2" %></div>
+  <div>
+    <%= f.label :role, "ロール", class: "block font-bold" %>
+    <%= f.select :role, ApplicationHelper::ROLE_LABELS.invert.to_a, {}, class: "w-full rounded border p-2" %>
+  </div>
+  <div>
+    <%= f.label :manager_id, "上長", class: "block font-bold" %>
+    <%# 候補は在籍中のみ（ガード④と UI 整合）。自分自身は除外 %>
+    <%= f.collection_select :manager_id,
+          policy_scope([:admin, User]).where(active: true).where.not(id: user.id).order(:employee_code),
+          :id, :name, { include_blank: "（未設定）" }, class: "w-full rounded border p-2" %>
+  </div>
+  <div>
+    <%= f.label :exempt_from_overtime, class: "font-bold" do %>
+      <%= f.check_box :exempt_from_overtime %> 管理監督者（労基法 41 条・割増対象外）
+    <% end %>
+  </div>
+  <%= f.submit user.persisted? ? "更新する" : "登録して招待メールを送る", class: "rounded bg-gray-800 px-4 py-2 text-white" %>
+<% end %>
