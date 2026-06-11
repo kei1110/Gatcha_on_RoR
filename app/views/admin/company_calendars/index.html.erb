@@ -1,0 +1,49 @@
+<div class="mb-4 flex justify-between">
+  <h2 class="text-lg font-bold">会社カレンダー</h2>
+  <div class="flex gap-2">
+    <%= link_to "CSV インポート", new_admin_company_calendars_import_path, class: "rounded border border-gray-800 px-4 py-2" %>
+    <%= link_to "法定休日の一括登録", new_admin_company_calendars_legal_holiday_generation_path, class: "rounded border border-gray-800 px-4 py-2" %>
+    <%= link_to "新規登録", new_admin_company_calendar_path, class: "rounded bg-gray-800 px-4 py-2 text-white" %>
+  </div>
+</div>
+
+<%= form_with url: admin_company_calendars_path, method: :get, class: "mb-4" do |f| %>
+  <%= f.label :fiscal_year, "年度", class: "font-bold" %>
+  <%= f.select :fiscal_year, @fiscal_years, { selected: @fiscal_year },
+        onchange: "this.form.requestSubmit()", class: "rounded border p-2" %>
+<% end %>
+
+<% if @legal_holiday_missing %>
+  <div class="mb-4 rounded border border-yellow-400 bg-yellow-50 p-3 text-yellow-800">
+    <%= @fiscal_year %> 年度に法定休日（legal_holiday）が 1 件も登録されていません。
+    法定休日の登録は必須運用です（未登録の休日労働は割増の付け漏れリスク）—
+    <%= link_to "一括登録へ", new_admin_company_calendars_legal_holiday_generation_path, class: "underline" %>
+  </div>
+<% end %>
+
+<table class="w-full text-left text-sm">
+  <thead>
+    <tr class="border-b font-bold">
+      <th class="p-2">日付</th><th class="p-2">曜日</th><th class="p-2">種別</th>
+      <th class="p-2">名称</th><th class="p-2">有給算入</th><th class="p-2"></th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @company_calendars.each do |cal| %>
+      <tr class="border-b">
+        <td class="p-2"><%= cal.date %></td>
+        <td class="p-2"><%= %w[月 火 水 木 金 土 日][cal.date.cwday - 1] %></td>
+        <td class="p-2"><%= t_day_type(cal.day_type) %></td>
+        <td class="p-2"><%= cal.name %></td>
+        <td class="p-2"><%= "算入" if cal.counts_as_paid_leave? %></td>
+        <td class="p-2">
+          <%= link_to "編集", edit_admin_company_calendar_path(cal), class: "underline" %>
+          <%= button_to "削除", admin_company_calendar_path(cal), method: :delete,
+                form: { class: "inline", data: { turbo_confirm:
+                  cal.legal_holiday? ? "法定休日 #{cal.date} を削除すると 35% 割増の根拠が失われます。削除しますか？" : "#{cal.date} を削除しますか？" } },
+                class: "underline text-red-700" %>
+        </td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>

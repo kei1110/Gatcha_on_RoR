@@ -105,6 +105,15 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **HOW**: ENV 化（`ENV.fetch("MAILER_SENDER", ...)`）+ mailer spec で placeholder 不在を assert。新 gem 導入 PR では `grep -rn "change-me\|TODO\|example\.com" config/initializers/` を儀式に含める
 - verified: devise 5.0.4 / 2026-06-11（0b-1 マージ後のレトロスペクティブで発見）
 
+## CSV / エクスポート
+
+### CSV エクスポート時のスプレッドシートインジェクション（formula injection）
+
+- **WHAT**: ユーザー入力由来の文字列（CompanyCalendar.name 等）が `=` `@` `+` `-` またはタブ文字で始まると、Excel 等で開いた際に数式として実行され得る
+- **WHY**: 0b-3 の CSV インポートで name にユーザー任意文字列が入る。Phase 3-3 の CSV エクスポート 2 種が実装されるとき、この値がそのまま出力されると発火する（インポート側は無害 — 出力側の罠）
+- **HOW**: エクスポート実装時にユーザー入力由来のセルは先頭が `=` `@` `+` `-` またはタブの場合に `'` 前置等でエスケープする
+- verified: 2026-06-12（0b-3 Task 6 品質レビューで予防的に記録・エクスポート未実装のため発火例なし）
+
 ## メタ原則
 
 - **レビューは書いた場所の近くに置く**: 設計レビューは設計の虫しか取れない。計画にコードを書くなら計画コードにレビューを、環境の虫（brakeman・CI）は各タスクの完了条件に

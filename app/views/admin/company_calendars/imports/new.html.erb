@@ -1,0 +1,32 @@
+<h2 class="mb-4 text-lg font-bold">会社カレンダー CSV インポート</h2>
+
+<%= render "admin/company_calendars/bulk_errors", errors: @errors %>
+
+<%= form_with url: admin_company_calendars_import_path, method: :post,
+      multipart: true, class: "max-w-xl space-y-4 text-sm" do |f| %>
+  <div><%= f.file_field :file, accept: ".csv", class: "rounded border p-2" %></div>
+  <div>
+    <%= f.label :allow_demotion, class: "font-bold" do %>
+      <%= f.check_box :allow_demotion, checked: @allow_demotion %> 既存の法定休日（legal_holiday）の変更を許可する
+    <% end %>
+    <p class="text-gray-500">法定休日を他の種別へ変更すると 35% 割増の対象から外れます（賃金未払リスク）。意図した変更の場合のみ有効にしてください。</p>
+  </div>
+  <%= f.submit "インポート", class: "rounded bg-gray-800 px-4 py-2 text-white" %>
+<% end %>
+
+<section class="mt-8 max-w-xl space-y-2 text-sm text-gray-700">
+  <h3 class="font-bold">フォーマット</h3>
+  <ul class="list-disc pl-5">
+    <li>UTF-8（BOM 可）・ヘッダ必須・上限 2,000 行 / 1MB。<%= link_to "サンプル CSV", "/samples/company_calendar_sample.csv", class: "underline" %></li>
+    <li>列: date（YYYY-MM-DD・必須）/ day_type（必須）/ name（祝日・会社休業日は必須）/ counts_as_paid_leave（true/1/false/0/空=false・会社休業日のみ）</li>
+    <li>day_type の値: weekday / saturday / sunday / holiday / company_holiday / legal_holiday</li>
+    <li>年度は日付から自動算出されるため列に含めません。既存日付の行は上書きされます</li>
+    <li>counts_as_paid_leave を true にする運用には計画的付与の労使協定等の根拠が必要です（労基法 39 条 6 項）</li>
+  </ul>
+  <h3 class="font-bold">内閣府の祝日 CSV を使う場合</h3>
+  <ol class="list-decimal pl-5">
+    <li>内閣府サイトの「国民の祝日」CSV（Shift_JIS）をダウンロード</li>
+    <li>表計算ソフトで開き、ヘッダを date / day_type / name に変更し day_type 列へ holiday を入力</li>
+    <li>UTF-8 の CSV として保存してインポート</li>
+  </ol>
+</section>

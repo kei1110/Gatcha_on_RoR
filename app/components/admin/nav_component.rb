@@ -5,7 +5,8 @@ module Admin
       [
         [ "社員", helpers.admin_users_path ],
         [ "勤務パターン", helpers.admin_work_patterns_path ],
-        [ "休暇種別", helpers.admin_leave_types_path ]
+        [ "休暇種別", helpers.admin_leave_types_path ],
+        [ "会社カレンダー", helpers.admin_company_calendars_path ]
       ]
     end
 

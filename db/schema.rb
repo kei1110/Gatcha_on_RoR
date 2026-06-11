@@ -10,9 +10,23 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_11_020349) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_11_110422) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "company_calendars", force: :cascade do |t|
+    t.boolean "counts_as_paid_leave", default: false, null: false
+    t.datetime "created_at", null: false
+    t.date "date", null: false
+    t.integer "day_type", null: false
+    t.string "fiscal_year", null: false
+    t.string "name"
+    t.bigint "organization_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["organization_id", "date"], name: "index_company_calendars_on_organization_id_and_date", unique: true
+    t.index ["organization_id", "id"], name: "index_company_calendars_on_organization_id_and_id", unique: true
+    t.index ["organization_id"], name: "index_company_calendars_on_organization_id"
+  end
 
   create_table "leave_types", force: :cascade do |t|
     t.boolean "active", default: true, null: false
@@ -32,7 +46,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_11_020349) do
   create_table "organizations", force: :cascade do |t|
     t.boolean "active", default: true, null: false
     t.datetime "created_at", null: false
-    t.integer "fiscal_year_end_month"
+    t.integer "fiscal_year_end_month", default: 3, null: false
     t.string "name", null: false
     t.string "subdomain", null: false
     t.string "time_zone", default: "Asia/Tokyo", null: false
@@ -93,6 +107,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_11_020349) do
     t.index ["organization_id"], name: "index_work_patterns_on_organization_id"
   end
 
+  add_foreign_key "company_calendars", "organizations"
   add_foreign_key "leave_types", "organizations"
   add_foreign_key "users", "organizations"
   add_foreign_key "users", "users", column: ["organization_id", "manager_id"], primary_key: ["organization_id", "id"]

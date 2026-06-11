@@ -1,0 +1,10 @@
+<% if errors.present? %>
+  <div class="mb-4 rounded border border-red-400 bg-red-50 p-3 text-red-800">
+    <p class="font-bold">取り込めませんでした（全件不採用）:</p>
+    <ul class="list-disc pl-5">
+      <% errors.each do |e| %>
+        <li><%= "#{e.line} 行目: " if e.line %><%= e.message %></li>
+      <% end %>
+    </ul>
+  </div>
+<% end %>

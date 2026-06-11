@@ -368,6 +368,8 @@ polymorphic 関連（`ApprovalAssignment.approvable` / `AttendanceHistory.source
 
 **法定休日:** 就業規則で特定する（特定なき場合は「週の最後の休日」を法定休日とする行政解釈）。`legal_holiday` は `sunday` と排他。法定休日労働は 35% 割増対象で**月 60h カウントから除外**。`legal_holiday` の登録を*必須運用*とし、未特定の休日労働は**労働者有利に 35% 側**で扱うか管理者へ警告する（25% へのフォールバックは割増の付け漏れ＝賃金未払リスクのため採らない）。**社労士確認推奨**。
 
+**v1 の機能境界（0b-3）:** 本カレンダーは組織単位の単一マスタであり、シフト制・交替制の個人別法定休日は表現できない（v2 候補）。legal_holiday の「期間×曜日」一括登録は週休制（毎週特定曜日を法定休日と特定済み）専用 — 4 週 4 日制（労基法 35 条 2 項）の組織は CSV で個別登録する。
+
 ### 4.8 AttendanceRecord（勤怠記録）— ドメインの中核
 
 | カラム | 型 | 説明 |
@@ -513,7 +515,7 @@ polymorphic 関連（`ApprovalAssignment.approvable` / `AttendanceHistory.source
 | overtime_alert_threshold1/2/3 | integer | 45/80/100 | 残業アラート閾値 |
 | carry_over_limit | integer | 20 | 有給繰越上限 |
 | daily_batch_hour | integer | 2 | 日次バッチ実行時 |
-| fiscal_year_end_month | integer | 3 | 年度終了月 |
+| fiscal_year_end_month | integer | 3 | 年度終了月（**SSOT は §4.2 Organization**（DB 既定 3・NOT NULL）— 本テーブルでは保持しない。変更時の既存 fiscal_year 再計算は 0b-5 で判断） |
 | leave_expiry_reminder_days | integer[] | [30,14] | 失効前リマインド（日前。配列で多段化） |
 | quiet_hours_enabled | boolean | true | 通知抑制 ON/OFF |
 | quiet_hours_start / quiet_hours_end | integer | 19 / 8 | 抑制時間帯 |
@@ -661,6 +663,7 @@ Step 3: deep_night_hours = round((overlap_minutes − deep_night_break) / 60, 2,
 start_date〜end_date の全日から除外:
   - 所定休日に当たる曜日（既定は土・日。ただし土曜等を所定労働日として運用する組織では除外しない）
   - day_type = holiday
+  - day_type = legal_holiday（法定休日は労働義務がなく年休を充当しない — 0b-3 設計レビュー反映。就業規則で日曜以外を法定休日とする組織で誤消化を防ぐ）
   - day_type = company_holiday かつ counts_as_paid_leave = false
 残日数を合計（半休は 0.5）
 ```
@@ -1123,7 +1126,7 @@ production:
 
 ### 12.3 マスタ管理
 
-タブ型（ViewComponent）。勤務パターン・休暇種別・会社カレンダー（CSV 一括インポート・RFC 4180）・パターン割当・休暇残高の CRUD・インライン編集・無効化。Pundit で `hr_admin` に限定。
+タブ型（ViewComponent）。勤務パターン・休暇種別・会社カレンダー（CSV 一括インポート・RFC 4180）・パターン割当・休暇残高の CRUD・インライン編集・無効化。Pundit で `hr_admin` に限定。会社カレンダーのみ物理削除（イベント参照を持たない日付事実テーブルのため・無効化統一の例外 — 0b-3 設計）。
 
 ### 12.4 モバイル / PWA
 

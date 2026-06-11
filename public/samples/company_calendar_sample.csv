@@ -1,0 +1,5 @@
+date,day_type,name,counts_as_paid_leave
+2026-01-01,holiday,元日,
+2026-02-11,holiday,建国記念の日,
+2026-08-13,company_holiday,夏季休業,true
+2026-04-05,legal_holiday,,

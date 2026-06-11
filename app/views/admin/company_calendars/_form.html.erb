@@ -1,0 +1,28 @@
+<%= form_with model: [ :admin, company_calendar ], class: "max-w-md space-y-4 text-sm" do |f| %>
+  <% if company_calendar.errors.any? %>
+    <div class="rounded border border-red-400 bg-red-50 p-3 text-red-800">
+      <ul><% company_calendar.errors.full_messages.each do |msg| %><li><%= msg %></li><% end %></ul>
+    </div>
+  <% end %>
+
+  <% if company_calendar.persisted? && company_calendar.legal_holiday? %>
+    <div class="rounded border border-yellow-400 bg-yellow-50 p-3 text-yellow-800">
+      法定休日を他の種別へ変更すると 35% 割増の対象から外れます（賃金未払リスク）。就業規則の定めと一致しているか確認してください。
+    </div>
+  <% end %>
+
+  <div><%= f.label :date, class: "block font-bold" %><%= f.date_field :date, required: true, class: "rounded border p-2" %></div>
+  <div>
+    <%= f.label :day_type, class: "block font-bold" %>
+    <%= f.select :day_type, CompanyCalendar.day_types.keys.map { |k| [ t_day_type(k), k ] }, {},
+          class: "w-full rounded border p-2" %>
+  </div>
+  <div><%= f.label :name, class: "block font-bold" %><%= f.text_field :name, placeholder: "祝日・会社休業日は必須", class: "w-full rounded border p-2" %></div>
+  <div>
+    <%= f.label :counts_as_paid_leave, class: "font-bold" do %>
+      <%= f.check_box :counts_as_paid_leave %> 有給消化日として扱う（会社休業日のみ）
+    <% end %>
+    <p class="text-gray-500">有効にする運用には計画的付与の労使協定等の根拠が必要です（労基法 39 条 6 項）</p>
+  </div>
+  <%= f.submit company_calendar.persisted? ? "更新する" : "登録する", class: "rounded bg-gray-800 px-4 py-2 text-white" %>
+<% end %>

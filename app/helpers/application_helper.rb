@@ -8,4 +8,6 @@ module ApplicationHelper
 
   # enum 生値（annual 等）を画面に露出しない（0b-2 設計 §5）
   def t_system_type(value) = I18n.t("leave_types.system_types.#{value}")
+
+  def t_day_type(value) = I18n.t("company_calendars.day_types.#{value}")
 end

@@ -60,6 +60,26 @@ end
     LeaveType.find_or_create_by!(name: "振替休日") { |lt| lt.system_type = :substitute_holiday }
     LeaveType.find_or_create_by!(name: "代休") { |lt| lt.system_type = :compensatory_leave }
 
+    # 会社カレンダー（0b-3）— §16.7-4 のオンボーディング動作確認用（祝日数件 + 日曜の法定休日 4 週分）
+    [
+      { date: "2026-01-01", day_type: :holiday, name: "元日" },
+      { date: "2026-02-11", day_type: :holiday, name: "建国記念の日" },
+      # 夏季休業の counts_as_paid_leave: true は計画的付与協定がある想定のデモ値（労基法 39 条 6 項・NOTES #10）
+      { date: "2026-08-13", day_type: :company_holiday, name: "夏季休業", counts_as_paid_leave: true }
+    ].each do |attrs|
+      CompanyCalendar.find_or_create_by!(date: attrs[:date]) do |cal|
+        cal.day_type = attrs[:day_type]
+        cal.name = attrs[:name]
+        cal.counts_as_paid_leave = attrs.fetch(:counts_as_paid_leave, false)
+      end
+    end
+    (Date.new(2026, 6, 7)..Date.new(2026, 6, 28)).select { |d| d.cwday == 7 }.each do |sunday|
+      CompanyCalendar.find_or_create_by!(date: sunday) do |cal|
+        cal.day_type = :legal_holiday
+        cal.name = "法定休日"
+      end
+    end
+
     puts "==> #{org.name}: #{User.count} users (admin: #{admin.email})"
   end
 end

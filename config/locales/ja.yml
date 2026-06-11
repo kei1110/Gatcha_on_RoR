@@ -5,6 +5,7 @@ ja:
       user: 社員
       work_pattern: 勤務パターン
       leave_type: 休暇種別
+      company_calendar: 会社カレンダー
     attributes:
       user:
         name: 氏名
@@ -37,6 +38,12 @@ ja:
         paid_leave: 有給消化対象
         description: 説明
         active: 有効
+      company_calendar:
+        date: 日付
+        day_type: 日種別
+        name: 名称
+        fiscal_year: 年度
+        counts_as_paid_leave: 有給算入
   leave_types:
     system_types:
       annual: 有給休暇
@@ -45,6 +52,14 @@ ja:
       child_care: 育児休業
       paternity_leave: 産後パパ育休
       other: その他
+  company_calendars:
+    day_types:
+      weekday: 平日
+      saturday: 土曜
+      sunday: 日曜
+      holiday: 祝日
+      company_holiday: 会社休業日
+      legal_holiday: 法定休日
   devise:
     mailer:
       invitation_instructions:

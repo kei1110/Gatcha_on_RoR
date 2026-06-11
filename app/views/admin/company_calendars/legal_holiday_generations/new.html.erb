@@ -1,0 +1,24 @@
+<h2 class="mb-4 text-lg font-bold">法定休日の一括登録</h2>
+
+<%= render "admin/company_calendars/bulk_errors", errors: @errors %>
+
+<%= form_with url: admin_company_calendars_legal_holiday_generation_path, method: :post,
+      class: "max-w-xl space-y-4 text-sm" do |f| %>
+  <div class="rounded border border-yellow-400 bg-yellow-50 p-3 text-yellow-800">
+    <ul class="list-disc pl-5">
+      <li>就業規則上の法定休日の定めと一致させてください（35% 割増賃金の計算根拠になります）</li>
+      <li>本フォームは週休制（毎週特定曜日が法定休日）専用です。4 週 4 日制（労基法 35 条 2 項）の組織は CSV で個別登録してください</li>
+      <li>期間内の該当曜日に既存の登録（祝日等）がある場合は法定休日で上書きされます</li>
+    </ul>
+  </div>
+  <div><%= f.label :start_date, "開始日", class: "block font-bold" %><%= f.date_field :start_date, required: true, class: "rounded border p-2" %></div>
+  <div><%= f.label :end_date, "終了日（開始日から 2 年以内）", class: "block font-bold" %><%= f.date_field :end_date, required: true, class: "rounded border p-2" %></div>
+  <div>
+    <%= f.label :cwday, "曜日", class: "block font-bold" %>
+    <%# 既定なしの必須選択 — 日曜既定は就業規則と不一致のままの誤クリック確定を誘発（0b-3 設計 §3） %>
+    <%= f.select :cwday,
+          [ [ "月曜", 1 ], [ "火曜", 2 ], [ "水曜", 3 ], [ "木曜", 4 ], [ "金曜", 5 ], [ "土曜", 6 ], [ "日曜", 7 ] ],
+          { include_blank: "選択してください" }, class: "rounded border p-2" %>
+  </div>
+  <%= f.submit "一括登録", class: "rounded bg-gray-800 px-4 py-2 text-white" %>
+<% end %>

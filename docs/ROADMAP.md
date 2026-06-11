@@ -26,9 +26,9 @@
 
 - [x] **0b-1 ユーザー管理**（PR #9）: 社員 CRUD（hr_admin 専用）・`role` / `manager_id` / `exempt_from_overtime` の変更 UI（Admin 名前空間限定の明示 permit — 設計 §0 で「専用アクション」方式を supersede）・招待メール（recoverable 転用・§16.7-3）
 - [x] **0b-2 WorkPattern + LeaveType**（PR #12）: CRUD・法定休憩バリデーション（§4.4・労基法 34 条）・night_shift×flextime 警告 + i18n 日本語化・タブ active 修正・dev seed
-- [ ] **0b-3 CompanyCalendar**: CRUD・CSV 一括インポート（RFC 4180）・`CompanyCalendarResolver`（PORO・未登録日フォールバック §4.7）・legal_holiday 運用
+- [x] **0b-3 CompanyCalendar**（PR #15）: CRUD・CSV 一括インポート（RFC 4180）・`CompanyCalendarResolver`（PORO・未登録日フォールバック §4.7）・legal_holiday 運用（一括生成 + 35% 保護 — 降格チェックボックス・0 件バナー・曜日必須選択）
 - [ ] **0b-4 UserWorkPattern**: 割当 CRUD・期間重複バリデーション（§4.6）**+ 割当済み WorkPattern の無効化ガード要否を判断**（User ガード②と同型の論点 — 0b-2 設計 §0）
-- [ ] **0b-5 OrganizationSetting + ReasonTemplate**: 設定画面（v1 は項目を絞る・§4.15 YAGNI 注記）・テンプレート CRUD
+- [ ] **0b-5 OrganizationSetting + ReasonTemplate**: 設定画面（v1 は項目を絞る・§4.15 YAGNI 注記）・テンプレート CRUD **+ fiscal_year_end_month 変更時の既存 CompanyCalendar.fiscal_year 再計算 or 変更禁止の判断（0b-3 設計 §0・SSOT は Organization）**
 
 ### Phase 1 — 打刻と計算エンジン
 
@@ -82,6 +82,8 @@
 - [ ] **LeaveType の annual×paid_leave 整合警告**: §8.6 の有給 5 日義務判定への影響。Phase 4 着手時に再検討
 - [ ] **production のエラーページ**: RecordNotFound 等が plain text 応答（0b-1 で controller 層 404 化した際の暫定）。Phase 5 の管理 UI 仕上げで専用ページへ
 - [ ] **Mutant のスコープ限定導入**: 計算オブジェクト（§5）・ComplianceService（§8）は「テストが緑でも法定値とズレたら重大事故」の純粋ロジックで、ミューテーションテストの費用対効果が最大。Phase 1-2 完了後に `app/services/calculations` 配下のみで導入を検討し、Phase 4-3 で対象を拡大（全体適用はしない）。mbj/mutant はライセンス形態が変遷した歴史があるため導入時点で商用利用条件を要確認（出典: [TechRacho 2026-06-10](https://techracho.bpsinc.jp/hachi8833/2026_06_10/158257)）
+- [ ] **legal_holiday カバレッジ失効の事前アラート**: 一括生成（上限 2 年）の期間満了後、未登録日曜が Resolver フォールバックで sunday に降格し 35% 側が静かに失われる。index の 0 件バナー（0b-3）が第一歩 — 残り N 日での管理者通知は Phase 4-1 の通知基盤接続後（労務レビュー高・社労士確認 #11）
+- [ ] **締め済み月の CompanyCalendar destroy 制限**: 過去日の削除は Phase 1 再集計時の day_type 根拠（legal_holiday の 35%・60h 除外）を遡及的に書き換える。締め状態機械の導入（Phase 3-2）に合わせて制限を課す
 
 ## 横断ルール（順序の根拠）
 

@@ -29,6 +29,11 @@ Rails.application.routes.draw do
         patch :activate
       end
     end
+    resources :company_calendars, except: :show
+    namespace :company_calendars do
+      resource :import, only: %i[new create]
+      resource :legal_holiday_generation, only: %i[new create]
+    end
   end
 
   root "home#show"
