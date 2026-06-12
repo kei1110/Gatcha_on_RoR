@@ -9,6 +9,7 @@ ja:
       user_work_pattern: 勤務パターン割当
       organization_setting: 組織設定
       reason_template: 申請理由テンプレート
+      attendance_record: 勤怠記録
     attributes:
       user:
         name: 氏名
@@ -63,6 +64,11 @@ ja:
         template_text: 挿入テキスト
         applies_to: 適用先
         active: 有効
+      attendance_record:
+        work_date: 勤務日
+        clock_in: 出勤時刻
+        clock_out: 退勤時刻
+        status: 状態
   leave_types:
     system_types:
       annual: 有給休暇
@@ -84,6 +90,19 @@ ja:
       clock_change: 打刻変更
       leave: 休暇
       both: 両方
+  clockings:
+    status:
+      off_duty: 未出勤
+      working: 出勤中
+      clocked_out: 退勤済
+    clock_in:
+      success: 出勤を記録しました
+    clock_out:
+      success: 退勤を記録しました
+    errors:
+      already_clocked_in: すでに出勤済みです
+      still_working: 前日の退勤が記録されていません。先に退勤を打刻してください
+      not_working: 出勤打刻がありません。過去日の退勤時刻は打刻変更申請（Phase 2 で提供予定）で記録します。それまでは管理者に連絡してください
   devise:
     mailer:
       invitation_instructions:

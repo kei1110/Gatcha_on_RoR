@@ -10,10 +10,25 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_12_055746) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_12_192550) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "attendance_records", force: :cascade do |t|
+    t.timestamptz "clock_in", null: false
+    t.timestamptz "clock_out"
+    t.datetime "created_at", null: false
+    t.bigint "organization_id", null: false
+    t.integer "status", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.date "work_date", null: false
+    t.bigint "work_pattern_id"
+    t.index ["organization_id", "id"], name: "index_attendance_records_on_organization_id_and_id", unique: true
+    t.index ["organization_id"], name: "index_attendance_records_on_organization_id"
+    t.index ["user_id", "work_date"], name: "index_attendance_records_on_user_id_and_work_date", unique: true
+  end
 
   create_table "company_calendars", force: :cascade do |t|
     t.boolean "counts_as_paid_leave", default: false, null: false
@@ -147,6 +162,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_12_055746) do
     t.index ["organization_id"], name: "index_work_patterns_on_organization_id"
   end
 
+  add_foreign_key "attendance_records", "organizations"
+  add_foreign_key "attendance_records", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
+  add_foreign_key "attendance_records", "work_patterns", column: ["organization_id", "work_pattern_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "company_calendars", "organizations"
   add_foreign_key "leave_types", "organizations"
   add_foreign_key "organization_settings", "organizations"

@@ -49,5 +49,10 @@ Rails.application.routes.draw do
     resource :organization_setting, only: %i[edit update] # singular（0b-5 設計 §4）
   end
 
+  resource :clocking, only: [] do
+    post :clock_in
+    post :clock_out
+  end
+
   root "home#show"
 end

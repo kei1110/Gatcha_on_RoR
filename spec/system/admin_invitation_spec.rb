@@ -36,8 +36,9 @@ RSpec.describe "社員招待の E2E（0b-1 設計 §4 system）", type: :system 
     fill_in "新しいパスワード（確認）", with: "firstpassword1!"
     click_button "パスワードを設定する"
 
-    # sign_in_after_reset_password 既定 true → そのままサインイン済み（正のアンカー assert）
-    expect(page).to have_content("新人 一郎 としてログイン中")
-    expect(page).to have_content(org.name)
+    # sign_in_after_reset_password 既定 true → そのままサインイン済み（正のアンカー assert。
+    # 文言は 1-1 のホームヘッダー「氏名（組織名）」形式 — 打刻ボタンの存在も同時に固定）
+    expect(page).to have_content("新人 一郎（#{org.name}）")
+    expect(page).to have_button("出勤")
   end
 end

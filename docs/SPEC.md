@@ -635,8 +635,10 @@ Gatcha Work 連携用の Outbox（`IntegrationEvent`）は **v1 では作らな�
 **深夜帯定義:** `22:00:00` 〜翌 `05:00:00`。**22:00:00 ちょうどの退勤は含まない**（開始点）。22:00:01 以降は含む。05:00:00 で終了。
 
 ```
-Step 1: 勤務帯 [clock_in, clock_out] と深夜帯 [22:00, 翌05:00] の重複（overlap_minutes）を算出
-        夜勤も出勤日の 22:00〜翌05:00 との overlap で算出
+Step 1: 勤務帯 [clock_in, clock_out] と隣接 2 つの深夜帯の重複（overlap_minutes）を合算
+        深夜帯 = [前日22:00, 当日05:00] と [当日22:00, 翌日05:00] の 2 窓（出勤日 D 基準）
+        ※単窓 [D 22:00, D+1 05:00] のみでは早朝シフト（例: 4:00 出勤）の D 0:00〜5:00 帯を
+          取りこぼす（労基法 37 条 4 項「午後十時から午前五時まで」— 1-1 設計レビューで補正）
 Step 2: 休憩の按分控除
           deep_night_ratio = overlap_minutes / total_work_minutes
           deep_night_break  = FLOOR(break_minutes × deep_night_ratio)  # 切り捨て=労働者有利
@@ -1166,6 +1168,8 @@ stateDiagram-v2
 ```
 
 終端状態は持たない（記録は更新され続ける）。
+
+> **実装注記（1-1）:** AttendanceRecord.status は 2 状態（working/clocked_out）の間 plain enum で実装する（整数は本図の列挙順で 0〜5 を予約済み）。AASM 化は状態が 3 つ以上になる 2-2 で再判断する — §2.2-3 の AASM 列挙（申請・締め）とは両立し、本図との 1 対 1 対応はその時点で回復する。副作用のイベント紐付け（§13.6）の置き場も同時に確定する。
 
 ### 13.2 LeaveRequest / ClockChangeRequest.approval_status
 

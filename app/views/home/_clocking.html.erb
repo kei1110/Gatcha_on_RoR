@@ -1,0 +1,36 @@
+<section class="mt-6 rounded border border-gray-300 p-6">
+  <div class="flex items-center justify-between">
+    <p class="text-lg font-bold">
+      <%= state.today.strftime("%Y年%-m月%-d日") %>（<%= %w[日 月 火 水 木 金 土][state.today.wday] %>）
+    </p>
+    <span class="rounded px-3 py-1 text-sm <%= { off_duty: "bg-gray-200 text-gray-700",
+                                                 working: "bg-blue-100 text-blue-800",
+                                                 clocked_out: "bg-green-100 text-green-800" }[state.status] %>">
+      <%= t("clockings.status.#{state.status}") %>
+    </span>
+  </div>
+
+  <%# モバイルは大きめ UI（SPEC §6.1）。連打防止は Turbo 標準の submit 中 disable に委ねる %>
+  <div class="mt-4 flex gap-4">
+    <%= button_to "出勤", clock_in_clocking_path, disabled: !state.can_clock_in?,
+          class: "w-32 rounded px-6 py-3 text-lg text-white #{state.can_clock_in? ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300 cursor-not-allowed'}" %>
+    <%= button_to "退勤", clock_out_clocking_path, disabled: !state.can_clock_out?,
+          class: "w-32 rounded px-6 py-3 text-lg text-white #{state.can_clock_out? ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300 cursor-not-allowed'}" %>
+  </div>
+
+  <% if state.status == :clocked_out %>
+    <p class="mt-2 text-sm text-gray-500">時刻の修正は打刻変更申請で行えます（Phase 2 で提供予定）</p>
+  <% end %>
+
+  <% if state.unassigned_pattern? %>
+    <div class="mt-4 rounded border border-yellow-400 bg-yellow-50 p-3 text-sm text-yellow-800">
+      勤務パターンが割り当てられていません。打刻は記録されますが労働時間が計算されません。管理者に連絡してください。
+    </div>
+  <% end %>
+
+  <% if state.stale_working_record %>
+    <div class="mt-4 rounded border border-red-400 bg-red-50 p-3 text-sm text-red-800">
+      <%= state.stale_working_record.work_date.strftime("%Y年%-m月%-d日") %> の退勤記録がありません。管理者に連絡してください。
+    </div>
+  <% end %>
+</section>

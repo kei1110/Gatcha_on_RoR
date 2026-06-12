@@ -11,6 +11,7 @@ class User < ApplicationRecord
   has_many :subordinates, class_name: "User",
            foreign_key: :manager_id, inverse_of: :manager, dependent: :nullify
   has_many :user_work_patterns, dependent: :destroy
+  has_many :attendance_records, dependent: :restrict_with_error
 
   enum :role, { employee: 0, manager: 1, hr_admin: 2 }, validate: true
 

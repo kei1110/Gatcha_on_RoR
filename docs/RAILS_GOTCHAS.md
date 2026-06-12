@@ -24,6 +24,13 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **HOW**: モデルに公開ラッパー（`User#send_invitation_instructions`）を 1 つ定義して依存を 1 箇所に閉じ込める。保存済み・クリーンなレコードに対してのみ呼ぶ。戻り値の raw token を flash・ログ・レスポンスへ出さない。Gemfile は `"~> 5.0"` に悲観固定
 - verified: devise 5.0.4 / 2026-06-11
 
+### devise FailureApp の未認証 redirect は常に 302（`redirect_status = :see_other` が効かない）
+
+- **WHAT**: `config.responder.redirect_status = :see_other` を設定していても、未認証アクセスのサインインへの redirect は 302 のまま
+- **WHY**: FailureApp の `redirect` は素の `redirect_to`（lib/devise/failure_app.rb）で responder 設定を参照しない（recall 経路のみ参照）。POST 起点なら fetch 仕様で GET に変わるため実害なし — 危険なのは **PATCH/PUT/DELETE の認証切れ経路**（302 でメソッド保持再発行）
+- **HOW**: 認証必須の PATCH/DELETE 画面を作るスライスでは、認証切れからの導線を request spec で踏んで挙動確認する（必要なら custom FailureApp で 303 化）
+- verified: devise 5.0.4 / 2026-06-12（1-1 Task 5 品質レビューで実測）
+
 ### `flash[:timedout] = true` が flash ループに紛れ込む
 
 - **WHAT**: timeoutable 有効時、セッションタイムアウトで flash に boolean が入り、素朴な `flash.each` レイアウトが緑枠の「true」を描画する
@@ -82,6 +89,13 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **HOW**: セッション復元まわりを検証するときは「1 リクエスト目で cookie を確立 → 2 リクエスト目で実 deserialize を踏む」構成にする（spec/requests/authentication_spec.rb の回帰 spec が見本）
 - verified: warden 1.2.9 / 2026-06-11（本番 500 が 0a のテストをすり抜けた原因）
 
+### `travel_to` ブロック外の `follow_redirect!` は Devise timeoutable でセッション切れになる
+
+- **WHAT**: request spec で `travel_to(過去/未来時刻) { post ... }` の後、ブロックの**外**で `follow_redirect!` すると、認証済みのはずが 302 でサインインへ飛ばされ flash 検証が偽 FAIL する
+- **WHY**: ブロック内の POST が Warden セッションの `last_request_at` を travel 先時刻で記録し、ブロック外の後続リクエストは実時刻で評価される。差分が `config.timeout_in`（30 分）を超えると timeoutable がセッションを破棄する
+- **HOW**: `follow_redirect!` とボディ検証まで `travel_to` ブロック内に収める（1-1 Task 5 で実踏・計画コードの配置ミスを実装者が検出）
+- verified: devise 5.0.4 / 2026-06-12
+
 ### メール本文は `body.decoded` で読む
 
 - **WHAT**: `body.encoded` + quoted-printable のソフト改行除去（`gsub("=\r\n", "")`）はエンコーディング依存の dead code になりがち（実際の CTE が base64 だと一切発火しない）
@@ -122,6 +136,15 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **WHY**: `schema_statements.rb` の `predicate.from(2).to(-3)` が WHERE 節を常に二重括弧 `((expr))` と仮定して 2 文字ずつ剥がしている。だが pg_get_constraintdef の括弧数は PG バージョンではなく**述語の形状**に依存する（PG 17.10 で直接プローブして確認）: 裸カラム `active` → `WHERE (active)`（単一括弧・壊れる）／演算子式 `b > 1` → `WHERE ((b > 1))`（二重括弧・既存コードでも動く）。正しくは `from(1).to(-2)` で外側 1 対だけ剥がす — 演算子式は `(b > 1)` になるが Rails が再度 `(...)` で包むため両形状でラウンドトリップ安定。
 - **HOW**: `config/initializers/rails_exclusion_constraint_where_fix.rb` で `ExclusionConstraintWhereFix` モジュールを `prepend` して修正済み。upstream Rails main は 2026-06-12 時点でも未修正のため、ガードは `ActiveRecord::VERSION::MAJOR == 8`（8 系なら適用）。upstream 修正後に適用されても同等ロジックの上書きで無害。Rails メジャーアップ時に upstream の `exclusion_constraints`（schema_statements.rb の `predicate.from(2).to(-3)` 付近）を再確認し、修正されていたら本ファイルを削除する。initializer は `require "active_record/connection_adapters/postgresql_adapter"` で先読みしてから prepend すること（定数未ロードエラー防止）。
 - verified: Rails 8.1.3 / PostgreSQL 17.10 / 2026-06-12（0b-4 Task 2 で発覚・レビューで診断訂正）
+
+## ActiveRecord association
+
+### `dependent: :restrict_with_error` の association に `delete_all` を呼ぶと nullify になる
+
+- **WHAT**: `user.attendance_records.delete_all` が DELETE ではなく `user_id = NULL` の UPDATE を発行し、NOT NULL 制約で `NotNullViolation` 500 になる（1-1 品質レビューの実験スクリプトが実踏）
+- **WHY**: `CollectionProxy#delete_all` は引数なしだと association の `dependent` 戦略から削除方法を導出する。`:restrict_with_error` は delete_all の戦略表に無く、has_many 既定の `:nullify` 相当へフォールバックする（AR の仕様でありバグではない）
+- **HOW**: 一括削除はクラス起点 `AttendanceRecord.where(user_id: ...).delete_all` で書く（4-2 バッチ等）。association 経由の一括削除を書かない。レビュー時は `.〜s.delete_all`（restrict 系 association への呼び出し）を疑う
+- verified: Rails 8.1.3 / 2026-06-12（1-1 Task 2-4 品質レビューで実踏・本番コードに該当呼び出しなし）
 
 ---
 
