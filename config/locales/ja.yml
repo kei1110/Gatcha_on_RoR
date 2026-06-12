@@ -6,6 +6,7 @@ ja:
       work_pattern: 勤務パターン
       leave_type: 休暇種別
       company_calendar: 会社カレンダー
+      user_work_pattern: 勤務パターン割当
     attributes:
       user:
         name: 氏名
@@ -44,6 +45,12 @@ ja:
         name: 名称
         fiscal_year: 年度
         counts_as_paid_leave: 有給算入
+      user_work_pattern:
+        work_pattern: 勤務パターン
+        work_pattern_id: 勤務パターン
+        start_date: 適用開始日
+        end_date: 適用終了日
+        active: 有効
   leave_types:
     system_types:
       annual: 有給休暇

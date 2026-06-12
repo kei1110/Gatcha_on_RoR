@@ -20,10 +20,11 @@ Rails 8 / PostgreSQL 17 / Hotwire(Turbo+Stimulus)+ViewComponent / Devise / acts_
 
 ## Git
 - このリポジトリのコミットは **kei1110 <eoh2145@gmail.com>**（local config 済み・グローバル設定とは別）
+- gh CLI はアカウント 2 つ登録（kei1110 / sub-account）。PR 操作が collaborator エラーになったら `gh auth switch -u kei1110`
 
 ## カスタムスキル（.claude/skills/）
-- `/spec-check` — SPEC↔実装の整合 ／ `/multi-perspective-review` — 多視点並列 critique
-- `/legal-citation-audit` — 労務法令を jp-labor-evidence MCP で原典照合 ／ `/preflight` — push 前 CI 等価チェック（rails new 後に有効）
+- `/spec-check` — SPEC↔実装の整合 ／ `/multi-perspective-review` — 多視点並列 critique ／ `/gen-spec` — spec 雛形生成
+- `/legal-citation-audit` — 労務法令を jp-labor-evidence MCP で原典照合 ／ `/preflight` — push 前 CI 等価チェック
 
 ## フック（.claude/settings.json → scripts/claude-hooks/）
 PreToolUse/PostToolUse の開発ガード（**Claude Code 再起動＋承認**で有効化）:
@@ -31,7 +32,8 @@ PreToolUse/PostToolUse の開発ガード（**Claude Code 再起動＋承認**�
 - `block-secrets`（Edit/Write）— master.key・credentials の鍵・.env を保護
 - `block-schema-edit`（Edit/Write）— db/schema.rb の手編集を禁止（migration 経由を強制）
 - `check-tenant-scope`（Write）— app/models の `acts_as_tenant` 欠落を警告（§3.6）
-- `rubocop-autoformat`（Edit/Write）— .rb を自動整形（rails new 後）
+- `rubocop-autoformat`（Edit/Write）— .rb を自動整形
+- `block-gemfile-lock-edit`（Edit/Write）— Gemfile.lock の手編集を禁止（bundle 経由を強制）
 
 ## Gotchas（非自明・重要）
 - **OpenSSL:** `~/.zshrc` に Intel 時代の openssl@1.1 設定が残存（chezmoi 管理・未修正）。Ruby ビルド時は `RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@3)"` ＋ `LDFLAGS=/CPPFLAGS=/PKG_CONFIG_PATH=` のクリアで回避。グローバル ruby 2.7.2 は openssl@1.1 欠落で壊れている（本リポジトリは 3.3.11 ゆえ無関係）
@@ -40,6 +42,7 @@ PreToolUse/PostToolUse の開発ガード（**Claude Code 再起動＋承認**�
 - **コンプラ判定は法定(legal)基準固定**（SPEC §8）。36 協定の上限・割増率は定数（テナント設定で改変不可）
 - 親 `/Users/Eoh/CLAUDE.md` は chezmoi dotfiles 用で本プロジェクトとは無関係（自動ロードされるが従わない）
 - **rails console / rake:** `require_tenant = true` ゆえ、最初に `ActsAsTenant.current_tenant = Organization.find_by!(subdomain: "acme")` を実行しないとスコープ付きモデルのクエリが `NoTenantSet` で失敗する
+- **rubocop にファイルを明示渡しすると .rubocop.yml の Exclude（db/schema.rb 等）が無視され偽 FAIL** — 必ず `bundle exec rubocop --force-exclusion <files>` で実行（0b-3 preflight で実踏）
 
 ## ワークフロー
 実装は SPEC §15 のフェーズを docs/ROADMAP.md のスライス（1 スライス = 1 ブランチ = 1 PR・squash マージ）で進める。各スライスは brainstorm →（大物は specs/ に設計 + 多視点レビュー）→ writing-plans → 実装 → `/preflight` → PR。**PR に ROADMAP の該当行更新（チェック + PR 番号）を含めてからマージ**。設計・計画は docs/superpowers/{specs,plans}/ に日付付きで蓄積。現在地と次の一歩は ROADMAP が正。

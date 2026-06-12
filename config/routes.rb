@@ -16,6 +16,12 @@ Rails.application.routes.draw do
         patch :activate
         patch :resend_invitation
       end
+      resources :user_work_patterns, only: %i[new create edit update] do
+        member do
+          patch :deactivate
+          patch :activate
+        end
+      end
     end
     resources :work_patterns, except: :destroy do
       member do

@@ -18,4 +18,11 @@ class Organization < ApplicationRecord
     start_month = fiscal_year_end_month % 12 + 1
     (date.month >= start_month ? date.year : date.year - 1).to_s
   end
+
+  # 「今日」の単一ソース（組織 TZ・0b-4 設計 §0）。config.time_zone は未設定（UTC）のため
+  # Date.current は JST 0:00〜8:59 に前日を返す。WorkPattern 無効化ガード・割当の表示分類・
+  # 未割当バナー（Phase 1 の打刻日判定もここに合流予定）は必ずこれを使うこと
+  def today
+    Time.current.in_time_zone(time_zone).to_date
+  end
 end

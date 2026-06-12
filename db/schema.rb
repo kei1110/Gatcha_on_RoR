@@ -10,8 +10,9 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_11_110422) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_12_000100) do
   # These are extensions that must be enabled in order to support this database
+  enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
 
   create_table "company_calendars", force: :cascade do |t|
@@ -52,6 +53,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_11_110422) do
     t.string "time_zone", default: "Asia/Tokyo", null: false
     t.datetime "updated_at", null: false
     t.index ["subdomain"], name: "index_organizations_on_subdomain", unique: true
+  end
+
+  create_table "user_work_patterns", force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.date "end_date"
+    t.bigint "organization_id", null: false
+    t.date "start_date", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.bigint "work_pattern_id", null: false
+    t.index ["organization_id", "id"], name: "index_user_work_patterns_on_organization_id_and_id", unique: true
+    t.index ["organization_id"], name: "index_user_work_patterns_on_organization_id"
+    t.index ["user_id"], name: "index_user_work_patterns_on_user_id"
+    t.index ["work_pattern_id"], name: "index_user_work_patterns_on_work_pattern_id"
+    t.exclusion_constraint "organization_id WITH =, user_id WITH =, daterange(start_date, end_date, '[]'::text) WITH &&", where: "active", using: :gist, name: "user_work_patterns_no_overlap"
   end
 
   create_table "users", force: :cascade do |t|
@@ -109,6 +126,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_11_110422) do
 
   add_foreign_key "company_calendars", "organizations"
   add_foreign_key "leave_types", "organizations"
+  add_foreign_key "user_work_patterns", "organizations"
+  add_foreign_key "user_work_patterns", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
+  add_foreign_key "user_work_patterns", "work_patterns", column: ["organization_id", "work_pattern_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "users", "organizations"
   add_foreign_key "users", "users", column: ["organization_id", "manager_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "work_patterns", "organizations"

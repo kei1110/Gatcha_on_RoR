@@ -27,6 +27,8 @@ class WorkPattern < ApplicationRecord
   validate :half_day_breaks_meet_legal_minimum
   validate :core_time_required_for_flextime
   validate :times_must_not_invert_without_night_shift
+  validate :deactivation_requires_no_current_or_future_assignments,
+           if: -> { active_changed? && !active }
 
   # null → break_minutes/2 のフォールバックを単一ソース化。
   # Phase 1 の WorkTimeCalculator 入力合成（SPEC §5.1 の同一規則）もこのメソッドを参照すること
@@ -88,5 +90,28 @@ class WorkPattern < ApplicationRecord
     return if start_time < end_time
 
     errors.add(:end_time, "は始業時刻より後にしてください（日跨ぎ勤務は夜勤フラグを有効にしてください）")
+  end
+
+  # 0b-4 設計 §3（User ガード②同型）: 今日以降も有効な割当が残る無効化を拒否し、
+  # 「先に割当を付け替え → 無効化」の一本道にする（Phase 1 で無効パターンが打刻に
+  # 使われ続ける/計算不能になる二択を構造的に避ける）。
+  # ②型クエリ + without_tenant ラップ: 真の脆弱点は mismatched with_tenant
+  # （default scope が誤テナントを AND して空集合 → ガード素通り）。work_pattern_id キーは
+  # 複合 FK (organization_id, work_pattern_id) が越境を排除するため、スコープ無しでも
+  # 自テナントの割当だけが見える。today はレコードの organization から導出
+  # （current_tenant 不使用 — company_calendar の fiscal_year 導出と同じ前例）
+  def deactivation_requires_no_current_or_future_assignments
+    assignments = ActsAsTenant.without_tenant do
+      UserWorkPattern.where(work_pattern_id: id, active: true)
+                     .where("end_date IS NULL OR end_date >= ?", organization.today)
+                     .includes(:user).order(:start_date, :id).to_a
+    end
+    return if assignments.empty?
+
+    names = assignments.map { |a| a.user.name }.uniq
+    shown = names.first(3).join("、")
+    rest = names.size - 3
+    label = rest.positive? ? "#{shown} 他 #{rest} 名" : shown
+    errors.add(:base, "#{label}に有効な割当が残っています。先に割当を付け替えてください")
   end
 end

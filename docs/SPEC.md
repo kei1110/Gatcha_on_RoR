@@ -350,9 +350,13 @@ polymorphic 関連（`ApprovalAssignment.approvable` / `AttendanceHistory.source
 |--------|-----|------|
 | user_id / work_pattern_id | bigint | 割当先・パターン |
 | start_date / end_date | date | 適用期間（end_date null = 無期限） |
-| active | boolean | 有効フラグ |
+| active | boolean | 有効フラグ（**誤登録の論理削除専用** — 正常な終了・切替は end_date で表現） |
 
-**重複制約:** 同一ユーザーで有効な割当の日付範囲は重複不可（モデルバリデーション。`end_date = null` は全未来日と重複扱い）。打刻時は「打刻日時点で有効な 1 件」を `start_date <= 当日 AND (end_date >= 当日 OR end_date IS NULL) AND active` で取得。
+**重複制約:** 同一ユーザーで有効な割当の日付範囲は重複不可（`end_date = null` は全未来日と重複扱い）。防衛は**モデルバリデーション + PostgreSQL exclusion constraint（btree_gist・`WHERE (active)`）の二重**（0b-4: Phase 1 の「有効な 1 件」取得が重複データで 2 件になると賃金計算の入力が非決定化するため DB 層を追加）。打刻時は「打刻日時点で有効な 1 件」を `start_date <= 当日 AND (end_date >= 当日 OR end_date IS NULL) AND active` で取得 — 述語の単一ソースは `UserWorkPattern.effective_on`。
+
+**運用（0b-4）:** 割当は無効化のみ（destroy なし）。過去割当は未打刻日の所定根拠として温存する。今日以降も有効な割当が残る WorkPattern は無効化不可（先に割当を付け替える）。inactive な WorkPattern の新規割当・変更も拒否（無効化ガードの代入側対称）。「今日」の判定は組織 TZ（`Organization#today`）。
+
+**将来拡張（v2・§8.8 と同期）:** 属人的法定制限の割当時警告 — 年少者×夜勤パターン（労基法 61 条 1 項）・flextime パターン×労使協定の対象労働者範囲（労基法 32 条の 3 第 1 項 1 号）。人×パターンの適法性検証は割当が結節点となる。
 
 ### 4.7 CompanyCalendar（会社カレンダー）
 

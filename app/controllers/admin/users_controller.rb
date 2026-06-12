@@ -11,6 +11,11 @@ module Admin
 
     def show
       authorize [ :admin, @user ]
+      @user_work_patterns = @user.user_work_patterns.includes(:work_pattern)
+                                 .order(start_date: :desc, id: :desc)
+      @org_today = @user.organization.today
+      # 述語は effective_on（Phase 1 取得条件と同一の単一ソース）— 「割当行ゼロ」で判定しない
+      @no_effective_assignment = @user.user_work_patterns.effective_on(@org_today).none?
     end
 
     def new

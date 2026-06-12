@@ -114,6 +114,17 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **HOW**: エクスポート実装時にユーザー入力由来のセルは先頭が `=` `@` `+` `-` またはタブの場合に `'` 前置等でエスケープする
 - verified: 2026-06-12（0b-3 Task 6 品質レビューで予防的に記録・エクスポート未実装のため発火例なし）
 
+## DB / マイグレーション
+
+### Rails 8 の exclusion constraint WHERE 句 schema dump バグ（裸カラム述語のみ発火）
+
+- **WHAT**: `add_exclusion_constraint` で `where: "active"` 等の**裸のカラム参照**を使うと、`db:schema:dump` が `where: "ctiv"` という壊れた値を出力する。`db:schema:load` で `PG::UndefinedColumn: column "ctiv" does not exist` エラーになりラウンドトリップが失敗する。
+- **WHY**: `schema_statements.rb` の `predicate.from(2).to(-3)` が WHERE 節を常に二重括弧 `((expr))` と仮定して 2 文字ずつ剥がしている。だが pg_get_constraintdef の括弧数は PG バージョンではなく**述語の形状**に依存する（PG 17.10 で直接プローブして確認）: 裸カラム `active` → `WHERE (active)`（単一括弧・壊れる）／演算子式 `b > 1` → `WHERE ((b > 1))`（二重括弧・既存コードでも動く）。正しくは `from(1).to(-2)` で外側 1 対だけ剥がす — 演算子式は `(b > 1)` になるが Rails が再度 `(...)` で包むため両形状でラウンドトリップ安定。
+- **HOW**: `config/initializers/rails_exclusion_constraint_where_fix.rb` で `ExclusionConstraintWhereFix` モジュールを `prepend` して修正済み。upstream Rails main は 2026-06-12 時点でも未修正のため、ガードは `ActiveRecord::VERSION::MAJOR == 8`（8 系なら適用）。upstream 修正後に適用されても同等ロジックの上書きで無害。Rails メジャーアップ時に upstream の `exclusion_constraints`（schema_statements.rb の `predicate.from(2).to(-3)` 付近）を再確認し、修正されていたら本ファイルを削除する。initializer は `require "active_record/connection_adapters/postgresql_adapter"` で先読みしてから prepend すること（定数未ロードエラー防止）。
+- verified: Rails 8.1.3 / PostgreSQL 17.10 / 2026-06-12（0b-4 Task 2 で発覚・レビューで診断訂正）
+
+---
+
 ## メタ原則
 
 - **レビューは書いた場所の近くに置く**: 設計レビューは設計の虫しか取れない。計画にコードを書くなら計画コードにレビューを、環境の虫（brakeman・CI）は各タスクの完了条件に

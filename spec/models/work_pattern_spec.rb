@@ -164,4 +164,67 @@ RSpec.describe WorkPattern, type: :model do
       expect(build(:work_pattern).mode_conflict?).to be(false)
     end
   end
+
+  describe "無効化ガード（0b-4 設計 §3・User ガード②同型）" do
+    let(:pattern) { create(:work_pattern) }
+    let(:org) { pattern.organization }
+
+    def assign(user_name, end_date:, active: true)
+      employee = create(:user, name: user_name)
+      create(:user_work_pattern, user: employee, work_pattern: pattern,
+             start_date: Date.new(2026, 1, 1), end_date: end_date, active: active)
+    end
+
+    it "今日以降も有効な割当（無期限）があれば無効化拒否" do
+      assign("田中太郎", end_date: nil)
+      expect(pattern.update(active: false)).to be(false)
+      expect(pattern.errors[:base].join).to include("田中太郎").and include("先に割当を付け替えてください")
+    end
+
+    it "過去のみの割当なら許可" do
+      assign("田中太郎", end_date: org.today - 1)
+      expect(pattern.update(active: false)).to be(true)
+    end
+
+    it "今日終了の割当があれば無効化拒否（end_date >= today の境界）" do
+      assign("田中太郎", end_date: org.today)
+      expect(pattern.update(active: false)).to be(false)
+    end
+
+    it "割当なしなら許可" do
+      expect(pattern.update(active: false)).to be(true)
+    end
+
+    it "inactive 割当のみなら許可（誤登録の論理削除は妨げない）" do
+      assign("田中太郎", end_date: nil, active: false)
+      expect(pattern.update(active: false)).to be(true)
+    end
+
+    it "文言は先頭 3 名 + 他 N 名（flash 肥大防止）" do
+      %w[田中太郎 佐藤花子 鈴木一郎 高橋次郎 伊藤三郎].each { |n| assign(n, end_date: nil) }
+      pattern.update(active: false)
+      message = pattern.errors[:base].join
+      expect(message).to include("田中太郎、佐藤花子、鈴木一郎 他 2 名")
+      expect(message).not_to include("高橋次郎")
+    end
+
+    it "without_tenant 文脈でも保護される" do
+      assign("田中太郎", end_date: nil)
+      ActsAsTenant.without_tenant do
+        expect(pattern.update(active: false)).to be(false)
+      end
+    end
+
+    it "mismatched with_tenant 文脈（誤テナント設定中の console 操作）でも保護される" do
+      assign("田中太郎", end_date: nil)
+      ActsAsTenant.with_tenant(create(:organization)) do
+        expect(pattern.update(active: false)).to be(false)
+      end
+    end
+
+    it "再有効化（active: true への遷移）はガード対象外" do
+      pattern.update!(active: false)
+      expect(pattern.update(active: true)).to be(true)
+    end
+  end
 end

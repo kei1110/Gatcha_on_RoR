@@ -1,0 +1,32 @@
+<%= form_with model: [:admin, user, user_work_pattern], class: "max-w-md space-y-4 text-sm" do |f| %>
+  <% if user_work_pattern.errors.any? %>
+    <div class="rounded border border-red-400 bg-red-50 p-3 text-red-800">
+      <ul><% user_work_pattern.errors.full_messages.each do |msg| %><li><%= msg %></li><% end %></ul>
+    </div>
+  <% end %>
+
+  <div>
+    <%= f.label :work_pattern_id, "勤務パターン", class: "block font-bold" %>
+    <%# 候補は有効パターンのみ・policy_scope 起点（生 where 禁止・SPEC §3.4）。
+        edit で無効パターンを参照中の場合のみ現在値を「（無効）」付きで含める —
+        選択肢から消すと保存時に無言で別パターンへ書き換わる（0b-4 設計 §5） %>
+    <% options = policy_scope([:admin, WorkPattern]).where(active: true).order(:name).pluck(:name, :id) %>
+    <% current = user_work_pattern.work_pattern %>
+    <% if user_work_pattern.persisted? && current && !current.active? %>
+      <% options += [["#{current.name}（無効）", current.id]] %>
+    <% end %>
+    <%= f.select :work_pattern_id, options,
+                 { prompt: "勤務パターンを選択してください" },
+                 class: "w-full rounded border p-2" %>
+  </div>
+  <div>
+    <%= f.label :start_date, "適用開始日", class: "block font-bold" %>
+    <%= f.date_field :start_date, class: "w-full rounded border p-2" %>
+  </div>
+  <div>
+    <%= f.label :end_date, "適用終了日", class: "block font-bold" %>
+    <%= f.date_field :end_date, class: "w-full rounded border p-2" %>
+    <p class="mt-1 text-xs text-gray-600">空欄 = 無期限。パターン切替は「旧割当に終了日を設定 → 新しい割当を作成」の順で行ってください。</p>
+  </div>
+  <%= f.submit user_work_pattern.persisted? ? "更新する" : "割り当てる", class: "rounded bg-gray-800 px-4 py-2 text-white" %>
+<% end %>

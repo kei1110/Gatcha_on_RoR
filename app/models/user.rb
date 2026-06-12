@@ -10,6 +10,7 @@ class User < ApplicationRecord
   belongs_to :manager, class_name: "User", optional: true
   has_many :subordinates, class_name: "User",
            foreign_key: :manager_id, inverse_of: :manager, dependent: :nullify
+  has_many :user_work_patterns, dependent: :destroy
 
   enum :role, { employee: 0, manager: 1, hr_admin: 2 }, validate: true
 

@@ -30,7 +30,7 @@ end
       u.password = password
     end
 
-    User.find_or_create_by!(email: "employee@#{org.subdomain}.example.com") do |u|
+    emp = User.find_or_create_by!(email: "employee@#{org.subdomain}.example.com") do |u|
       u.name = "#{org.name} 社員"
       u.employee_code = "#{org.subdomain.upcase}-003"
       u.role = :employee
@@ -51,6 +51,11 @@ end
       wp.start_time = "09:00"; wp.end_time = "18:00"
       wp.break_minutes = 60; wp.standard_work_hours = 8
       wp.flextime = true; wp.core_time_start = "10:00"; wp.core_time_end = "15:00"
+    end
+
+    # 勤務パターン割当（0b-4）— §16.7-4 の動作確認用。found 経路は再実行で落ちない（冪等）
+    UserWorkPattern.find_or_create_by!(user: emp, work_pattern: WorkPattern.find_by!(name: "日勤")) do |a|
+      a.start_date = Date.new(2026, 4, 1) # end_date なし = 無期限
     end
 
     LeaveType.find_or_create_by!(name: "有給休暇") do |lt|

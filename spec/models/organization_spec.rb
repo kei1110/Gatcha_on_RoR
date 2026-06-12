@@ -51,4 +51,21 @@ RSpec.describe Organization, type: :model do
       expect(build(:organization, fiscal_year_end_month: 13)).not_to be_valid
     end
   end
+
+  describe "#today（0b-4 設計 §0 の TZ 契約）" do
+    it "組織 TZ の当日を返す（アプリ TZ = UTC と日付が割れる時刻帯）" do
+      org = build(:organization, time_zone: "Asia/Tokyo")
+      travel_to Time.utc(2026, 6, 11, 20, 0) do # JST 2026-06-12 05:00
+        expect(Date.current).to eq(Date.new(2026, 6, 11)) # 前提の固定: アプリ TZ では前日
+        expect(org.today).to eq(Date.new(2026, 6, 12))
+      end
+    end
+
+    it "UTC 組織なら Date.current と一致する" do
+      org = build(:organization, time_zone: "UTC")
+      travel_to Time.utc(2026, 6, 11, 20, 0) do
+        expect(org.today).to eq(Date.new(2026, 6, 11))
+      end
+    end
+  end
 end

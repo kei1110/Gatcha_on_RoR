@@ -10,4 +10,13 @@ module ApplicationHelper
   def t_system_type(value) = I18n.t("leave_types.system_types.#{value}")
 
   def t_day_type(value) = I18n.t("company_calendars.day_types.#{value}")
+
+  # 割当の状態バッジ（0b-4 設計 §5 — 単一リスト + 状態バッジ。today は組織 TZ の Organization#today）
+  def user_work_pattern_status(assignment, today)
+    return "無効" unless assignment.active?
+    return "未来" if assignment.start_date > today
+    return "過去" if assignment.end_date && assignment.end_date < today
+
+    "有効"
+  end
 end
