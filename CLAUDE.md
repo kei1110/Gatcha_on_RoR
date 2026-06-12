@@ -17,7 +17,7 @@ Rails 8 / PostgreSQL 17 / Hotwire(Turbo+Stimulus)+ViewComponent / Devise / acts_
 ## 環境（整備済み）
 - **Ruby:** 3.3.11（rbenv・`.ruby-version` でこのリポジトリに固定）
 - **Postgres:** 17（`brew services` 常駐）。DB `gatcha_development` / `gatcha_test` 作成済み。psql は keg-only → `/opt/homebrew/opt/postgresql@17/bin`
-- **MCP（.mcp.json）:** jp-labor-evidence（即稼働）/ sentry / rails（要 `~/.config/rails-mcp/projects.yml`）/ postgres
+- **MCP（.mcp.json）:** jp-labor-evidence / sentry（OAuth 済み）/ rails / postgres — **全 4 サーバー接続済み**（詳細・再現手順は docs/MCP_SETUP.md）
 
 ## Git
 - このリポジトリのコミットは **kei1110 <eoh2145@gmail.com>**（local config 済み・グローバル設定とは別）
