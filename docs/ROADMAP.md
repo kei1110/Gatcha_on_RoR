@@ -28,7 +28,7 @@
 - [x] **0b-2 WorkPattern + LeaveType**（PR #12）: CRUD・法定休憩バリデーション（§4.4・労基法 34 条）・night_shift×flextime 警告 + i18n 日本語化・タブ active 修正・dev seed
 - [x] **0b-3 CompanyCalendar**（PR #15）: CRUD・CSV 一括インポート（RFC 4180）・`CompanyCalendarResolver`（PORO・未登録日フォールバック §4.7）・legal_holiday 運用（一括生成 + 35% 保護 — 降格チェックボックス・0 件バナー・曜日必須選択）
 - [x] **0b-4 UserWorkPattern**（PR #16）: 割当 CRUD（社員詳細ネスト）・期間重複バリデーション（§4.6・モデル検証 + exclusion constraint の二重防衛）・割当済み WorkPattern の無効化ガード（**ガード②同型の拒否で確定** — 0b-2 設計 §0 の宿題回収）・`Organization#today` TZ 契約・未割当バナー（E 原則準拠）
-- [ ] **0b-5 OrganizationSetting + ReasonTemplate**: 設定画面（v1 は項目を絞る・§4.15 YAGNI 注記）・テンプレート CRUD **+ fiscal_year_end_month 変更時の既存 CompanyCalendar.fiscal_year 再計算 or 変更禁止の判断（0b-3 設計 §0・SSOT は Organization）**
+- [x] **0b-5 OrganizationSetting + ReasonTemplate**（PR #17）: 設定画面（v1 は closing_day / submit_deadline_days / fiscal_year_end_month の 3 項目・残カラムは消費 Phase 後送り）・テンプレート CRUD・**fiscal_year_end_month 変更は同一 tx で CompanyCalendar.fiscal_year 自動再計算に確定**（0b-3 設計 §0 の宿題回収・`Organization#setting` アクセサ規約）
 
 ### Phase 1 — 打刻と計算エンジン
 
@@ -87,6 +87,8 @@
 - [ ] **社員一覧の未割当バッジ + 期限切れ先読み**: 0b-4 は社員詳細バナーのみ（述語 = `effective_on`）。一覧バッジは Phase 1 の打刻導線で実害が出てから、「N 日以内に割当終了 + 後継なし」の先読み通知は Phase 4-1 の通知基盤接続後（0b-4 労務レビュー）
 - [ ] **割当隙間日の遡及補正**: 無割当期間に打たれた打刻は `work_pattern_id` NULL で計算スキップ（§5.4）になるが、§4.8 の不遡及原則により後追い割当でも補正されない。Phase 1 の打刻設計で「NULL レコード限定の遡及スナップショット + 再計算」の例外を判断（労務レビュー High・社労士確認 #12-(a)）
 - [ ] **割当変更履歴**: 過去に食い込む日付編集が監査証跡ゼロで可能（労基法 109 条の趣旨・社労士確認 #12-(b)）。Phase 1-3 AttendanceHistory 設計時に同棲で判断 — 履歴機構を二系統作らない（0b-4 設計 §0）
+- [ ] **fiscal_year_end_month の変更禁止への格上げ**: 0b-5 は CompanyCalendar の自動再計算で出荷。**Phase 2-2（LeaveBalance）着手時に「残高が存在したら変更禁止」へ格上げを再判断**（0b-5 設計 §0・社労士確認 #13）
+- [ ] **organization_settings 残カラムの追加様式**: 消費する Phase の PR が検証・既定値・意味論ごと同梱（4-1 email_enabled 方式）。36 協定系 4 カラムは Phase 4-3 で法定定数モジュールと同一 PR — 参考閾値 ≤ 法定の検証 + DB CHECK + `alert_` リネーム + 「ComplianceService が本テーブルを読まない」ガード spec の重装備セット（0b-5 労務レビュー High）
 
 ## 横断ルール（順序の根拠）
 

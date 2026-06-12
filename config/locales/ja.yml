@@ -7,6 +7,8 @@ ja:
       leave_type: 休暇種別
       company_calendar: 会社カレンダー
       user_work_pattern: 勤務パターン割当
+      organization_setting: 組織設定
+      reason_template: 申請理由テンプレート
     attributes:
       user:
         name: 氏名
@@ -51,6 +53,16 @@ ja:
         start_date: 適用開始日
         end_date: 適用終了日
         active: 有効
+      organization:
+        fiscal_year_end_month: 年度終了月
+      organization_setting:
+        closing_day: 締め日
+        submit_deadline_days: 提出期限（翌月の日数）
+      reason_template:
+        label: テンプレート名
+        template_text: 挿入テキスト
+        applies_to: 適用先
+        active: 有効
   leave_types:
     system_types:
       annual: 有給休暇
@@ -67,6 +79,11 @@ ja:
       holiday: 祝日
       company_holiday: 会社休業日
       legal_holiday: 法定休日
+  reason_templates:
+    applies_to:
+      clock_change: 打刻変更
+      leave: 休暇
+      both: 両方
   devise:
     mailer:
       invitation_instructions:

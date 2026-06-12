@@ -1,0 +1,17 @@
+<h2 class="mb-4 text-lg font-bold"><%= @reason_template.label %></h2>
+<dl class="space-y-2 text-sm">
+  <div><dt class="inline font-bold">適用先:</dt> <dd class="inline"><%= t_applies_to(@reason_template.applies_to) %></dd></div>
+  <div><dt class="inline font-bold">挿入テキスト:</dt> <dd class="inline"><%= @reason_template.template_text %></dd></div>
+  <div><dt class="inline font-bold">状態:</dt> <dd class="inline"><%= @reason_template.active? ? "有効" : "無効" %></dd></div>
+</dl>
+<div class="mt-6 flex gap-2">
+  <%= link_to "編集", edit_admin_reason_template_path(@reason_template), class: "rounded border px-4 py-2" %>
+  <% if @reason_template.active? %>
+    <%= button_to "無効化", deactivate_admin_reason_template_path(@reason_template), method: :patch,
+          data: { turbo_confirm: "#{@reason_template.label} を無効化しますか？" },
+          class: "rounded bg-red-700 px-4 py-2 text-white" %>
+  <% else %>
+    <%= button_to "再有効化", activate_admin_reason_template_path(@reason_template), method: :patch,
+          class: "rounded bg-gray-800 px-4 py-2 text-white" %>
+  <% end %>
+</div>

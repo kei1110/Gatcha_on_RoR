@@ -85,6 +85,19 @@ end
       end
     end
 
+    # 組織設定（0b-5）— アクセサ経由で既定値生成（冪等・§16.7-2）
+    org.setting
+
+    # 申請理由テンプレート（0b-5・dev 用。§16.7 本番手順には含めない — Phase 2 チップ UI で見直し）
+    ReasonTemplate.find_or_create_by!(label: "電車遅延") do |rt|
+      rt.template_text = "電車遅延のため"
+      rt.applies_to = :clock_change
+    end
+    ReasonTemplate.find_or_create_by!(label: "私用") do |rt|
+      rt.template_text = "私用のため"
+      rt.applies_to = :both
+    end
+
     puts "==> #{org.name}: #{User.count} users (admin: #{admin.email})"
   end
 end

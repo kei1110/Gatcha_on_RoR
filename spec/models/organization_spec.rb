@@ -52,6 +52,35 @@ RSpec.describe Organization, type: :model do
     end
   end
 
+  describe "#setting（0b-5 設計 §0 のアクセサ規約）" do
+    let(:org) { create(:organization) }
+
+    it "未生成なら既定値で生成する" do
+      expect { org.setting }.to change {
+        OrganizationSetting.unscoped.where(organization: org).count
+      }.from(0).to(1)
+      expect(org.setting.closing_day).to eq(31)
+      expect(org.setting.submit_deadline_days).to eq(5)
+    end
+
+    it "生成済みなら同一行を返す（重複生成しない）" do
+      first = org.setting
+      expect { org.setting }.not_to change { OrganizationSetting.unscoped.count }
+      expect(org.setting.id).to eq(first.id)
+    end
+
+    it "テナント文脈に依らず自組織へアンカーされる（mismatched with_tenant でも安全）" do
+      other = create(:organization)
+      created = ActsAsTenant.with_tenant(other) { org.setting }
+      expect(created.organization_id).to eq(org.id)
+    end
+
+    it "lazy 生成後は has_one キャッシュも更新される（再呼び出しが再生成経路を踏まない）" do
+      created = org.setting
+      expect(org.organization_setting).to eq(created) # 修正前は nil（キャッシュ未更新）
+    end
+  end
+
   describe "#today（0b-4 設計 §0 の TZ 契約）" do
     it "組織 TZ の当日を返す（アプリ TZ = UTC と日付が割れる時刻帯）" do
       org = build(:organization, time_zone: "Asia/Tokyo")

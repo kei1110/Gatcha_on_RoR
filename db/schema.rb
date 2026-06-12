@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_12_000100) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_12_055746) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -44,6 +44,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_12_000100) do
     t.index ["organization_id"], name: "index_leave_types_on_organization_id"
   end
 
+  create_table "organization_settings", force: :cascade do |t|
+    t.integer "closing_day", default: 31, null: false
+    t.datetime "created_at", null: false
+    t.bigint "organization_id", null: false
+    t.integer "submit_deadline_days", default: 5, null: false
+    t.datetime "updated_at", null: false
+    t.index ["organization_id", "id"], name: "index_organization_settings_on_organization_id_and_id", unique: true
+    t.index ["organization_id"], name: "index_organization_settings_on_organization_id", unique: true
+  end
+
   create_table "organizations", force: :cascade do |t|
     t.boolean "active", default: true, null: false
     t.datetime "created_at", null: false
@@ -53,6 +63,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_12_000100) do
     t.string "time_zone", default: "Asia/Tokyo", null: false
     t.datetime "updated_at", null: false
     t.index ["subdomain"], name: "index_organizations_on_subdomain", unique: true
+  end
+
+  create_table "reason_templates", force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.integer "applies_to", null: false
+    t.datetime "created_at", null: false
+    t.string "label", null: false
+    t.bigint "organization_id", null: false
+    t.string "template_text", null: false
+    t.datetime "updated_at", null: false
+    t.index ["organization_id", "id"], name: "index_reason_templates_on_organization_id_and_id", unique: true
+    t.index ["organization_id", "label"], name: "index_reason_templates_on_organization_id_and_label", unique: true
+    t.index ["organization_id"], name: "index_reason_templates_on_organization_id"
   end
 
   create_table "user_work_patterns", force: :cascade do |t|
@@ -126,6 +149,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_12_000100) do
 
   add_foreign_key "company_calendars", "organizations"
   add_foreign_key "leave_types", "organizations"
+  add_foreign_key "organization_settings", "organizations"
+  add_foreign_key "reason_templates", "organizations"
   add_foreign_key "user_work_patterns", "organizations"
   add_foreign_key "user_work_patterns", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "user_work_patterns", "work_patterns", column: ["organization_id", "work_pattern_id"], primary_key: ["organization_id", "id"]

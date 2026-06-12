@@ -1,0 +1,42 @@
+<h2 class="mb-4 text-lg font-bold">設定</h2>
+<%# singular resource は polymorphic ルーティング解決が壊れるため url: 明示必須（0b-5 設計 §5） %>
+<%= form_with model: @organization_setting, url: admin_organization_setting_path, method: :patch,
+      class: "max-w-md space-y-6 text-sm" do |f| %>
+  <% if @organization.errors.any? || @organization_setting.errors.any? %>
+    <div class="rounded border border-red-400 bg-red-50 p-3 text-red-800">
+      <ul>
+        <% (@organization.errors.full_messages + @organization_setting.errors.full_messages).each do |msg| %>
+          <li><%= msg %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <fieldset class="space-y-4">
+    <legend class="font-bold">組織情報</legend>
+    <%# トップレベル fields_for → params[:organization]（別 param キー方式・0b-5 設計 §5） %>
+    <%= fields_for :organization, @organization do |of| %>
+      <div>
+        <%= of.label :fiscal_year_end_month, "年度終了月", class: "block font-bold" %>
+        <%= of.select :fiscal_year_end_month, (1..12).map { |m| [ "#{m} 月", m ] }, {},
+              class: "w-full rounded border p-2" %>
+        <p class="mt-1 text-xs text-gray-600">変更すると、登録済みの会社カレンダー全件の年度を再計算します。</p>
+      </div>
+    <% end %>
+  </fieldset>
+
+  <fieldset class="space-y-4">
+    <legend class="font-bold">勤怠設定</legend>
+    <div>
+      <%= f.label :closing_day, "締め日", class: "block font-bold" %>
+      <%= f.number_field :closing_day, min: 1, max: 31, class: "w-full rounded border p-2" %>
+      <p class="mt-1 text-xs text-gray-600">31 = 月末締め</p>
+    </div>
+    <div>
+      <%= f.label :submit_deadline_days, "提出期限（翌月の日数）", class: "block font-bold" %>
+      <%= f.number_field :submit_deadline_days, min: 1, max: 28, class: "w-full rounded border p-2" %>
+    </div>
+  </fieldset>
+
+  <%= f.submit "保存する", class: "rounded bg-gray-800 px-4 py-2 text-white" %>
+<% end %>

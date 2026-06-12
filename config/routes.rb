@@ -40,6 +40,13 @@ Rails.application.routes.draw do
       resource :import, only: %i[new create]
       resource :legal_holiday_generation, only: %i[new create]
     end
+    resources :reason_templates, except: :destroy do
+      member do
+        patch :deactivate
+        patch :activate
+      end
+    end
+    resource :organization_setting, only: %i[edit update] # singular（0b-5 設計 §4）
   end
 
   root "home#show"

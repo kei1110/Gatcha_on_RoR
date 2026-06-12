@@ -11,6 +11,8 @@ module ApplicationHelper
 
   def t_day_type(value) = I18n.t("company_calendars.day_types.#{value}")
 
+  def t_applies_to(value) = I18n.t("reason_templates.applies_to.#{value}")
+
   # 割当の状態バッジ（0b-4 設計 §5 — 単一リスト + 状態バッジ。today は組織 TZ の Organization#today）
   def user_work_pattern_status(assignment, today)
     return "無効" unless assignment.active?

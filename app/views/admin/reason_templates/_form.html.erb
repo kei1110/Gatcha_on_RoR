@@ -1,0 +1,17 @@
+<%= form_with model: [ :admin, reason_template ], class: "max-w-md space-y-4 text-sm" do |f| %>
+  <% if reason_template.errors.any? %>
+    <div class="rounded border border-red-400 bg-red-50 p-3 text-red-800">
+      <ul><% reason_template.errors.full_messages.each do |msg| %><li><%= msg %></li><% end %></ul>
+    </div>
+  <% end %>
+
+  <div><%= f.label :label, class: "block font-bold" %><%= f.text_field :label, class: "w-full rounded border p-2" %></div>
+  <div>
+    <%= f.label :applies_to, class: "block font-bold" %>
+    <%= f.select :applies_to,
+          ReasonTemplate.applies_tos.keys.map { |k| [ t_applies_to(k), k ] }, {},
+          class: "w-full rounded border p-2" %>
+  </div>
+  <div><%= f.label :template_text, class: "block font-bold" %><%= f.text_area :template_text, rows: 3, class: "w-full rounded border p-2" %></div>
+  <%= f.submit reason_template.persisted? ? "更新する" : "登録する", class: "rounded bg-gray-800 px-4 py-2 text-white" %>
+<% end %>

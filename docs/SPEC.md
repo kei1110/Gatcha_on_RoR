@@ -511,6 +511,8 @@ polymorphic 関連（`ApprovalAssignment.approvable` / `AttendanceHistory.source
 
 テナントごとに 1 行。key-value ではなく**バリデーション可能な型付きカラム**で構成する設定テーブル。管理者が管理画面から編集。
 
+> **実装状況（0b-5）:** 実装済みカラムは `closing_day` / `submit_deadline_days` のみ。**残カラムは消費する Phase の PR が検証・既定値・意味論ごと同梱追加する**（ROADMAP 4-1 `email_enabled` 方式）。36 協定系 4 カラムは Phase 4-3 で法定定数モジュールと同一 PR（参考閾値 ≤ 法定の検証 + DB CHECK + 「ComplianceService が本テーブルを読まない」ガード spec を**必須同梱**。`alert_` リネームの要否のみそこで判断 — ROADMAP バックログ参照）。設定行の読み取りは **`Organization#setting` 経由のみ**（未生成なら既定値で lazy 生成 — §16.7-2 の「既定値で生成」はこのアクセサ + seeds が実装）。`fiscal_year_end_month` の変更は保存と同一 tx で既存 CompanyCalendar.fiscal_year を自動再計算する（対象は CompanyCalendar のみ。LeaveBalance / MonthlyAttendanceSummary 出現時は経過措置を再設計 — 社労士確認 #13・Phase 2-2 着手が再判断トリガー）。
+
 | カラム | 型 | 既定 | 説明 |
 |--------|-----|------|------|
 | closing_day | integer | 31 | 締め日（31=月末） |
@@ -519,7 +521,7 @@ polymorphic 関連（`ApprovalAssignment.approvable` / `AttendanceHistory.source
 | overtime_alert_threshold1/2/3 | integer | 45/80/100 | 残業アラート閾値 |
 | carry_over_limit | integer | 20 | 有給繰越上限 |
 | daily_batch_hour | integer | 2 | 日次バッチ実行時 |
-| fiscal_year_end_month | integer | 3 | 年度終了月（**SSOT は §4.2 Organization**（DB 既定 3・NOT NULL）— 本テーブルでは保持しない。変更時の既存 fiscal_year 再計算は 0b-5 で判断） |
+| fiscal_year_end_month | integer | 3 | 年度終了月（**SSOT は §4.2 Organization**（DB 既定 3・NOT NULL）— 本テーブルでは保持しない。変更時は既存 CompanyCalendar.fiscal_year を同一 tx で自動再計算（0b-5 で確定・上記注記）） |
 | leave_expiry_reminder_days | integer[] | [30,14] | 失効前リマインド（日前。配列で多段化） |
 | quiet_hours_enabled | boolean | true | 通知抑制 ON/OFF |
 | quiet_hours_start / quiet_hours_end | integer | 19 / 8 | 抑制時間帯 |

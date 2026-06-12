@@ -1,0 +1,23 @@
+<div class="mb-4 flex justify-between">
+  <h2 class="text-lg font-bold">申請理由テンプレート</h2>
+  <%= link_to "新規登録", new_admin_reason_template_path, class: "rounded bg-gray-800 px-4 py-2 text-white" %>
+</div>
+
+<table class="w-full text-left text-sm">
+  <thead>
+    <tr class="border-b font-bold">
+      <th class="p-2">テンプレート名</th><th class="p-2">適用先</th>
+      <th class="p-2">挿入テキスト</th><th class="p-2">状態</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @reason_templates.each do |rt| %>
+      <tr class="border-b">
+        <td class="p-2"><%= link_to rt.label, admin_reason_template_path(rt), class: "underline" %></td>
+        <td class="p-2"><%= t_applies_to(rt.applies_to) %></td>
+        <td class="p-2"><%= rt.template_text %></td>
+        <td class="p-2"><%= rt.active? ? "有効" : "無効" %></td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
