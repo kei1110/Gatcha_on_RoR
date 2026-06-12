@@ -6,6 +6,7 @@ Salesforce 2GP 勤怠パッケージ「Gatcha」を **Ruby on Rails 8 マルチ�
 - [docs/SPEC.md](docs/SPEC.md) — 仕様の single source of truth（§0〜§16・多視点レビュー反映・原典照合済み・SF 知識なしで自立）
 - [docs/ROADMAP.md](docs/ROADMAP.md) — 進行管理の SSOT（フェーズ→スライス分解・現在地・1 スライス = 1 PR）
 - [docs/RAILS_GOTCHAS.md](docs/RAILS_GOTCHAS.md) — 実際に踏んだ/仕留めた罠台帳（WHAT/WHY/HOW・verified 日付き）。**計画とレビューのプロンプトに注入し、新しい罠は修正と同じ PR で追記**
+- [docs/DEVELOPMENT_WORKFLOW.md](docs/DEVELOPMENT_WORKFLOW.md) — スライス実行体制の規約（役割分担・haiku 転写・レビュー実挙動検証義務など。0b-5/1-1 で実測検証済み）
 - [docs/LABOR_LAW_REVIEW_NOTES.md](docs/LABOR_LAW_REVIEW_NOTES.md) — 社労士確認事項（解釈・運用判断）
 - [docs/MCP_SETUP.md](docs/MCP_SETUP.md) — MCP サーバー設定と有効化手順
 - [docs/MIGRATION_FROM_SF.md](docs/MIGRATION_FROM_SF.md) — SF 版からの移植対応表（歴史的経緯・参照任意。SF 版原典 `../Gatcha/docs/SPEC.md` が手元に無くても支障なし）
