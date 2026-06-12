@@ -58,8 +58,11 @@ module Admin
       @company_calendar = policy_scope([ :admin, CompanyCalendar ]).find(params[:id])
     end
 
+    # Organization#today（組織 TZ）必須 — Date.current は UTC 設定下で JST 0:00〜8:59 に
+    # 前日を返し、年度初日の朝に前年度を初期選択してしまう（0b-4 規約の遡及適用・外部レビュー指摘）
     def current_fiscal_year
-      ActsAsTenant.current_tenant.fiscal_year_for(Date.current)
+      tenant = ActsAsTenant.current_tenant
+      tenant.fiscal_year_for(tenant.today)
     end
 
     # fiscal_year / organization_id は permit しない（fiscal_year は date から自動導出 — 0b-3 設計 §2）

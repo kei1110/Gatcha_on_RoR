@@ -23,6 +23,9 @@ jobs:
         with:
           bundler-cache: true
       - run: bin/brakeman --no-pager
+      # bin/ci（config/ci.rb）との等価性 — CI ランナーには advisory DB が無いため --update 必須
+      - run: bin/bundler-audit check --update
+      - run: bin/importmap audit
 
   test:
     runs-on: ubuntu-latest

@@ -26,6 +26,16 @@ RSpec.describe "Admin::CompanyCalendars", type: :request do
   describe "index（hr_admin）" do
     before { sign_in admin }
 
+    it "年度フィルタ既定値の TZ 境界: JST 4/1 8:59（UTC 3/31）でも新年度を初期選択する（Organization#today 経由）" do
+      # 3 月決算（factory 既定）: JST 2027-04-01 は 2027 年度。Date.current（UTC）だと 3/31 → 2026 年度に化ける
+      travel_to Time.utc(2027, 3, 31, 23, 59) do
+        get admin_company_calendars_url(host: tenant_host(org))
+      end
+
+      # legal_holiday 0 件の年度では必ず警告バナーが出る — そこに @fiscal_year が露出する
+      expect(response.body).to include("2027 年度に法定休日")
+    end
+
     it "年度フィルタ: 既定は今年度・指定年度のみ表示し enum 生値を露出しない" do
       old = ActsAsTenant.with_tenant(org) do
         create(:company_calendar, date: "2020-01-01", name: "過去の元日")
