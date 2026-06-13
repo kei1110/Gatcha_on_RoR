@@ -31,21 +31,12 @@ module Clockings
         # with_lock の外（commit 後）で再計算 — tx 内で SQL 例外を rescue すると PG が aborted
         # になり「偽 success + 退勤消失」する（品質レビュー② R12・GOTCHAS 参照）。
         # 外出しなら退勤は確定済み・Recalculate の失敗は 8 列 NULL に閉じる
-        recalculate(record) if result.success?
+        Clockings.recalculate_safely(record) if result.success?
         result
       end
     end
 
     private
-
-    # 計算は全域関数ゆえ例外 = 実装バグだが、退勤打刻は保全する（1-2 設計 §4 R4 — 打刻ブロック禁止）。
-    # 8 列は NULL のまま（= 未計算）。検知は error report（Sentry 連携は Phase 5）→ 恒久は 4-2 バッチ
-    def recalculate(record)
-      Clockings::Recalculate.call(record:)
-    rescue StandardError => e
-      Rails.error.report(e, severity: :error,
-                            context: { attendance_record_id: record.id }, source: "clockings")
-    end
 
     def failure(error) = Result.new(success: false, record: nil, error:)
   end

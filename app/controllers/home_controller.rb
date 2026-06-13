@@ -12,6 +12,16 @@ class HomeController < ApplicationController
                            .where(work_date: @month.all_month).index_by(&:work_date)
     @day_types = CompanyCalendarResolver.new(organization: ActsAsTenant.current_tenant)
                                         .day_types(@month, @month.end_of_month)
+
+    # 本人向け代理打刻バナー（§R-6・push は Phase 4）。当日レコードが代理打刻なら操作者を履歴から解決。
+    # 当日行は State 経由（月非依存・メモ化済 — clocking partial と同一述語源）。@records は当月限定ロードゆえ
+    # 非当月閲覧（?month=）で nil になりバナーが消える。State#today_record は同一リクエストで既出ゆえ追加クエリ無し
+    @today_record = @state.today_record
+    @proxy_clock_event =
+      if @today_record&.proxy_clock_reason?
+        AttendanceHistory.where(source: @today_record, event_type: :proxy_clock)
+                         .order(:created_at).last
+      end
   end
 
   private

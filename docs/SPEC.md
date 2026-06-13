@@ -208,7 +208,7 @@ end
 | 部下の勤怠の参照 | `record.user.manager == user`（または上長階層を辿る `user.subordinate_of?(record.user)`） |
 | 部下の申請の承認 | `manager?` かつ承認ルート上の承認者 かつ `record.user != user`（自己承認防止） |
 | マスタ管理 | `hr_admin?` |
-| 代理打刻 | `manager?` かつ部下 |
+| 代理打刻 | `manager?`（直接部下）または `hr_admin?`（全員） |
 
 - **`scope`:** 一覧系は `Pundit::Scope` で「自分 + 部下」に絞る。**一覧・一括・CSV エクスポート系は生 `where` を禁止し `policy_scope` 起点とする**。`params[:user_id]` 等の対象指定は scope に対する `find` で解決し、scope 外は 404（IDOR 対策）。代理打刻・欠勤確定・月次一括確定も対象集合を scope で固定する。
 - **Pundit の強制:** `ApplicationController` で `after_action :verify_authorized, :verify_policy_scoped` をデフォルト ON とし、明示 skip のみ列挙する。2 層防衛ゆえポリシー網羅漏れ＝即バイパスとなるため、強制フックを必須とする。
@@ -503,7 +503,8 @@ polymorphic 関連（`ApprovalAssignment.approvable` / `AttendanceHistory.source
 | カラム | 型 | 説明 |
 |--------|-----|------|
 | organization_id | bigint | テナント（付随テーブルにも `organization_id` を明示） |
-| user_id | bigint | 対象社員 |
+| user_id | bigint | 対象社員（オーナー＝当事者・§3.5） |
+| actor_id | bigint | 操作者（NULL=システム起因。代理打刻はオーナーと別人を記録・§3.5。`proxy_clock` では必須） |
 | event_date | date | 対象勤務日 |
 | event_type | integer (enum) | clock_in / clock_out / leave_approved / leave_withdrawn / clock_change_approved / absence_confirmed / absence_to_paid / proxy_clock / interval_shortage |
 | source_type / source_id | string / bigint | 起因レコード（polymorphic: LeaveRequest 等） |
@@ -517,6 +518,12 @@ polymorphic 関連（`ApprovalAssignment.approvable` / `AttendanceHistory.source
 | note | text | 操作者情報・撤回理由等 |
 
 > **設計意図:** 撤回時の状態復元はこのログを参照する（§7.6）。5 年保持（§11.2 の法的保存要件を自前で満たす）。
+>
+> **時刻の二軸:** `event_date`（対象勤務日）と `created_at`（操作時刻）は別物。同一勤務日に複数操作（代理打刻 → 後日の打刻変更等）が時系列で積まれるため、両軸を混同しない。
+>
+> **整数マッピングの凍結:** `event_type`（および `previous_status` / `new_status` に格納する `AttendanceRecord.status` の整数）は **append-only / 凍結**。値の追加は末尾のみ・既存値のリオーダや再利用は禁止する（過去ログの誤デコードを防ぐ）。
+>
+> **計算列を source にしない契約:** §7.6 の撤回復元はこのログの**前後値スナップショット**（`previous_*` / `new_*`）を参照するが、`proxy_clock` 行の計算列（`new_is_late` / `new_late_minutes` 等）は復元・賃金算定の source にしない。`proxy_clock` は新規作成（`previous_*` = NULL）であり、その計算列は記録時点の派生スナップショットにすぎない。確定値は常に `AttendanceRecord` から解決する（§11.1）。
 
 ### 4.15 OrganizationSetting（組織設定）
 
@@ -798,7 +805,7 @@ SolidQueue 定期ジョブ（毎日 `daily_batch_hour` 時）で前日分を検�
 ```
 (status ∈ {working, morning_half, afternoon_half}) AND clock_in IS NOT NULL AND clock_out IS NULL
 ```
-`clock_in IS NOT NULL` で「休暇承認のみ・打刻なし」の誤検知を防ぐ。**夜勤者**（有効な `UserWorkPattern` の `work_pattern.night_shift=true`）はバッチ時点で勤務中の可能性があり対象外（翌日実行で検出）。回復は打刻変更申請（推奨）or 代理打刻。通知に「退勤時刻を申請する」リンク（1 タップで申請画面へ）。
+`clock_in IS NOT NULL` で「休暇承認のみ・打刻なし」の誤検知を防ぐ。**夜勤者**（有効な `UserWorkPattern` の `work_pattern.night_shift=true`）はバッチ時点で勤務中の可能性があり対象外（翌日実行で検出）。回復は打刻変更申請（推奨）or 代理打刻。**前日以前の打刻忘れは打刻変更申請（§2-3）で回復する。代理打刻は当日（`organization.today`）のみ**（§6.1 の実装は対象日を当日に固定）。通知に「退勤時刻を申請する」リンク（1 タップで申請画面へ）。
 
 **無打刻検知（2 カテゴリ・通知のみ。AttendanceRecord は作らない）:**
 
@@ -1098,6 +1105,8 @@ production:
 ### 11.1 監査証跡
 
 `AttendanceHistory`（§4.14・追記専用）が主要監査ログ。打刻変更・休暇承認/撤回・遅刻早退フラグの前後値・代理打刻・欠勤確定・インターバル不足を完全記録。任意時点の勤怠状態を再現可能。補完として Postgres トリガー or `paper_trail` を主要モデルの status / 時刻に併用してもよい（法的根拠は `AttendanceHistory`、`paper_trail` は補助）。
+
+> **計算値の解決元:** 監査 UI・CSV エクスポートが表示する勤務時間・残業・遅刻早退等の**計算値は常に `AttendanceRecord`（確定レコード）から解決**する。`AttendanceHistory` の計算列（`new_late_minutes` 等）は「その操作時点のスナップショット」であって賃金証跡そのものではないため、賃金・労働時間の証跡には使わない（§4.14 の計算列契約・§7.6）。
 
 ### 11.2 法的保存要件
 

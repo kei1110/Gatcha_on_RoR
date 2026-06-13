@@ -81,6 +81,15 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **HOW**: setup のモデル操作を `ActsAsTenant.with_tenant(org) { ... }` で包む（本番のコントローラ文脈の写像）
 - verified: 2026-06-11（0b-1 G2 で顕在化）
 
+## Pundit / 認可
+
+### `policy_scope(Model)` の Scope 解決規則（top-level Policy 不在で `NotDefinedError`）
+
+- **WHAT**: 代理打刻のロスターを `policy_scope(User)` で引こうとすると `Pundit::NotDefinedError`（"unable to find policy scope `UserPolicy::Scope`"）で 500。`User` モデルには top-level `UserPolicy` が無く（認可は `Admin::UserPolicy` 名前空間と headless な `ProxyClockingPolicy` に分かれている）、`policy_scope` は既定で `"#{Model}Policy::Scope"` を引くため
+- **WHY**: `policy_scope(record)` のスコープ解決は record のクラス名から `XxxPolicy::Scope` を機械的に導出する。別 Policy 配下の Scope（`ProxyClockingPolicy::Scope`）を使いたい場合や、そもそも top-level Policy を置かない設計では、導出名が存在せず fail-closed（例外）になる。これは「誤って素の `policy_scope` を呼んだら通ってしまう」より安全だが、意図した Scope を明示しないと動かない
+- **HOW**: 別 Scope を使うときは `policy_scope(User, policy_scope_class: ProxyClockingPolicy::Scope)` と明示する（`app/controllers/proxy_clockings_controller.rb#roster`）。`after_action :verify_policy_scoped`（index 強制）も `policy_scope` 呼び出しで満たされる。top-level Policy を置かない設計は「`policy_scope` の誤用＝即例外」という補償統制として意図的に維持する（`Admin::OrganizationSettingPolicy` が Scope を定義しない理由と同型）
+- verified: pundit / Rails 8.1.3 / 2026-06-13（1-3 Task 5 で実装・§3.4 / §5 設計）
+
 ## テスト基盤
 
 ### `sign_in` / `login_as` は本物のセッション復元経路を踏まない
@@ -107,6 +116,13 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **WHAT**: `deliveries.last` 直読みは、並列実行や同ファイルへの example 追加で他のメールを掴む
 - **HOW**: spec/support で `before(:each, type: :system) { ActionMailer::Base.deliveries.clear }` + 件数は change matcher で assert（gen-spec 規約）
 - verified: 2026-06-11
+
+### DB トリガーの `RAISE EXCEPTION` を踏む example は `transaction(requires_new: true)` で隔離する
+
+- **WHAT**: 追記専用テーブル（`AttendanceHistory`・§4.14）の「UPDATE/DELETE/TRUNCATE を拒否」拒否 spec で、`expect { update_all }.to raise_error(StatementInvalid)` は通るのに**後続の example が偽 FAIL**する
+- **WHY**: transactional fixtures 下では各 example が 1 つの tx で包まれる。DB トリガーの `RAISE EXCEPTION` は PG の tx 全体を aborted 状態にするため、rescue（`expect ... raise_error`）で例外を捕まえても example の親 tx は壊れたまま。以降のクエリが `PG::InFailedSqlTransaction` 系で落ちる（Ruby 例外と違い SQL エラーは tx を道連れにする — DB セクションの with_lock 罠と同根）
+- **HOW**: 拒否を起こす 1 文だけを `ActiveRecord::Base.transaction(requires_new: true) { ... }`（savepoint）で包む。savepoint だけが rollback され親 tx は生存する。`spec/models/attendance_history_spec.rb` の `in_savepoint` ヘルパが見本（層③の `update_all` / `delete_all` / raw DELETE / TRUNCATE 全例で使用）。層①②（`readonly?` / `before_destroy` の Ruby 例外）は SQL 未発行ゆえ隔離不要
+- verified: Rails 8.1.3 / PG 17 / 2026-06-13（1-3 Task 2 で実装・追記専用 4 経路の拒否 spec）
 
 ---
 
@@ -136,6 +152,13 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **WHY**: `schema_statements.rb` の `predicate.from(2).to(-3)` が WHERE 節を常に二重括弧 `((expr))` と仮定して 2 文字ずつ剥がしている。だが pg_get_constraintdef の括弧数は PG バージョンではなく**述語の形状**に依存する（PG 17.10 で直接プローブして確認）: 裸カラム `active` → `WHERE (active)`（単一括弧・壊れる）／演算子式 `b > 1` → `WHERE ((b > 1))`（二重括弧・既存コードでも動く）。正しくは `from(1).to(-2)` で外側 1 対だけ剥がす — 演算子式は `(b > 1)` になるが Rails が再度 `(...)` で包むため両形状でラウンドトリップ安定。
 - **HOW**: `config/initializers/rails_exclusion_constraint_where_fix.rb` で `ExclusionConstraintWhereFix` モジュールを `prepend` して修正済み。upstream Rails main は 2026-06-12 時点でも未修正のため、ガードは `ActiveRecord::VERSION::MAJOR == 8`（8 系なら適用）。upstream 修正後に適用されても同等ロジックの上書きで無害。Rails メジャーアップ時に upstream の `exclusion_constraints`（schema_statements.rb の `predicate.from(2).to(-3)` 付近）を再確認し、修正されていたら本ファイルを削除する。initializer は `require "active_record/connection_adapters/postgresql_adapter"` で先読みしてから prepend すること（定数未ロードエラー防止）。
 - verified: Rails 8.1.3 / PostgreSQL 17.10 / 2026-06-12（0b-4 Task 2 で発覚・レビューで診断訂正）
+
+### fx の SchemaDumper フックと exclusion-constraint パッチは共存できる（別メソッド prepend で順序非依存）
+
+- **WHAT**: `fx`（DB トリガーを `create_trigger` として schema.rb に出力する gem）を導入しても、自前の `ExclusionConstraintWhereFix`（上記バグ修正）と衝突しない。schema.rb には exclusion_constraint と `create_trigger` の両方が出力され、`db:schema:load` でラウンドトリップする
+- **WHY**: 両者は**別メソッドへの prepend** で干渉しない。fx は `ActiveRecord::SchemaDumper` 系に prepend して `create_trigger` 行を吐く出力フック、自前パッチは `PostgreSQL::SchemaStatements#exclusion_constraints` に prepend する読み取り修正。patch するメソッドが異なるため initializer のロード順に依存しない（どちらが先でも結果が同じ）
+- **HOW**: 追記専用トリガー（`db/triggers/attendance_histories_no_mutate_v01.sql` 等）は fx の `create_trigger` で管理し、UserWorkPattern の exclusion constraint と同じ schema.rb に同居させる。新規にトリガー or exclusion を足したら `RAILS_ENV=test bin/rails db:schema:load`（or `db:test:prepare`）でラウンドトリップを 1 度通して両出力が壊れていないか確認する
+- verified: fx 0.11.0 / Rails 8.1.3 / PG 17 / 2026-06-13（1-3 Task 1-2 で実装・schema.rb に exclusion_constraint と create_trigger 2 件が共存・load 実証済）
 
 ## ActiveRecord association
 

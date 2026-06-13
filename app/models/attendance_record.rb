@@ -13,6 +13,12 @@ class AttendanceRecord < ApplicationRecord
   # plain enum は意図的逸脱: AASM 化は状態が 3 つ以上になる 2-2 で再判断・SPEC §13 実装注記）
   enum :status, { working: 0, clocked_out: 1 }, validate: true
 
+  # 代理打刻の理由（§6.1）。NULL = 通常打刻。permit する enum ゆえ allow_nil: true で毒入力のみ 422 に
+  # （NULL は一覧外だが許容する — validate: true のみだと nil が拒否される）
+  enum :proxy_clock_reason,
+       { system_failure: 0, unreachable: 1, forgot_punch: 2, other: 3 },
+       validate: { allow_nil: true }
+
   # 退勤対象・出勤ガード・ホーム表示の単一述語源（1-1 設計 §1 — 二度書き禁止）。
   # window = 夜勤の日付跨ぎ退勤を前日レコードに合流させる探索範囲（SPEC §4.8 出勤日統一）。
   # 端なし Range も可（State の stale 探索が使う）。window は Date の Range を渡すこと

@@ -6,6 +6,8 @@ gem "rails", "~> 8.1.3"
 gem "propshaft"
 # Use postgresql as the database for Active Record
 gem "pg", "~> 1.1"
+# 追記専用テーブルのトリガー/関数を schema.rb にダンプし、テスト DB に再現する（SPEC §4.14）
+gem "fx", "~> 0.11.0" # 0.x は minor bump で破壊変更があり得るため patch レベルに悲観固定
 # Use the Puma web server [https://github.com/puma/puma]
 gem "puma", ">= 5.0"
 # Use JavaScript with ESM import maps [https://github.com/rails/importmap-rails]

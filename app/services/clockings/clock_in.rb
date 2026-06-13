@@ -24,7 +24,7 @@ module Clockings
           # パターンスナップショット（SPEC §4.8・§6.1）: 打刻時点で確定し以後の割当変更は当日に
           # 影響しない（不遡及）。未割当は NULL = 1-2 計算スキップ（SPEC §5.4）。
           # active 割当の重複は exclusion constraint（0b-4）で排除済みゆえ高々 1 件
-          work_pattern_id: @user.user_work_patterns.effective_on(today).pick(:work_pattern_id),
+          work_pattern_id: Clockings.snapshot_pattern_id(@user, today),
           status: :working
         )
         Result.new(success: true, record:, error: nil)

@@ -69,6 +69,11 @@ ja:
         clock_in: 出勤時刻
         clock_out: 退勤時刻
         status: 状態
+        proxy_clock_reasons:
+          system_failure: システム障害
+          unreachable: 連絡不能
+          forgot_punch: 打刻忘れ
+          other: その他
   leave_types:
     system_types:
       annual: 有給休暇
@@ -103,6 +108,26 @@ ja:
       already_clocked_in: すでに出勤済みです
       still_working: 前日の退勤が記録されていません。先に退勤を打刻してください
       not_working: 出勤打刻がありません。過去日の退勤時刻は打刻変更申請（Phase 2 で提供予定）で記録します。それまでは管理者に連絡してください
+  proxy_clockings:
+    clock_in:
+      success: 代理出勤を記録しました
+    clock_out:
+      success: 代理退勤を記録しました
+    errors:
+      already_clocked_in: すでに出勤済みです
+      still_working: 勤務中の打刻が残っています
+      not_working: 退勤対象の勤務がありません
+      cross_tenant: 対象が組織外です
+      self_proxy_forbidden: 自分自身には通常の打刻を使ってください
+      reason_required: 代理打刻の理由を選択してください
+      proxy_clock_failed: 代理打刻に失敗しました
+    index:
+      title: 代理打刻
+      empty: 代理打刻の対象者がいません
+      clock_in: 代理出勤
+      clock_out: 代理退勤
+      done: 本日打刻済
+      reason: 理由
   devise:
     mailer:
       invitation_instructions:

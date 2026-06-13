@@ -54,5 +54,12 @@ Rails.application.routes.draw do
     post :clock_out
   end
 
+  resources :proxy_clockings, only: %i[index] do
+    member do
+      post :clock_in    # :id = 対象社員 id
+      post :clock_out
+    end
+  end
+
   root "home#show"
 end

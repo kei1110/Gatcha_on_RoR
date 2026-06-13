@@ -10,10 +10,40 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_13_010946) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_13_110201) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "attendance_histories", force: :cascade do |t|
+    t.bigint "actor_id"
+    t.datetime "created_at", null: false
+    t.date "event_date", null: false
+    t.integer "event_type", null: false
+    t.timestamptz "new_clock_in"
+    t.timestamptz "new_clock_out"
+    t.integer "new_early_leave_minutes"
+    t.boolean "new_is_early_leave"
+    t.boolean "new_is_late"
+    t.integer "new_late_minutes"
+    t.integer "new_status"
+    t.text "note"
+    t.bigint "organization_id", null: false
+    t.timestamptz "previous_clock_in"
+    t.timestamptz "previous_clock_out"
+    t.integer "previous_early_leave_minutes"
+    t.boolean "previous_is_early_leave"
+    t.boolean "previous_is_late"
+    t.integer "previous_late_minutes"
+    t.integer "previous_status"
+    t.bigint "source_id"
+    t.string "source_type"
+    t.bigint "user_id", null: false
+    t.index ["organization_id", "actor_id"], name: "idx_ah_actor"
+    t.index ["organization_id", "source_type", "source_id"], name: "idx_ah_source"
+    t.index ["organization_id", "user_id", "event_date"], name: "idx_ah_user_event_date"
+    t.index ["organization_id"], name: "index_attendance_histories_on_organization_id"
+  end
 
   create_table "attendance_records", force: :cascade do |t|
     t.decimal "actual_work_hours", precision: 6, scale: 2
@@ -26,7 +56,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_010946) do
     t.boolean "is_late"
     t.integer "late_minutes"
     t.decimal "legal_overtime_hours", precision: 6, scale: 2
+    t.text "note"
     t.bigint "organization_id", null: false
+    t.integer "proxy_clock_reason"
     t.decimal "scheduled_overtime_hours", precision: 6, scale: 2
     t.integer "status", null: false
     t.datetime "updated_at", null: false
@@ -170,6 +202,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_010946) do
     t.index ["organization_id"], name: "index_work_patterns_on_organization_id"
   end
 
+  add_foreign_key "attendance_histories", "organizations"
+  add_foreign_key "attendance_histories", "users", column: ["organization_id", "actor_id"], primary_key: ["organization_id", "id"], name: "ah_actor_same_tenant"
+  add_foreign_key "attendance_histories", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"], name: "ah_user_same_tenant"
   add_foreign_key "attendance_records", "organizations"
   add_foreign_key "attendance_records", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "attendance_records", "work_patterns", column: ["organization_id", "work_pattern_id"], primary_key: ["organization_id", "id"]
@@ -183,4 +218,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_010946) do
   add_foreign_key "users", "organizations"
   add_foreign_key "users", "users", column: ["organization_id", "manager_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "work_patterns", "organizations"
+
+  create_function :attendance_histories_immutable, sql_definition: <<-'SQL'
+      CREATE OR REPLACE FUNCTION public.attendance_histories_immutable()
+       RETURNS trigger
+       LANGUAGE plpgsql
+      AS $function$
+      BEGIN
+        -- OLD を参照しないため UPDATE/DELETE/TRUNCATE で共用できる（TRUNCATE は OLD 不在）
+        RAISE EXCEPTION 'attendance_histories is append-only; % is blocked (SPEC 4.14, 5-year legal trail)', TG_OP
+          USING ERRCODE = 'restrict_violation';
+      END;
+      $function$
+  SQL
+
+  create_trigger :attendance_histories_no_mutate, sql_definition: <<-SQL
+      CREATE TRIGGER attendance_histories_no_mutate BEFORE DELETE OR UPDATE ON public.attendance_histories FOR EACH ROW EXECUTE FUNCTION attendance_histories_immutable()
+  SQL
+
+  create_trigger :attendance_histories_no_truncate, sql_definition: <<-SQL
+      CREATE TRIGGER attendance_histories_no_truncate BEFORE TRUNCATE ON public.attendance_histories FOR EACH STATEMENT EXECUTE FUNCTION attendance_histories_immutable()
+  SQL
 end

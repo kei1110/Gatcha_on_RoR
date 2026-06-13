@@ -2,11 +2,18 @@
   <div class="flex items-center justify-between">
     <h1 class="text-2xl font-bold">Gatcha 勤怠</h1>
     <div class="flex items-center gap-3 text-sm text-gray-600">
+      <% if policy(:proxy_clocking).index? %>
+        <%= link_to "代理打刻", proxy_clockings_path, class: "rounded border border-gray-300 px-3 py-1.5" %>
+      <% end %>
       <span><%= current_user.name %>（<%= ActsAsTenant.current_tenant.name %>）</span>
       <%= button_to "ログアウト", destroy_user_session_path, method: :delete,
             class: "rounded bg-gray-800 px-3 py-1.5 text-white" %>
     </div>
   </div>
+
+  <% if @proxy_clock_event %>
+    <%= render "home/proxy_clock_banner", event: @proxy_clock_event, record: @today_record %>
+  <% end %>
 
   <%= render "home/clocking", state: @state %>
   <%= render Home::CalendarComponent.new(month: @month, today: @state.today,

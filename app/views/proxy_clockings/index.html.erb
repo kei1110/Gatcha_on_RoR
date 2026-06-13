@@ -1,0 +1,38 @@
+<main class="mx-auto w-full max-w-3xl p-4">
+  <h1 class="text-2xl font-bold"><%= t(".title") %></h1>
+
+  <% if @targets.empty? %>
+    <p class="mt-6 text-gray-600"><%= t(".empty") %></p>
+  <% else %>
+    <table class="mt-6 w-full text-sm">
+      <tbody>
+        <% reason_options = AttendanceRecord.proxy_clock_reasons.keys.map { |k|
+             [t("activerecord.attributes.attendance_record.proxy_clock_reasons.#{k}"), k] } %>
+        <% @targets.each do |target| %>
+          <tr class="border-b border-gray-200">
+            <td class="py-3"><%= target.name %>（<%= target.employee_code %>）</td>
+            <td class="py-3 text-right">
+              <% if @open[target.id] %>
+                <%= form_with url: clock_out_proxy_clocking_path(target), method: :post,
+                              class: "inline-flex items-center gap-2 justify-end" do %>
+                  <%= select_tag :proxy_clock_reason, options_for_select(reason_options),
+                        class: "rounded border-gray-300 text-sm", "aria-label": t(".reason") %>
+                  <%= submit_tag t(".clock_out"), class: "rounded bg-blue-600 px-4 py-2 text-white" %>
+                <% end %>
+              <% elsif @done_today[target.id] %>
+                <span class="text-gray-500"><%= t(".done") %></span>
+              <% else %>
+                <%= form_with url: clock_in_proxy_clocking_path(target), method: :post,
+                              class: "inline-flex items-center gap-2 justify-end" do %>
+                  <%= select_tag :proxy_clock_reason, options_for_select(reason_options),
+                        class: "rounded border-gray-300 text-sm", "aria-label": t(".reason") %>
+                  <%= submit_tag t(".clock_in"), class: "rounded bg-blue-600 px-4 py-2 text-white" %>
+                <% end %>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+</main>

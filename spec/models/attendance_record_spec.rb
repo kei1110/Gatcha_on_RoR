@@ -88,6 +88,20 @@ RSpec.describe AttendanceRecord, type: :model do
     end
   end
 
+  describe "proxy_clock_reason enum" do
+    it "整数マッピングが固定" do
+      expect(AttendanceRecord.proxy_clock_reasons).to eq(
+        "system_failure" => 0, "unreachable" => 1, "forgot_punch" => 2, "other" => 3
+      )
+    end
+
+    it "不正値は ArgumentError でなく検証エラー（毒入力対策）" do
+      rec = build(:attendance_record)
+      rec.proxy_clock_reason = "bogus"
+      expect(rec).to be_invalid
+    end
+  end
+
   describe "計算 8 列（1-2 設計 §1）" do
     let(:org) { create(:organization) }
     let(:user) { ActsAsTenant.with_tenant(org) { create(:user) } }
