@@ -19,8 +19,17 @@ class AttendanceRecord < ApplicationRecord
   # （Time を渡すと自身のゾーンの日付に縮約され 1 日ズレ得る）
   scope :working_within, ->(window) { where(status: :working, work_date: window) }
 
+  # 計算 8 列（SPEC §4.8・1-2 設計 §1）。書き込みは Clockings::Recalculate 限定 —
+  # NULL = 未計算（Recalculate が一括書き込みするため 8 列は一括 NULL / 一括非 NULL が不変条件）。
+  # 未計算の除外は必ずこのスコープ経由。is_late 等の boolean を直接 where しないこと —
+  # `where(is_late: false)` は SQL 3 値論理で NULL（未計算）行を黙って落とす（1-2 設計 R9）
+  scope :calculated, -> { where.not(actual_work_hours: nil) }
+
   validates :work_date, presence: true
   validates :clock_in, presence: true
+  validates :actual_work_hours, :legal_overtime_hours, :scheduled_overtime_hours,
+            :deep_night_hours, :late_minutes, :early_leave_minutes,
+            numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
   # 同日 uniqueness のモデル検証は意図的に置かない — TOCTOU で race に勝てないため
   # unique index [user_id, work_date] + RecordNotUnique rescue（Clockings::ClockIn）が一次防衛
   validate :clock_out_not_before_clock_in

@@ -20,6 +20,14 @@ RSpec.describe Clockings::ClockIn do
     end
   end
 
+  it "打刻はサブ秒を持たない（usec 切り詰め — ClockOut と対・1-2 R2）" do
+    # travel_to は既定で usec を 0 に切り詰めるため with_usec: true で本物のサブ秒を再現する
+    travel_to Time.utc(2026, 6, 1, 1, 0, 0, 123_456), with_usec: true do
+      result = described_class.call(user:)
+      expect(result.record.clock_in.usec).to eq(0)
+    end
+  end
+
   it "有効割当が無ければ work_pattern_id NULL で保存する（SPEC §5.4 — 打刻はブロックしない）" do
     travel_to Time.utc(2026, 6, 1, 1) do
       result = described_class.call(user:)

@@ -41,7 +41,7 @@
 | 撤回 | **承認済み**の申請を取り消すこと。管理者の承認と状態復元処理を伴う | §7.6 |
 | 二重 opt-in | 組織設定と個人設定の両方が ON のときだけメール通知を送る方式 | §9.4 |
 | 法定休日 / 所定休日 | 法定休日 = 労基法 35 条の週 1 日（労働は 35% 割増・60h カウント外）。所定休日 = 会社が定めるその他の休日（土曜等） | §4.7 |
-| 法定残業 / 所定外残業 | 法定残業 = 実労働 − 所定（8h 超・割増とコンプラ判定の基準）。所定外残業 = 退勤 − 所定終業（表示用に併存） | §5.2 |
+| 法定残業 / 所定外残業 | 法定残業 = 実労働 − 8h（労基法 32 条・割増とコンプラ判定の基準）。所定外残業 = 退勤 − 所定終業（表示用に併存） | §5.2 |
 | 振替休日 / 代休 | 振替 = **事前**に休日を別日へ振替（同一週内なら割増不要）。代休 = 休日出勤の**事後**の休み（35% 割増は消滅しない） | §6.11 |
 | 管理監督者 | 労基法 41 条 2 号の地位（`exempt_from_overtime`）。残業割増の対象外だが**深夜割増と面談対象からは除外されない**。`manager` ロール（システム権限）とは別概念 | §3.3・§8.3 |
 | 36 協定 / 特別条項 | 時間外労働の労使協定。通常 月 45h/年 360h、特別条項でも 月 100h 未満・年 720h・2–6 ヶ月平均 80h が法定上限 | §8.2 |
@@ -118,6 +118,8 @@
 app/
 ├── models/            # ActiveRecord モデル（全モデルに acts_as_tenant）
 ├── calculators/       # 純粋計算オブジェクト（労働時間・残業・深夜・遅刻早退）
+│   ├── scheduled_window.rb        # 入力合成（TZ 合成・夜勤 +1.day・日跨ぎコア）
+│   ├── minute_conversion.rb       # 丸め規則の単一ソース（秒→分 floor・分→時 HALF_UP）
 │   ├── work_time_calculator.rb
 │   ├── overtime_calculator.rb
 │   ├── deep_night_calculator.rb
@@ -383,7 +385,7 @@ polymorphic 関連（`ApprovalAssignment.approvable` / `AttendanceHistory.source
 | clock_in / clock_out | timestamptz | 打刻時刻 |
 | work_pattern_id | bigint | **打刻時点で確定**したパターン（打刻後の割当変更は当日に影響しない） |
 | actual_work_hours | decimal(6,2) | 実労働時間（退勤−出勤−休憩） |
-| legal_overtime_hours | decimal(6,2) | 法定残業（実労働−所定。負は 0） |
+| legal_overtime_hours | decimal(6,2) | 法定残業（実労働 − 8h。負は 0） |
 | scheduled_overtime_hours | decimal(6,2) | 所定外残業（退勤−所定終業。負は 0） |
 | deep_night_hours | decimal(6,2) | 深夜労働（22:00–05:00・休憩按分控除後。§5.3） |
 | status | integer (enum) | working / clocked_out / morning_half / afternoon_half / on_leave / absent |
@@ -395,7 +397,7 @@ polymorphic 関連（`ApprovalAssignment.approvable` / `AttendanceHistory.source
 | note | text | 備考（代理打刻・インターバル不足の自動追記先） |
 | archived | boolean | アーカイブ済み（§11） |
 
-> **計算列の方針:** `actual_work_hours` 等は**サービスで算出して保存**（打刻・打刻変更承認・休暇承認時に再計算）する「常時保存」運用。理由は CSV 出力・集計クエリでの再計算コストを避けるため。算出は §5 の計算オブジェクトに委譲。
+> **計算列の方針:** `actual_work_hours` 等は**サービスで算出して保存**（打刻・打刻変更承認・休暇承認時に再計算）する「常時保存」運用。理由は CSV 出力・集計クエリでの再計算コストを避けるため。算出は §5 の計算オブジェクトに委譲。計算 8 列は **NULL = 未計算**（`Clockings::Recalculate` が一括書き込み — 一括 NULL / 一括非 NULL が不変条件。未計算の除外は `calculated` スコープ経由のみ・boolean の直接 where 禁止）。
 
 ### 4.9 LeaveRequest（休暇申請）
 
@@ -607,6 +609,8 @@ Gatcha Work 連携用の Outbox（`IntegrationEvent`）は **v1 では作らな�
 >
 > **入力契約（重要）:** 計算オブジェクトには**組織 TZ に変換済みの `ActiveSupport::TimeWithZone`** を渡す（`clock_in`/`clock_out` は `in_time_zone(org.time_zone)` 変換、`WorkPattern` の `time` 型は当日日付 + 組織 TZ で合成）。夜勤の `end_time + 24h` は `time` の加算ではなく `Time.zone` 上の `+1.day` 合成で行う。コアタイムも同規則 — `night_shift=true` かつ `core_time_start > core_time_end` のときは `core_time_end` を翌日換算して合成する。**v1 は組織 TZ を `Asia/Tokyo` 固定（DST 無）**とし、任意 TZ 許容は将来課題（DST 跨ぎの深夜帯ずれを別途設計）。
 
+> **秒の扱い（1-2 設計）:** 打刻は秒精度で保存（書き込み時に usec 切り詰め — `Clockings::ClockIn/ClockOut`）。分換算は「差分秒 ÷ 60 の整数除算（floor）」で統一。深夜 2 窓の重複は**秒で合算してから 1 回だけ floor**（窓ごと floor は労働者不利の追加切り捨てを生むため不可）。日次 floor の端数処理は社労士確認中（LABOR_LAW_REVIEW_NOTES #16）。
+
 ### 5.1 WorkTimeCalculator（実労働時間）
 
 ```
@@ -622,9 +626,13 @@ Gatcha Work 連携用の Outbox（`IntegrationEvent`）は **v1 では作らな�
 二系統を**常時**算出して保存:
 
 ```
-法定残業 (legal_overtime_hours)     = max(0, 実労働時間 − 所定労働時間)
+法定残業 (legal_overtime_hours)     = max(0, 実労働時間 − 8h)   # 労基法 32 条 2 項「休憩時間を除き一日について八時間」
 所定外残業 (scheduled_overtime_hours) = max(0, 退勤時刻 − 所定終業時刻)
 ```
+
+> **8h は法定値固定**（480 分・テナント設定で改変不可・§8 原則）。所定基準の超過は scheduled 系統が担う。
+> 旧式「実労働 − 所定」は §0.3 用語集・本節週 40h 注記（1 日 8h 超）と矛盾していたため補正
+> （出典: <https://laws.e-gov.go.jp/law/322AC0000000049>・原典照合 2026-06-13・1-2 設計）。
 
 - 表示・集計には `organization_setting.overtime_calc_base`（legal / scheduled）で使う値を切替（両方常時保存ゆえ過去再計算不要）。ただし**コンプラ判定（§8）は常に legal 基準固定**で `overtime_calc_base` に依存しない
 - **週 40 時間超の法定時間外（労基法 32 条）:** 日次 `legal_overtime_hours`（1 日 8h 超）だけでは、所定 7h×6 日=週 42h のように*各日 8h 未満でも週 40h を超える*法定時間外を取りこぼす。割増 25% と 36 協定カウントに直結するため、**週単位の法定時間外（週の実労働 − 40h − 日次法定残業との重複分）を週次で算出**し月次に合算する。変形労働時間制は v2（清算期間での判定）。**社労士確認推奨**
@@ -645,7 +653,7 @@ Step 2: 休憩の按分控除
 Step 3: deep_night_hours = round((overlap_minutes − deep_night_break) / 60, 2, HALF_UP)
 ```
 
-実装は `BigDecimal#round(2, half: :up)`。フレックス・変形労働でも**ロジック同一**（深夜割増は免除されない）。
+実装は `BigDecimal#round(2, half: :up)`。`total_work_minutes` は**退勤 − 出勤の gross 在席分（休憩込み）**（1-2 設計で明文化）。フレックス・変形労働でも**ロジック同一**（深夜割増は免除されない）。
 
 ### 5.4 LateEarlyCalculator（遅刻・早退判定）
 

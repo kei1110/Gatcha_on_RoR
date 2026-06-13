@@ -20,7 +20,7 @@ module Clockings
 
         record = @user.attendance_records.create!(
           work_date: today,
-          clock_in: Time.current,
+          clock_in: Time.current.change(usec: 0), # サブ秒切り詰め（1-2 設計 R2 — ClockOut と対）
           # パターンスナップショット（SPEC §4.8・§6.1）: 打刻時点で確定し以後の割当変更は当日に
           # 影響しない（不遡及）。未割当は NULL = 1-2 計算スキップ（SPEC §5.4）。
           # active 割当の重複は exclusion constraint（0b-4）で排除済みゆえ高々 1 件

@@ -35,7 +35,9 @@ class WorkPattern < ApplicationRecord
   def effective_morning_half_break_minutes = morning_half_break_minutes || break_minutes / 2
   def effective_afternoon_half_break_minutes = afternoon_half_break_minutes || break_minutes / 2
 
-  # 同時指定は保存許可・画面で警告バッジ（SPEC §4.4。優先ルールは Phase 1 計算側）
+  # 同時指定は保存許可・画面で警告バッジ（SPEC §4.4）。優先ルールは 1-2 で確定:
+  # WorkTime/Overtime = night_shift 換算（ScheduledWindow）・LateEarly = flextime コア判定
+  # （別カラムを読むため矛盾なく共存 — 1-2 設計 §0-2）
   def mode_conflict? = night_shift? && flextime?
 
   private
@@ -84,12 +86,16 @@ class WorkPattern < ApplicationRecord
   end
 
   # 補強 2（SPEC §4.4 へ逆反映済み）: §5.1 の翌日換算は night_shift かつ start > end が前提。
-  # 非夜勤の時刻逆転は負の労働時間を生むため拒否
+  # 非夜勤の時刻逆転は負の労働時間を生むため拒否。
+  # 等値（長さ 0 の勤務帯）は夜勤含め常時拒否 — ScheduledWindow が長さ 0 の窓になる（1-2 設計 R6）
   def times_must_not_invert_without_night_shift
-    return if night_shift? || start_time.blank? || end_time.blank?
-    return if start_time < end_time
+    return if start_time.blank? || end_time.blank?
 
-    errors.add(:end_time, "は始業時刻より後にしてください（日跨ぎ勤務は夜勤フラグを有効にしてください）")
+    if start_time == end_time
+      errors.add(:end_time, "は始業時刻と異なる時刻にしてください")
+    elsif !night_shift? && start_time > end_time
+      errors.add(:end_time, "は始業時刻より後にしてください（日跨ぎ勤務は夜勤フラグを有効にしてください）")
+    end
   end
 
   # 0b-4 設計 §3（User ガード②同型）: 今日以降も有効な割当が残る無効化を拒否し、

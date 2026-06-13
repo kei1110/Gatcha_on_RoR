@@ -152,6 +152,12 @@ RSpec.describe WorkPattern, type: :model do
     it "night_shift: true なら start > end が valid（夜勤の鏡像 — 条件なし逆転拒否の誤実装検知）" do
       expect(build(:work_pattern, night_shift: true, start_time: "22:00", end_time: "07:00")).to be_valid
     end
+
+    it "夜勤でも start_time == end_time（長さ 0 の勤務帯）は拒否する（1-2 設計 R6）" do
+      pattern = build(:work_pattern, night_shift: true, start_time: "22:00", end_time: "22:00")
+      expect(pattern).not_to be_valid
+      expect(pattern.errors[:end_time]).to be_present
+    end
   end
 
   describe "#mode_conflict?" do

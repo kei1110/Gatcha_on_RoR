@@ -10,16 +10,24 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_12_192550) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_13_010946) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
 
   create_table "attendance_records", force: :cascade do |t|
+    t.decimal "actual_work_hours", precision: 6, scale: 2
     t.timestamptz "clock_in", null: false
     t.timestamptz "clock_out"
     t.datetime "created_at", null: false
+    t.decimal "deep_night_hours", precision: 6, scale: 2
+    t.integer "early_leave_minutes"
+    t.boolean "is_early_leave"
+    t.boolean "is_late"
+    t.integer "late_minutes"
+    t.decimal "legal_overtime_hours", precision: 6, scale: 2
     t.bigint "organization_id", null: false
+    t.decimal "scheduled_overtime_hours", precision: 6, scale: 2
     t.integer "status", null: false
     t.datetime "updated_at", null: false
     t.bigint "user_id", null: false

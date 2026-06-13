@@ -76,7 +76,7 @@ RSpec.describe Clockings::ClockOut do
 
   it "ロック取得待ちの間に他方が退勤済みへ変えていたら :not_working（同時タブ race の敗者）" do
     record = create(:attendance_record, user:, work_date: Date.new(2026, 6, 1),
-                    clock_in: Time.utc(2026, 6, 1, 0))
+                    clock_in: Time.utc(2026, 6, 1, 0), work_pattern: create(:work_pattern))
     # with_lock の reload 後に「他タブが勝った」状況を再現する（lock 機構そのものは AR を信頼）
     allow_any_instance_of(AttendanceRecord).to receive(:with_lock) do |rec, &block|
       rec.update_columns(status: AttendanceRecord.statuses[:clocked_out],
@@ -89,6 +89,76 @@ RSpec.describe Clockings::ClockOut do
       expect(result).not_to be_success
       expect(result.error).to eq(:not_working)
       expect(record.reload.clock_out).to eq(Time.utc(2026, 6, 1, 8)) # 先勝ちの時刻が保持される
+      expect(record.reload.actual_work_hours).to be_nil # 敗者経路では計算しない
+    end
+  end
+
+  describe "計算列の保存（1-2 統合）" do
+    it "退勤で 8 列が埋まる（日勤 9:00–18:00・JST 18:30 退勤）" do
+      pattern = create(:work_pattern) # 9:00–18:00・break 60
+      record = create(:attendance_record, user:, work_date: Date.new(2026, 6, 1),
+                      clock_in: Time.utc(2026, 6, 1, 0), work_pattern: pattern) # JST 9:00
+      travel_to Time.utc(2026, 6, 1, 9, 30) do # JST 18:30
+        described_class.call(user:)
+
+        record.reload
+        expect(record.actual_work_hours).to eq(8.5)        # 570 − 60 = 510 分
+        expect(record.legal_overtime_hours).to eq(0.5)     # 510 − 480
+        expect(record.scheduled_overtime_hours).to eq(0.5) # 18:30 − 18:00
+        expect(record.deep_night_hours).to eq(0)
+        expect(record.is_late).to be(false)
+        expect(record.is_early_leave).to be(false)
+      end
+    end
+
+    it "夜勤跨ぎは deep_night_hours まで埋まる（22:00–翌 7:00・按分 46 分控除）" do
+      pattern = create(:work_pattern, start_time: "22:00", end_time: "07:00",
+                       night_shift: true, break_minutes: 60, standard_work_hours: 8)
+      record = create(:attendance_record, user:, work_date: Date.new(2026, 6, 1),
+                      clock_in: Time.utc(2026, 6, 1, 13), work_pattern: pattern) # JST 22:00
+      travel_to Time.utc(2026, 6, 1, 22) do # JST 翌 7:00
+        described_class.call(user:)
+
+        # assert は travel_to 内（RAILS_GOTCHAS: 時刻依存の罠）
+        record.reload
+        expect(record.actual_work_hours).to eq(8.0)     # 540 − 60
+        expect(record.deep_night_hours).to eq(6.23)     # overlap 420 − floor(60×420/540)=46 → 374 分
+        expect(record.is_early_leave).to be(false)      # 終業ちょうど
+      end
+    end
+
+    it "未割当は退勤成功 + 全列 NULL のまま" do
+      create(:attendance_record, user:, work_date: Date.new(2026, 6, 1),
+             clock_in: Time.utc(2026, 6, 1, 0)) # work_pattern なし
+      travel_to Time.utc(2026, 6, 1, 9) do
+        result = described_class.call(user:)
+        expect(result).to be_success
+        expect(result.record.actual_work_hours).to be_nil
+      end
+    end
+
+    it "Recalculate の例外でも退勤は保全される（R4: rescue + Rails.error.report・8 列 NULL）" do
+      record = create(:attendance_record, user:, work_date: Date.new(2026, 6, 1),
+                      clock_in: Time.utc(2026, 6, 1, 0), work_pattern: create(:work_pattern))
+      allow(Clockings::Recalculate).to receive(:call).and_raise(RuntimeError, "calc bug")
+      expect(Rails.error).to receive(:report) # kwargs まで縛らない（matcher の kwargs 互換罠を避ける）
+
+      travel_to Time.utc(2026, 6, 1, 9) do
+        result = described_class.call(user:)
+        expect(result).to be_success
+        expect(record.reload).to be_clocked_out
+        expect(record.actual_work_hours).to be_nil
+      end
+    end
+
+    it "打刻はサブ秒を持たない（usec 切り詰め — 9:00:00 ちょうど打刻の偽遅刻防止）" do
+      create(:attendance_record, user:, work_date: Date.new(2026, 6, 1),
+             clock_in: Time.utc(2026, 6, 1, 0))
+      # travel_to は既定で usec を 0 に切り詰めるため with_usec: true で本物のサブ秒を再現する
+      travel_to Time.utc(2026, 6, 1, 9, 0, 0, 123_456), with_usec: true do
+        result = described_class.call(user:)
+        expect(result.record.clock_out.usec).to eq(0)
+      end
     end
   end
 end

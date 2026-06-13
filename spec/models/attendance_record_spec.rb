@@ -87,4 +87,34 @@ RSpec.describe AttendanceRecord, type: :model do
       expect(described_class.working_within(..Date.new(2026, 5, 31))).to contain_exactly(old)
     end
   end
+
+  describe "計算 8 列（1-2 設計 §1）" do
+    let(:org) { create(:organization) }
+    let(:user) { ActsAsTenant.with_tenant(org) { create(:user) } }
+
+    it "numericality: 負値 invalid・nil valid（NULL = 未計算）" do
+      ActsAsTenant.with_tenant(org) do
+        record = build(:attendance_record, user:,
+                       actual_work_hours: -1, legal_overtime_hours: -1, scheduled_overtime_hours: -1,
+                       deep_night_hours: -1, late_minutes: -5, early_leave_minutes: -5)
+        expect(record).not_to be_valid
+        %i[actual_work_hours legal_overtime_hours scheduled_overtime_hours
+           deep_night_hours late_minutes early_leave_minutes].each do |col|
+          expect(record.errors[col]).to be_present
+        end
+        expect(build(:attendance_record, user:)).to be_valid # 8 列 nil で valid
+      end
+    end
+
+    it "calculated スコープは actual_work_hours 非 NULL のみ返す（is_late 直接 where 禁止の代替経路）" do
+      ActsAsTenant.with_tenant(org) do
+        raw  = create(:attendance_record, user:, work_date: Date.new(2026, 6, 1))
+        calc = create(:attendance_record, user:, work_date: Date.new(2026, 6, 2),
+                      clock_in: Time.utc(2026, 6, 2, 0), status: :clocked_out,
+                      clock_out: Time.utc(2026, 6, 2, 9), actual_work_hours: 8.0)
+        expect(AttendanceRecord.calculated).to contain_exactly(calc)
+        expect(AttendanceRecord.calculated).not_to include(raw)
+      end
+    end
+  end
 end

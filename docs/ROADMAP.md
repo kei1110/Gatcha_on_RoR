@@ -35,7 +35,7 @@
 > 完了条件: 社員がブラウザから打刻し、退勤時に実労働・残業・深夜・遅刻早退が正しく保存される
 
 - [x] **1-1 AttendanceRecord + 打刻**: 出退勤ボタン（Turbo）・パターンスナップショット・二重打刻防止（UI + サーバー）・社員ホームのヘッダー/カレンダー（§12.1 最小）（PR [#19](https://github.com/kei1110/Gatcha_on_RoR/pull/19)）
-- [ ] **1-2 計算オブジェクト 4 種**: WorkTime / Overtime / DeepNight / LateEarly（§5.1〜5.4・分単位整数 + HALF_UP・TZ 入力契約）。退勤・再計算時にサービスから保存（週 40h 週次算出は Phase 3 の集計で導入）
+- [x] **1-2 計算オブジェクト 4 種**: WorkTime / Overtime / DeepNight / LateEarly（§5.1〜5.4・分単位整数 + HALF_UP・TZ 入力契約）。退勤・再計算時にサービスから保存（週 40h 週次算出は Phase 3 の集計で導入）（PR #23）
 - [ ] **1-3 AttendanceHistory + 代理打刻**: 追記専用モデル（3 段不変防御・DB トリガー/REVOKE 含む・§4.14）・代理打刻（§6.1。対象者通知は Phase 4 で接続、まず note 追記と履歴記録まで）
 
 ### Phase 2 — 申請・承認
@@ -81,7 +81,7 @@
 - [ ] **実労働ベースの法定休憩再判定**: マスタ検証は必要条件のみ（所定 8h・休憩 45 分は残業 1 分で 60 分不足）。Phase 1/4 の事後アラートとして検討（打刻ブロック不可・社労士確認 #8）
 - [ ] **LeaveType の annual×paid_leave 整合警告**: §8.6 の有給 5 日義務判定への影響。Phase 4 着手時に再検討
 - [ ] **production のエラーページ**: RecordNotFound 等が plain text 応答（0b-1 で controller 層 404 化した際の暫定）。Phase 5 の管理 UI 仕上げで専用ページへ
-- [ ] **Mutant のスコープ限定導入**: 計算オブジェクト（§5）・ComplianceService（§8）は「テストが緑でも法定値とズレたら重大事故」の純粋ロジックで、ミューテーションテストの費用対効果が最大。Phase 1-2 完了後に `app/services/calculations` 配下のみで導入を検討し、Phase 4-3 で対象を拡大（全体適用はしない）。mbj/mutant はライセンス形態が変遷した歴史があるため導入時点で商用利用条件を要確認（出典: [TechRacho 2026-06-10](https://techracho.bpsinc.jp/hachi8833/2026_06_10/158257)）
+- [ ] **Mutant のスコープ限定導入**: 計算オブジェクト（§5）・ComplianceService（§8）は「テストが緑でも法定値とズレたら重大事故」の純粋ロジックで、ミューテーションテストの費用対効果が最大。Phase 1-2 完了後に `app/calculators` 配下のみで導入を検討し、Phase 4-3 で対象を拡大（全体適用はしない）。mbj/mutant はライセンス形態が変遷した歴史があるため導入時点で商用利用条件を要確認（出典: [TechRacho 2026-06-10](https://techracho.bpsinc.jp/hachi8833/2026_06_10/158257)）
 - [ ] **legal_holiday カバレッジ失効の事前アラート**: 一括生成（上限 2 年）の期間満了後、未登録日曜が Resolver フォールバックで sunday に降格し 35% 側が静かに失われる。index の 0 件バナー（0b-3）が第一歩 — 残り N 日での管理者通知は Phase 4-1 の通知基盤接続後（労務レビュー高・社労士確認 #11）
 - [ ] **締め済み月の CompanyCalendar destroy 制限**: 過去日の削除は Phase 1 再集計時の day_type 根拠（legal_holiday の 35%・60h 除外）を遡及的に書き換える。締め状態機械の導入（Phase 3-2）に合わせて制限を課す
 - [ ] **夜勤継続中のカレンダー前日セル表示**: classify の `stale_working` は window 内の現役夜勤行（勤務継続中）も退勤済と同色に巻き込む（1-1 品質レビュー観察・実害なし）。Phase 2-3 で打刻変更申請の導線をセルに付ける際、「勤務中の前日セル」を独立分類に分けるか再訪

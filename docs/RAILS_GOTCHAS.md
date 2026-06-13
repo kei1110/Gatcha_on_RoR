@@ -148,6 +148,33 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 
 ---
 
+### with_lock（トランザクション）内で SQL 例外を rescue すると「偽 success + 更新消失」
+
+- **WHAT**: with_lock ブロック内で `update!` 成功 → 後続処理の SQL 例外（StatementInvalid 等）を rescue して正常 return すると、成功レスポンスなのに update! が消える
+- **WHY**: PG は SQL エラーでトランザクション全体が aborted 状態になり、rescue 後の COMMIT は黙って ROLLBACK に化ける。Ruby 例外（RecordInvalid・RuntimeError 等 SQL 未発行のもの）なら commit は生きるため、**例外の種類で結果が分岐**し気づきにくい
+- **HOW**: 「確定させたい書き込み」と「失敗してよい後続処理」は同一 tx に同居させない — 後続を with_lock の外（commit 後）へ出すか、`transaction(requires_new: true)`（savepoint）で隔離する（1-2 ClockOut → Recalculate の構造）
+- verified: Rails 8.1.3 / PG 17 / 2026-06-13（1-2 品質レビュー②で実踏 — nonexistent_table 実験で偽 success + working 残留を再現・Ruby 例外 3 種は commit 維持を対照確認）
+
+---
+
+## テスト / 検証プロセス
+
+### bin/brakeman は `--ensure-latest` 注入 — 新版リリースで突然 exit 5
+
+- **WHAT**: コード無変更でも brakeman の新版が出た瞬間から `bin/brakeman` が「not the latest version」で非ゼロ終了し、local も CI（security ジョブ）も落ちる
+- **WHY**: rails new が生成する binstub は `ARGV.unshift("--ensure-latest")` を仕込んでおり、Gemfile.lock の版 ≠ 最新版だと警告 0 件でも exit 5 を返す
+- **HOW**: `bundle update brakeman` で追従（Gemfile.lock 更新を伴うので bundle-audit も同時に回す）。`bundle exec brakeman` 直叩きは --ensure-latest が付かず素通りする — exit code の食い違いを見たらまず binstub を読む
+- verified: brakeman 8.0.4→8.0.5 / 2026-06-13（1-2 preflight で実踏）
+
+### bootsnap の ISeq cache が「同一バイト数の編集 + 同一秒内の revert」で stale 化
+
+- **WHAT**: ファイルを同一バイト数で書き換えて（例: `.floor`→`.round` の mutation 実験）直後に revert すると、disk は `.floor` なのに実行時は `.round` の挙動を示すことがある
+- **WHY**: bootsnap の ISeq cache key は mtime（秒精度）+ サイズ。同一秒内・同一サイズの変更は cache hit して旧バイトコードを返す
+- **HOW**: mutation 実験や高速な編集 ↔ revert の検証では、前後に `touch <file>` するか `tmp/cache/bootsnap` を削除して cache bust する。Mutant 導入（ROADMAP 1-2 完了後）時は特に注意
+- verified: Rails 8.1.3 / 2026-06-13（1-2 品質レビュー①で実踏 — 36,001 点中 18,000 点が幻の round 挙動・bust 後 0）
+
+---
+
 ## メタ原則
 
 - **レビューは書いた場所の近くに置く**: 設計レビューは設計の虫しか取れない。計画にコードを書くなら計画コードにレビューを、環境の虫（brakeman・CI）は各タスクの完了条件に
