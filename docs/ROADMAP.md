@@ -78,6 +78,7 @@
 - [x] **エラーメッセージの i18n**: default locale が `:en` のため `:manager_id` 系の full_messages が「Manager は循環しています」と英日混在（0b-1 レビューで検出）。ja.yml + `default_locale` の方針判断が要る — 0b の早期に（0b-2・PR #12 で回収）
 - [x] **Admin タブの active 表示**: `current_page?` は完全一致のため show/edit ページでタブのハイライトが外れる。0b-2 でタブが増えると顕在化 — `request.path.start_with?` 等へ（app/components/admin/nav_component.html.erb）（0b-2・PR #12 で回収）
 - [ ] **マスタのインライン編集（SPEC §12.3）**: 0b-2 はページ遷移型 edit で機能要件を充足。Turbo 化は UX 改善として後送り
+- [ ] **デザインシステム整備**: 現状 UI は各スライスに「最小」で同梱（機能優先・意匠は未スコープ）。Tailwind v4 + ViewComponent を土台に、(a) デザイントークン（配色・タイポ・余白スケール）の規約化、(b) 共通 ViewComponent（ボタン・フォーム・テーブル・バッジ・カード・ナビ）の抽出・統一、(c) アクセシビリティ（コントラスト・フォーカス・ARIA）、(d) レスポンシブ/モバイル（§12.4）の基線。どの Phase でも引ける横断土台。**着手は Phase 2（申請 UI）前を推奨**（画面数が増える前に土台を整えると後戻りが少ない・ただし強制ではなく必要時に引く）。`frontend-design` スキルで試作 → 規約を docs 化。社員向け（§12.1）と管理（§12.3）でトーンを分けるか要判断
 - [ ] **実労働ベースの法定休憩再判定**: マスタ検証は必要条件のみ（所定 8h・休憩 45 分は残業 1 分で 60 分不足）。Phase 1/4 の事後アラートとして検討（打刻ブロック不可・社労士確認 #8）
 - [ ] **LeaveType の annual×paid_leave 整合警告**: §8.6 の有給 5 日義務判定への影響。Phase 4 着手時に再検討
 - [ ] **production のエラーページ**: RecordNotFound 等が plain text 応答（0b-1 で controller 層 404 化した際の暫定）。Phase 5 の管理 UI 仕上げで専用ページへ
