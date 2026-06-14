@@ -48,6 +48,9 @@ gem "devise-i18n", "~> 1.15"
 # Authorization
 gem "pundit"
 
+# State machine for approval workflow (Phase 2-1)
+gem "aasm"
+
 # Ruby 3.4 で標準添付から外れる時限への先回り（0b-3 設計 §1）
 gem "csv", "~> 3.3"
 # Ruby 4.0 で標準添付から外れた cgi への先回り（本 app は未使用だが将来の依存追加への保険・rails/rails#56457）
