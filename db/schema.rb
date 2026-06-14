@@ -10,10 +10,27 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_13_110201) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_14_074634) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "approval_assignments", force: :cascade do |t|
+    t.timestamptz "acted_at"
+    t.bigint "approvable_id", null: false
+    t.string "approvable_type", null: false
+    t.bigint "approver_id", null: false
+    t.text "comment"
+    t.datetime "created_at", null: false
+    t.integer "decision", default: 0, null: false
+    t.bigint "organization_id", null: false
+    t.integer "position", null: false
+    t.datetime "updated_at", null: false
+    t.index ["approvable_type", "approvable_id"], name: "index_approval_assignments_on_approvable"
+    t.index ["organization_id", "approvable_type", "approvable_id", "position"], name: "index_approval_assignments_unique_stage", unique: true
+    t.index ["organization_id", "approver_id", "decision"], name: "index_approval_assignments_on_approver"
+    t.index ["organization_id"], name: "index_approval_assignments_on_organization_id"
+  end
 
   create_table "attendance_histories", force: :cascade do |t|
     t.bigint "actor_id"
@@ -202,6 +219,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_110201) do
     t.index ["organization_id"], name: "index_work_patterns_on_organization_id"
   end
 
+  add_foreign_key "approval_assignments", "organizations"
+  add_foreign_key "approval_assignments", "users", column: ["organization_id", "approver_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "attendance_histories", "organizations"
   add_foreign_key "attendance_histories", "users", column: ["organization_id", "actor_id"], primary_key: ["organization_id", "id"], name: "ah_actor_same_tenant"
   add_foreign_key "attendance_histories", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"], name: "ah_user_same_tenant"
