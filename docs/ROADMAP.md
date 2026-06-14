@@ -42,7 +42,7 @@
 
 > 完了条件: 休暇・打刻変更・休日出勤が申請 → 2 段承認 → 副作用（記録更新・残高・履歴）まで一周し、撤回で復元できる
 
-- [ ] **2-1 承認エンジン core**: ApprovalAssignment・固定 2 段ルート解決（単段縮約）・自己承認防止 4 種（§7.2〜7.3）・AASM 業務ステータス
+- [x] **2-1 承認エンジン core**: ApprovalAssignment・固定 2 段ルート解決（単段縮約）・自己承認防止 #1/#2/#3（§7.2〜7.3）・AASM 業務ステータス（#1）。対象非依存エンジンをテスト専用 approvable で検証。**後置**: 撤回（#4・2-5）／副作用・LeaveRequest（2-2）／delegate 基盤（§7.5）／Cancel サービス・Scope・承認 UI（2-2）。サービス/Approve/Reject はリクエスト文脈前提（ジョブ化時は `ActsAsTenant.with_tenant` ラップ必須・§8）
 - [ ] **2-2 LeaveRequest + LeaveBalance**: 申請 UI（LeaveDaysCalculator §5.5・残高 2 段階表示）・承認副作用サービス（`lock!`・AR 更新・履歴）・月跨ぎ/年度跨ぎ（§6.2）
 - [ ] **2-3 ClockChangeRequest**: 競合チェック（§7.4）・new_entry・再計算接続
 - [ ] **2-4 HolidayWorkRequest**: 4 値ステータス・代休残高 +1・is_holiday_work 連動（§6.11。未打刻検出は Phase 4）
@@ -86,6 +86,7 @@
 - [ ] **legal_holiday カバレッジ失効の事前アラート**: 一括生成（上限 2 年）の期間満了後、未登録日曜が Resolver フォールバックで sunday に降格し 35% 側が静かに失われる。index の 0 件バナー（0b-3）が第一歩 — 残り N 日での管理者通知は Phase 4-1 の通知基盤接続後（労務レビュー高・社労士確認 #11）。**失効時フォールバックは曜日（sunday）降格でなく「要確認」状態へ**（原典再照合 2026-06-13・平成 6.1.4 基発 1 号＝暦週内の「最後の休日」を法定休日と推認・SPEC §4.7 反映済）
 - [ ] **締め済み月の CompanyCalendar destroy 制限**: 過去日の削除は Phase 1 再集計時の day_type 根拠（legal_holiday の 35%・60h 除外）を遡及的に書き換える。締め状態機械の導入（Phase 3-2）に合わせて制限を課す
 - [ ] **夜勤継続中のカレンダー前日セル表示**: classify の `stale_working` は window 内の現役夜勤行（勤務継続中）も退勤済と同色に巻き込む（1-1 品質レビュー観察・実害なし）。Phase 2-3 で打刻変更申請の導線をセルに付ける際、「勤務中の前日セル」を独立分類に分けるか再訪
+- [ ] **代理退勤バナーの夜勤エッジ**: `ProxyClockOut` は `working_within((today-1)..today)` で対象を取るため夜勤は `work_date = today-1` 行が対象になり得るが、ホームのバナー解決は `@state.today_record`（= `find_by(work_date: today)` 厳密一致・`app/controllers/home_controller.rb:19`）ゆえ前日 work_date 行への代理**退勤**がバナーに出ない（Phase 1 spec-check 検出・実コード裏取り済）。代理退勤そのもの（record 更新・AttendanceHistory 監査証跡）は正常で、欠けるのは表示のみ。バナーは Phase 1 前倒しの暫定 → **Phase 4-1 通知基盤で恒久解決（暫定バナーを置換）**。早期に直すなら home_controller のバナー解決を working/window ベースへ
 - [ ] **社員一覧の未割当バッジ + 期限切れ先読み**: 0b-4 は社員詳細バナーのみ（述語 = `effective_on`）。一覧バッジは Phase 1 の打刻導線で実害が出てから、「N 日以内に割当終了 + 後継なし」の先読み通知は Phase 4-1 の通知基盤接続後（0b-4 労務レビュー）
 - [ ] **割当隙間日の遡及補正**: 無割当期間に打たれた打刻は `work_pattern_id` NULL で計算スキップ（§5.4）になるが、§4.8 の不遡及原則により後追い割当でも補正されない。Phase 1 の打刻設計で「NULL レコード限定の遡及スナップショット + 再計算」の例外を判断（労務レビュー High・社労士確認 #12-(a)）
 - [ ] **割当変更履歴**: 過去に食い込む日付編集が監査証跡ゼロで可能（労基法 109 条の趣旨・社労士確認 #12-(b)）。Phase 1-3 AttendanceHistory 設計時に同棲で判断 — 履歴機構を二系統作らない（0b-4 設計 §0）
