@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Admin
   # singleton 設定画面（0b-2 設計 §0 が予告した「異型」— MasterPolicy 非継承の個別判断）。
   # 本ポリシーは設定画面アグリゲート（OrganizationSetting + Organization.fiscal_year_end_month）の

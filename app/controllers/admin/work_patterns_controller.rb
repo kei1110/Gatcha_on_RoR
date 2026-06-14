@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Admin
   class WorkPatternsController < BaseController
     include Admin::Deactivatable

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 FactoryBot.define do
   factory :reason_template do
     organization { ActsAsTenant.current_tenant || ActsAsTenant.test_tenant || association(:organization) }

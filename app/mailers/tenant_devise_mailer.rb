@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class TenantDeviseMailer < Devise::Mailer
   # 招待メール（Devise 標準外のカスタムアクション）。User#send_invitation_instructions から届く
   def invitation_instructions(record, token, opts = {})

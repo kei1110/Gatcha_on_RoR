@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CompanyCalendars
   # 全件検証 → 1 トランザクション upsert の共通コア（CSV インポートと法定休日一括生成が合流 — 0b-3 設計 §3）。
   # upsert_all / insert_all は使用禁止 — acts_as_tenant とモデルバリデーションを両方バイパスする。

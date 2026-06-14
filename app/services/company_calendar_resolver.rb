@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # 日付 → day_type の解決（SPEC §4.7 指定名のため CompanyCalendars:: 名前空間外 — 0b-3 設計 §1）。
 # AR 依存ゆえ calculators（値→値・DB なし）には置けない。Phase 1 では入力合成層（service/job）が
 # 本クラスを呼び、calculator へは day_type を**値として**渡すこと（SPEC §2.2-1 の境界）

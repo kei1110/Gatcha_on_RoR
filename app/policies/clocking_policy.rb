@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # 打刻の headless policy（authorize :clocking, :clock_in? — 1-1 設計 §3）。
 # Scope は定義しない: 操作対象はコントローラ構造で current_user 固定（パラメータ不受理・
 # SPEC §3.5 の最強形 — IDOR 面が存在しない）、一覧系データ取得は current_user.attendance_records

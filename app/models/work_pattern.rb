@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class WorkPattern < ApplicationRecord
   acts_as_tenant(:organization)
 

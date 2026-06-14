@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Clockings
   # 退勤打刻（1-1 設計 §2）。対象は「window 内の最新 working」— work_date でなく status 起点に
   # するのが夜勤対応の要（日付跨ぎ退勤が前日の出勤レコードに合流する・SPEC §4.8 出勤日統一)。

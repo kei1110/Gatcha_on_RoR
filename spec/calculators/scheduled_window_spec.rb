@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "rails_helper"
 
 # DB 不要 — pattern は Struct duck（night_shift? / flextime? の述語名に応答させること）

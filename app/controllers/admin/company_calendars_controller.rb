@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Admin
   class CompanyCalendarsController < BaseController
     before_action :set_company_calendar, only: %i[edit update destroy]

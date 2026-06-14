@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 FactoryBot.define do
   factory :attendance_history do
     organization { ActsAsTenant.current_tenant || ActsAsTenant.test_tenant || association(:organization) }

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # 丸め規則の単一ソース（1-2 設計 §3.5・SPEC §5 前文）。
 # 中間計算は整数分・最終値のみ時間化（HALF_UP）— 各 calculator へ複製しないこと。
 # 第 3 のメソッドは消費者が現れてから足す（YAGNI）

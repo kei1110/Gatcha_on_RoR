@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "rails_helper"
 
 RSpec.describe "認証のテナントスコープ（SPEC §3.2）", type: :request do

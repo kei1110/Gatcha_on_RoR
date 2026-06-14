@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class HomeController < ApplicationController
   # 月ナビの暴走 URL（遠方年）を当月へフォールバックさせる範囲ガード（1-1 設計 §4）
   MONTH_RANGE = Date.new(2020, 1, 1)..Date.new(2100, 12, 1)

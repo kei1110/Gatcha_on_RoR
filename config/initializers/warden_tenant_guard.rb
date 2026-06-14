@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # テナント整合突合（SPEC §3.1③）の一点防御。
 # before_action ではなく Warden hook に置く理由: Devise のトークン経路・
 # remember cookie 復元は ApplicationController の before_action を通らずに

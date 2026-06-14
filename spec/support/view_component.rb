@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "view_component/test_helpers"
 require "capybara/rspec"
 

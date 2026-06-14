@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "rails_helper"
 
 RSpec.describe "テナント整合突合（Warden 一点防御）", type: :request do

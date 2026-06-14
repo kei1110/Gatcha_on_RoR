@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Home
   # 当月カレンダー（§12.1 最小・1-1 設計 §4）。色分けは 1-1 で判定可能な分類のみ —
   # 休暇=緑/半休=黄/欠勤=赤は Phase 2/4-2 で classify に分岐を足す。

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # 勤怠の全イベントを前後値つきで記録する追記専用監査証跡（SPEC §4.14・労基法 109 条 5 年保存）。
 # 不変性は 3 段で担保: ① readonly? ② before_update/destroy ③ DB トリガー（fx）。
 # 真の backstop は ③（update_all 等は ①② を素通りする）。①② は fast-fail。

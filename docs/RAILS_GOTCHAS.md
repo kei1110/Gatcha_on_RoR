@@ -203,3 +203,18 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **レビューは書いた場所の近くに置く**: 設計レビューは設計の虫しか取れない。計画にコードを書くなら計画コードにレビューを、環境の虫（brakeman・CI）は各タスクの完了条件に
 - **サブエージェントはフックをすり抜ける**: PostToolUse の自動整形・検証はサブエージェント内では保証されない。ディスパッチ指示に検証コマンド（rspec / rubocop / 必要なら brakeman）を完了条件として明記する（SF 版 lint-test-strategy の教訓と同一）
 - 新しい罠を踏んだら / 仕留めたら、**修正 PR と同じブランチで本書に 1 項目追記**する
+
+---
+
+## Ruby / ツールチェーン
+
+### Ruby 4.0 アップグレード: vips は環境要因・cgi は予防追加・bundler は明示 bump・frozen は hard-freeze 化
+
+- **WHAT**: 3.3.11 → 4.0.2 移行で踏み得る 4 点
+- **WHY/HOW**:
+  - **bundler**: `bundle install` では `BUNDLED WITH` は上がらない（lock の 2.5.22 を尊重）。`bundle update --bundler` の明示実行で 4.0.x へ（本リポジトリは実測で 4.0.14＝Ruby 4.0.2 同梱版に着地）。放置すると Ruby 4.0 の rubygems と `Gem::Platform::* already initialized` 警告
+  - **cgi**: Ruby 4.0 で default gem から削除（`cgi/escape` のみ残存）。`require "cgi"` を踏む依存は `gem "cgi"` 必須（rails/rails#56457 の真因）。本 app は未使用だが予防追加
+  - **frozen_string_literal**: 4.0 の chilled は警告のみだが、磁気コメント付与は真に freeze＝mutation が即 FrozenError。一括付与時は green suite で mutation 監査が必須。本リポジトリでは全 `.rb`（178）＋ Gemfile/Rakefile/config.ru ＝計 181 ファイルへ一括付与（`db/*schema.rb` は rubocop の既存 Exclude で除外）
+  - **ruby-vips**: ローカルのみ libvips 未導入で `require "vips"` が LoadError。3.3.11 でも同一＝環境要因（Ruby 4.0 回帰ではない）。`require: false` + 遅延ロードで suite 無影響。本番 Docker は libvips 同梱。ローカルで variant を扱うなら `brew install vips`
+  - **rubocop TargetRubyVersion**: `.ruby-version`=4.0.2 から target 4.0 を推論し rubocop が未知版エラーにし得る。`AllCops: { TargetRubyVersion: 3.4 }` で固定可
+- verified: Ruby 4.0.2 / Rails 8.1.3 / 2026-06-14（直行アップグレードで実測・rspec 523/0・rubocop・brakeman green）

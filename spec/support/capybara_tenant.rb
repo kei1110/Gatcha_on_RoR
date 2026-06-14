@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CapybaraTenantHelpers
   # サブドメイン切替。rack_test ゆえ DNS 不要
   def switch_tenant(org)

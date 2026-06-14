@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # 本番実行を拒否 — 既知パスワードの管理者が本番に残る事故の遮断
 abort("seeds は development/test 専用です") unless Rails.env.development? || Rails.env.test?
 

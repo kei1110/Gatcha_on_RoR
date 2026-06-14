@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 source "https://rubygems.org"
 
 # Bundle edge Rails instead: gem "rails", github: "rails/rails", branch: "main"
@@ -48,6 +50,8 @@ gem "pundit"
 
 # Ruby 3.4 で標準添付から外れる時限への先回り（0b-3 設計 §1）
 gem "csv", "~> 3.3"
+# Ruby 4.0 で標準添付から外れた cgi への先回り（本 app は未使用だが将来の依存追加への保険・rails/rails#56457）
+gem "cgi", "~> 0.5"
 
 # UI 部品（SPEC §2.1。Admin タブナビが初出。devise と同じ悲観固定方針）
 gem "view_component", "~> 4.0"

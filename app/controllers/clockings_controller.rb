@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # 打刻（1-1 設計 §4）。操作対象は常に current_user — params を一切消費しない（SPEC §3.5）。
 # 応答は redirect 一本（既存パターン合流・1-1 設計 §4 で Turbo Stream を不採用とした決定）
 class ClockingsController < ApplicationController

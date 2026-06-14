@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class CompanyCalendar < ApplicationRecord
   # 宣言順が重要: acts_as_tenant の organization_id 代入（before_validation, on: :create）が
   # 先に登録されるため、後続の set_fiscal_year から organization を参照できる（0b-3 設計 §2）

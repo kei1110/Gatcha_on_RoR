@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Clockings
   # 計算 8 列の書き戻し唯一経路（1-2 設計 §4）。退勤打刻のほか 2-2/2-3 打刻変更承認・
   # Phase 2 休暇承認の再計算もこの入口に合流する（SPEC §4.8）。

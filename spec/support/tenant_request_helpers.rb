@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module TenantRequestHelpers
   def tenant_host(org) = "#{org.subdomain}.example.com"
 end

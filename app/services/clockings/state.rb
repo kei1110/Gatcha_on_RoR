@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Clockings
   # ホームのヘッダー・ボタン活性・バナー導出（読み取り専用・1-1 設計 §2）。
   # サービスのガードと同じ述語（working_within・同日行）を共有し UI とサーバー判定を割らない。

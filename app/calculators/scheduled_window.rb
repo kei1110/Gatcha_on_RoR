@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # WorkPattern × work_date → 組織 TZ 合成済み所定時刻群（1-2 設計 §2）。
 # SPEC §5 入力契約（夜勤 +1.day・日跨ぎコア翌日換算・time 型の加算禁止）の単一実装点 —
 # 合成規則をここ以外に書かないこと。

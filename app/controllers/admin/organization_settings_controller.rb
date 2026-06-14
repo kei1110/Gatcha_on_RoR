@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Admin
   # 設定画面（singular・0b-5 設計 §4）。組織は current_tenant のインスタンスに固定 —
   # params 由来の組織解決経路を持たない（IDOR 不能 + acts_as_tenant のリーダー短絡により

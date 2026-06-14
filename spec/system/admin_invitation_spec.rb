@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "rails_helper"
 
 RSpec.describe "社員招待の E2E（0b-1 設計 §4 system）", type: :system do

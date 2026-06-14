@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Clockings
   # 代理出勤（1-3 設計 §4）。自己打刻 ClockIn とは別クラス（current_user 固定の不変条件を壊さない）。
   # 打刻と履歴を同一 tx で原子的に（履歴は法的必須・証跡なき改変を作らない）。

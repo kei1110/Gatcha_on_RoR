@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class UserWorkPattern < ApplicationRecord
   # 意味論（0b-4 設計 §0）: active=false は「誤登録の論理削除」専用。
   # 正常な終了・切替は end_date で表現する（切替 = 旧割当の end_date 設定 → 新規作成）。

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # 代理打刻（1-3 設計 §5）。manager(直接部下) / hr_admin(全員) が対象社員に代わり打刻。
 # 対象は policy_scope.find で解決 → scope 外は RecordNotFound → 404（IDOR 対策・SPEC §3.4）。
 class ProxyClockingsController < ApplicationController

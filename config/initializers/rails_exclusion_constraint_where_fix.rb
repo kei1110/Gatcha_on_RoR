@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # Rails 8 バグ修正: exclusion constraint の WHERE 句解析が 2 文字ずつ剥がして壊す
 #
 # 原因: schema_statements.rb の `predicate.from(2).to(-3)` は

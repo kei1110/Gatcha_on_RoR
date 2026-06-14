@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Admin
   # 素の CRUD マスタ専用基底（0b-2 設計 §0 — UserPolicy は招待条件があるため継承しない。
   # 0b-3 CompanyCalendar=import あり・0b-5 OrganizationSetting=singleton の異型は

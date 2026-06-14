@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class AddCalculationColumnsToAttendanceRecords < ActiveRecord::Migration[8.1]
   def change
     # 計算 8 列（SPEC §4.8・1-2 設計 §1）。全列 NULL 許容・default なし — NULL = 未計算。

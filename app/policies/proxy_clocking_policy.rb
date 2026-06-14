@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # 代理打刻の headless policy（authorize :proxy_clocking, :clock_in? — ClockingPolicy 同型）。
 # 認可は二層: ① role ゲート（本 policy）② 対象ゲート（controller の policy_scope.find→404）。
 # clock_in?/clock_out? は record 非依存ゆえ「対象が部下か」は Scope.find に委譲（SPEC §3.4・§R-8）。

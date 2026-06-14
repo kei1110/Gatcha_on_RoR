@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class Organization < ApplicationRecord
   # テナントルートゆえ acts_as_tenant を付けない（SPEC §3.1）
   has_many :users, dependent: :restrict_with_error

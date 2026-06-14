@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "rails_helper"
 
 RSpec.describe "パスワードリセットのテナント分離（SPEC §3.2(3)）", type: :request do

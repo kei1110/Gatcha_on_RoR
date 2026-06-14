@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module OrganizationSettings
   # 設定画面アグリゲートの更新（0b-5 設計 §3）: Organization.fiscal_year_end_month +
   # OrganizationSetting を単一 tx で保存し、決算月が変わったときだけ CompanyCalendar の

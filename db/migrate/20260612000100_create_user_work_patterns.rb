@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class CreateUserWorkPatterns < ActiveRecord::Migration[8.1]
   def change
     # bigint の = と daterange の && を 1 つの GiST インデックスに同居させるため必須

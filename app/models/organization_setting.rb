@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class OrganizationSetting < ApplicationRecord
   # SPEC §4.15 の残カラム（通知系・閾値系・36 協定系・integer[]）は消費する Phase の PR が
   # 検証・既定値・意味論ごと同梱追加する（0b-5 設計 §0 — ROADMAP 4-1 email_enabled 方式）。

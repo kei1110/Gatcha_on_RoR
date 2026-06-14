@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Clockings
   # 代理退勤（1-3 設計 §4）。ClockOut と同期構造（GOTCHAS「tx 内 SQL 例外 rescue → 偽 success」回避）。
   # 退勤 + 履歴を with_lock 内で原子的に・rescue は with_lock の外・再計算は commit 後。

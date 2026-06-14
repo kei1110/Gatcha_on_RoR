@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class ChangeOrganizationsFiscalYearEndMonthDefault < ActiveRecord::Migration[8.1]
   # 三重既定値（§4.2 nullable / §4.15 既定 3 / コード内 nil→3）の解消 — SSOT を DB 制約へ昇格し
   # コード内 nil フォールバックを置かない（サイレント 3 月締め化の構造的排除・0b-3 設計 §0）

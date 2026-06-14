@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Clockings
   # 出勤打刻（1-1 設計 §2）。操作対象は常に呼び出し側の current_user — user_id を外から受けない。
   # with_tenant で自己完結: console/将来ジョブから呼ばれても自社の行しか触れない（SPEC §3.6）。

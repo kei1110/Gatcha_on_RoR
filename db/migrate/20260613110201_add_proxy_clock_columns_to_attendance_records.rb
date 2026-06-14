@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class AddProxyClockColumnsToAttendanceRecords < ActiveRecord::Migration[8.1]
   def change
     add_column :attendance_records, :proxy_clock_reason, :integer  # enum・NULL = 通常打刻

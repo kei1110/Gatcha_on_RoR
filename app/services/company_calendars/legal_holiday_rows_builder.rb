@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module CompanyCalendars
   # 期間 × 曜日 → legal_holiday 行の生成（週休制専用 — 4 週 4 日制は CSV 個別登録・0b-3 設計 §3）。
   # 生成は labor 有利方向（→ legal_holiday）のみなので BulkUpserter の降格ガードに掛からない

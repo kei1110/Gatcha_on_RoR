@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Admin
   # deactivate / activate の共通実装（User / WorkPattern / LeaveType — 0b-2 設計 §1）。
   # 契約: include 側は member アクションの before_action でレコードをセットし、

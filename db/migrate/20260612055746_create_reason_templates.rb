@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class CreateReasonTemplates < ActiveRecord::Migration[8.1]
   def change
     create_table :reason_templates do |t|

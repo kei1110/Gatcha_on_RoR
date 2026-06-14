@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # 遅刻・早退判定（SPEC §5.4・1-2 設計 §3.4）。Data を返す純粋関数。
 # 固定時間制 = start_at/end_at 基準（秒厳密・分数 floor）。
 # フレックス = コア基準の二値・分数 0 固定。mode_conflict は flex 判定が優先（1-2 設計 §0-2 —

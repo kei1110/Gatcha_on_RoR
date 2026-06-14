@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class CreateLeaveTypes < ActiveRecord::Migration[8.1]
   def change
     create_table :leave_types do |t|

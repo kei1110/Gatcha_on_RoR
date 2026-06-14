@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "rails_helper"
 
 # 時刻リテラルは UTC・JST コメント併記（org 既定 TZ = Asia/Tokyo）

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "rails_helper"
 
 RSpec.describe "テナント解決（fail-closed・SPEC §3.1）", type: :request do

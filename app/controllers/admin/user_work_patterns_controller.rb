@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Admin
   # 社員詳細ネストの割当 CRUD（0b-4 設計 §4）。index/show なし — 一覧は users#show に同居。
   # Deactivatable concern は流用しない（契約が redirect_to [:admin, record] + record.name 前提で、

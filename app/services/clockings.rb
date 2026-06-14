@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # 打刻系サービスの共有部品（1-1 設計 §2）
 module Clockings
   # 0b-5 OrganizationSettings::Updater と同型の戻り値規約
