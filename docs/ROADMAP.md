@@ -95,6 +95,7 @@
 - [ ] **本番 attendance_histories の owner 分離**: 不変トリガー（`_v01`）は table owner / superuser をバイパスできる。本番でマイグレーション実行ロールと app 接続ロールを分離し、**app ロール ≠ owner** にして初めて層③が攻撃者からも守られる。Phase 5-3（運用ハードニング）で接続ロール分離を入れる（1-3 で脅威モデルとして記録・§4.14）
 - [ ] **§11.2 匿名化 vs 不変トリガー**: 5 年経過後の匿名化／削除（§11.2）は、追記専用トリガーが UPDATE/DELETE を拒否するため通常経路では実行不能。トリガーを **`_v01` 版差し替え方式**（バージョン付き SQL ファイル・現行は `attendance_histories_no_mutate_v01.sql` 等）で「制御付きバイパス（保持期間管理ジョブのみ許可）」へ更新する設計を、アーカイブ実装（§11.1・v1 は YAGNI）と同時に判断する
 - [x] **Ruby 4.0.2 アップグレード**（PR #27）: 3.3.11 → 4.0.2 直行（Rails 8.1.3 据え置き＝既に 8.1 native）。実機検証で全 CI ゲート green を確認（rspec 523/0・rubocop・brakeman・C 拡張 4.0 ABI ロード可）後にスライス化。bundler 4.0.14・`gem "cgi"` 予防追加・frozen_string_literal 一括付与（計 181 ファイル）を同梱。YJIT 有効化・4.0.5 追従は別 PR。設計 `docs/superpowers/specs/2026-06-14-ruby-4-0-2-upgrade-design.md`
+- [x] **YJIT 有効化（調査の結果 Rails 8.1 既定で production 有効・実装不要）**（PR #28）: `config.load_defaults 8.1` が `config.yjit` を production のみ true に設定し boot で `RubyVM::YJIT.enable`。Ruby 4.0.2 も `+YJIT` 同梱。dev/test は OFF（正）。明示 `config.yjit = true` は omakase に反し drift 源ゆえ追加せず。別 PR の実装対象なし（docs のみ・GOTCHAS「Ruby / ツールチェーン」に記録）
 
 ## 横断ルール（順序の根拠）
 

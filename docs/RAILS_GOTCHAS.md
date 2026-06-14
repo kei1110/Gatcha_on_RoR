@@ -218,3 +218,9 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
   - **ruby-vips**: ローカルのみ libvips 未導入で `require "vips"` が LoadError。3.3.11 でも同一＝環境要因（Ruby 4.0 回帰ではない）。`require: false` + 遅延ロードで suite 無影響。本番 Docker は libvips 同梱。ローカルで variant を扱うなら `brew install vips`
   - **rubocop TargetRubyVersion**: `.ruby-version`=4.0.2 から target 4.0 を推論し rubocop が未知版エラーにし得る。`AllCops: { TargetRubyVersion: 3.4 }` で固定可
 - verified: Ruby 4.0.2 / Rails 8.1.3 / 2026-06-14（直行アップグレードで実測・rspec 523/0・rubocop・brakeman green）
+
+### YJIT は Rails 8.1 既定で production のみ有効（明示設定は不要・むしろ drift 源）
+
+- **WHAT**: 「YJIT を有効化する」変更は本リポジトリに実装対象が存在しない（既に有効）
+- **WHY/HOW**: `config.load_defaults 8.1` の framework 既定が `config.yjit` を **env 依存で production のみ true**（dev/test は false）に設定し、Rails の boot initializer が production 起動時に `RubyVM::YJIT.enable` を呼ぶ。実測: production で `config.yjit==true` かつ `RubyVM::YJIT.enabled?==true`、dev/test は両方 false。Ruby 4.0.2 ビルドは `+YJIT` 同梱（`ruby -v --yjit` で確認）。production.rb への明示 `config.yjit = true` は omakase の「既定に委ねる」流儀に反し、将来 Rails が既定を変えた時の drift 源になるため**追加しない**
+- verified: Ruby 4.0.2 / Rails 8.1.3 / 2026-06-14（production/dev/test を rails runner で実測・`config.yjit` と `RubyVM::YJIT.enabled?` を確認）
