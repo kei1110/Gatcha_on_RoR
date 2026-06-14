@@ -68,7 +68,6 @@ RSpec.describe Approvals::Approve do
 
   describe "terminal / 残 pending バイパス防止" do
     it "却下後の残 pending を approve しても applying? ガードで弾く" do
-      pending("Approvals::Reject は Task 9 で実装・T9 で pending 解除")
       Approvals::Reject.call(approvable: host, approver: boss, comment: "却下")
       expect(host.reload).to be_rejected
       expect { approve(approver: dept) }.to raise_error(AASM::InvalidTransition)
