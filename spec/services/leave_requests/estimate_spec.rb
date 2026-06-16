@@ -38,6 +38,14 @@ RSpec.describe LeaveRequests::Estimate do
       r = call(start_date: Date.new(2026, 5, 1), end_date: Date.new(2026, 5, 1))   # 仮 1, 申請後 0
       expect(r.status).to eq(:zero)
     end
+
+    it "申請後が負なら赤(:negative)" do
+      create(:leave_request, requester: user, leave_type: paid, approval_status: :applying,
+             start_date: Date.new(2026, 5, 7), end_date: Date.new(2026, 5, 7), days_requested: 9)
+      r = call(start_date: Date.new(2026, 5, 7), end_date: Date.new(2026, 5, 8)) # 木金=2 weekday
+      expect(r.remaining_after).to eq(BigDecimal("-1")) # (10-9)-2
+      expect(r.status).to eq(:negative)
+    end
   end
 
   describe "仮残高のスコープ隔離（MPR・過小残高バグ防止）" do
@@ -87,6 +95,13 @@ RSpec.describe LeaveRequests::Estimate do
     it "半休 × 複数日は見積りエラー（calculator 呼出前 fail-closed）" do
       expect {
         call(start_date: Date.new(2026, 5, 1), end_date: Date.new(2026, 5, 2), half: :morning)
+      }.to raise_error(ArgumentError)
+    end
+
+    it "span 超は見積りエラー（calculator 呼出前 fail-closed）" do
+      expect {
+        call(start_date: Date.new(2026, 1, 1),
+             end_date: Date.new(2026, 1, 1) + LeaveRequest::MAX_SPAN_DAYS + 1)
       }.to raise_error(ArgumentError)
     end
   end
