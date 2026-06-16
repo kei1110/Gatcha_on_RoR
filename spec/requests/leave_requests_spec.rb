@@ -79,12 +79,18 @@ RSpec.describe "LeaveRequests", type: :request do
       expect(response.body).to include("1")                # days_requested
     end
 
-    it "requester_id を渡しても自分の見積りのみ（他者残高を読まない・MPR C3）" do
+    it "requester_id を渡しても自分の見積りのみ（他者残高を漏らさない・C3）" do
       other = ActsAsTenant.with_tenant(org) { create(:user) }
+      ActsAsTenant.with_tenant(org) do
+        create(:leave_balance, user: other, leave_type: paid, fiscal_year: "2026",
+               granted_days: 999, granted_on: Date.new(2026, 4, 1))
+      end
       get preview_leave_requests_url(host: tenant_host(org)),
           params: { leave_type_id: paid.id, start_date: "2026-05-01", end_date: "2026-05-01",
                     half_day_type: "none", requester_id: other.id }
-      expect(response).to have_http_status(:ok)   # requester_id は無視（current_user 固定）
+      expect(response).to have_http_status(:ok)
+      expect(response.body).not_to include("999")  # other の残高は漏れない（load-bearing）
+      expect(response.body).to include("10")        # current_user 自身の確定残
     end
   end
 end

@@ -55,8 +55,8 @@ class LeaveRequestsController < ApplicationController
       half_day_type: preview_params[:half_day_type]
     )
     render :preview
-  rescue ArgumentError, Date::Error
-    head :unprocessable_entity   # 半休×複数日・span 超・不正日付
+  rescue ArgumentError, Date::Error, TypeError
+    head :unprocessable_entity   # 半休×複数日・span 超・不正日付・Date.parse(nil)
   end
 
   private
