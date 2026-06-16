@@ -41,6 +41,15 @@ class Organization < ApplicationRecord
     (date.month >= start_month ? date.year : date.year - 1).to_s
   end
 
+  # fiscal_year_for の逆写像（C1・Phase 2-2a 設計 §3.1）。年度文字列 → その年度の Date 範囲。
+  # LeaveBalance/LeaveRequest の年度別集計（fiscal_year 列を持たない LeaveRequest を
+  # start_date 範囲で絞る）に使う。fiscal_year_for と対で spec する。
+  def fiscal_year_range(fiscal_year)
+    start_month = fiscal_year_end_month % 12 + 1
+    start = Date.new(fiscal_year.to_i, start_month, 1)
+    start..start.next_year.prev_day
+  end
+
   # 「今日」の単一ソース（組織 TZ・0b-4 設計 §0）。config.time_zone は未設定（UTC）のため
   # Date.current は JST 0:00〜8:59 に前日を返す。WorkPattern 無効化ガード・割当の表示分類・
   # 未割当バナー（Phase 1 の打刻日判定もここに合流予定）は必ずこれを使うこと

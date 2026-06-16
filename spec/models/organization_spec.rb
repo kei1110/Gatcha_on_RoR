@@ -83,6 +83,24 @@ RSpec.describe Organization, type: :model do
     end
   end
 
+  describe "#fiscal_year_range" do
+    it "fiscal_year_for の逆（3 月決算: '2026' → 2026-04-01..2027-03-31）" do
+      org = build(:organization, fiscal_year_end_month: 3)
+      expect(org.fiscal_year_range("2026")).to eq(Date.new(2026, 4, 1)..Date.new(2027, 3, 31))
+    end
+
+    it "12 月決算は暦年に一致（'2026' → 2026-01-01..2026-12-31）" do
+      org = build(:organization, fiscal_year_end_month: 12)
+      expect(org.fiscal_year_range("2026")).to eq(Date.new(2026, 1, 1)..Date.new(2026, 12, 31))
+    end
+
+    it "範囲内の全日が fiscal_year_for で同じ年度へ戻る（往復一致）" do
+      org = build(:organization, fiscal_year_end_month: 3)
+      range = org.fiscal_year_range("2026")
+      expect([ range.first, range.last ].map { |d| org.fiscal_year_for(d) }).to all(eq("2026"))
+    end
+  end
+
   describe "#today（0b-4 設計 §0 の TZ 契約）" do
     it "組織 TZ の当日を返す（アプリ TZ = UTC と日付が割れる時刻帯）" do
       org = build(:organization, time_zone: "Asia/Tokyo")
