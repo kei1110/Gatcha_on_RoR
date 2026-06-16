@@ -24,6 +24,7 @@ Rails.application.routes.draw do
           patch :activate
         end
       end
+      resources :leave_balances, only: %i[new create edit update]   # ← 追加（フラット controller）
     end
     resources :work_patterns, except: :destroy do
       member do
