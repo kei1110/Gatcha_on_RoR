@@ -30,6 +30,17 @@ class CompanyCalendarResolver
     (from..to).index_with { |d| registered[d]&.to_sym || fallback(d) }
   end
 
+  # day_types の上位版（Phase 2-2a 設計 §2.2）。counts_as_paid_leave を surface し
+  # LeaveDaysCalculator の company_holiday 分岐に渡す。company_holiday 以外の flag は false 固定。
+  def day_classifications(from, to)
+    registered = with_tenant do
+      CompanyCalendar.where(date: from..to).pluck(:date, :day_type, :counts_as_paid_leave)
+    end.to_h { |date, dt, cpl| [ date, { day_type: dt.to_sym, counts_as_paid_leave: cpl } ] }
+    (from..to).index_with do |d|
+      registered[d] || { day_type: fallback(d), counts_as_paid_leave: false }
+    end
+  end
+
   private
 
   def fallback(date)
