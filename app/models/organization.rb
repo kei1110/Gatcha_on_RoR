@@ -15,6 +15,8 @@ class Organization < ApplicationRecord
   # 範囲外（0 や 13）は % 12 演算でサイレントに別月扱いになるため書き込み時に止める（0b-3 Task 1 レビュー反映）
   validates :fiscal_year_end_month, inclusion: { in: 1..12 }
 
+  validate :fiscal_year_end_month_locked_when_balances_exist
+
   # 設定行の唯一の取得経路（0b-5 設計 §0 のアクセサ規約 — Phase 2〜4 の読み取りもここを通すこと）。
   # create_or_find_by! は [organization_id] unique index 前提で並行初回アクセスの
   # SELECT→INSERT 競合を吸収する（属性なし呼び出し = DB 既定値で完結）。
@@ -55,5 +57,17 @@ class Organization < ApplicationRecord
   # 未割当バナー（Phase 1 の打刻日判定もここに合流予定）は必ずこれを使うこと
   def today
     Time.current.in_time_zone(time_zone).to_date
+  end
+
+  private
+
+  # D4（Phase 2-2a 設計 §7・社労士確認 #13）: 残高が fiscal_year をキーに持つため、
+  # 決算月変更は残高帰属を破壊する。WorkPattern#deactivation 同型の without_tenant で
+  # mismatched with_tenant の fail-open を遮断（Organization は acts_as_tenant 非対象ゆえ明示ラップ）
+  def fiscal_year_end_month_locked_when_balances_exist
+    return unless fiscal_year_end_month_changed?
+    return unless ActsAsTenant.without_tenant { LeaveBalance.where(organization_id: id).exists? }
+
+    errors.add(:fiscal_year_end_month, "は休暇残高が存在するため変更できません")
   end
 end
