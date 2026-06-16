@@ -224,3 +224,10 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **WHAT**: 「YJIT を有効化する」変更は本リポジトリに実装対象が存在しない（既に有効）
 - **WHY/HOW**: `config.load_defaults 8.1` の framework 既定が `config.yjit` を **env 依存で production のみ true**（dev/test は false）に設定し、Rails の boot initializer が production 起動時に `RubyVM::YJIT.enable` を呼ぶ。実測: production で `config.yjit==true` かつ `RubyVM::YJIT.enabled?==true`、dev/test は両方 false。Ruby 4.0.2 ビルドは `+YJIT` 同梱（`ruby -v --yjit` で確認）。production.rb への明示 `config.yjit = true` は omakase の「既定に委ねる」流儀に反し、将来 Rails が既定を変えた時の drift 源になるため**追加しない**
 - verified: Ruby 4.0.2 / Rails 8.1.3 / 2026-06-14（production/dev/test を rails runner で実測・`config.yjit` と `RubyVM::YJIT.enabled?` を確認）
+
+### Ruby アップグレード後、Bundler 管理外の MCP gem（rails-mcp-server）が新 Ruby に不在で `-32000`
+
+- **WHAT**: `.ruby-version` を 3.3.11 → 4.0.2 に上げた後、`/mcp` で rails サーバーだけ `Failed to reconnect to rails: -32000`。jp-labor-evidence・postgres（npx）と sentry（http）は無事
+- **WHY**: `.mcp.json` の rails は `rails-mcp-server`（引数・env なし）を起動し、その実体は rbenv shim。shim は cwd の `.ruby-version` で Ruby を解決するため、版を上げた瞬間 gem の入った 3.3.11 でなく 4.0.2 を見にいく。gem は旧 Ruby にしか無いので shim が `command not found` で即 exit → MCP の stdio ハンドシェイク不成立 → JSON-RPC の implementation-defined server error `-32000`（「相手プロセスが即死」の意）。`which rails-mcp-server` は shim パスを返すので一見存在するように見え、`rbenv which`（実体解決）まで踏まないと露見しない。Gemfile/bundle 管理下の gem は Ruby を上げても `bundle install` で追従するが、**`gem install` で直に入れた実行系ツールは bundle の外**ゆえ手動の再インストールが要る（rails MCP に固有の盲点）
+- **HOW**: Ruby アップグレード PR では Bundler 管理外で `gem install` した実行系ツールを新 Ruby へ入れ直す。rails MCP は**プロジェクト直下**（`.ruby-version` が効く場所）で `gem install rails-mcp-server`。検証は ① `rbenv which rails-mcp-server` が新 Ruby の path を返す ② `initialize` リクエストを stdin に流して正常な JSON-RPC レスポンス（`serverInfo`）が返る、の 2 点。修正後は Claude Code の MCP 再接続（`/mcp` reconnect か再起動）が必要 — 既存セッションの失敗状態は自動回復しない
+- verified: rails-mcp-server 1.5.1 / fast-mcp 1.6.0 / Ruby 4.0.2 / 2026-06-16（#27 の Ruby 移行で gem 再インストール漏れ・本セッションで診断。4.0.2 へ再 install し `rbenv which` 解決＋`initialize` 応答を実証）
