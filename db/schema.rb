@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_14_074634) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_16_133935) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -99,6 +99,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_14_074634) do
     t.index ["organization_id", "date"], name: "index_company_calendars_on_organization_id_and_date", unique: true
     t.index ["organization_id", "id"], name: "index_company_calendars_on_organization_id_and_id", unique: true
     t.index ["organization_id"], name: "index_company_calendars_on_organization_id"
+  end
+
+  create_table "leave_balances", force: :cascade do |t|
+    t.decimal "carry_over_days", precision: 6, scale: 2, default: "0.0", null: false
+    t.datetime "created_at", null: false
+    t.string "fiscal_year", null: false
+    t.decimal "granted_days", precision: 6, scale: 2, default: "0.0", null: false
+    t.date "granted_on"
+    t.bigint "leave_type_id", null: false
+    t.bigint "organization_id", null: false
+    t.datetime "updated_at", null: false
+    t.decimal "used_days", precision: 6, scale: 2, default: "0.0", null: false
+    t.bigint "user_id", null: false
+    t.index ["organization_id", "id"], name: "index_leave_balances_on_organization_id_and_id", unique: true
+    t.index ["organization_id", "user_id", "leave_type_id", "fiscal_year"], name: "index_leave_balances_unique", unique: true
+    t.index ["organization_id", "user_id"], name: "index_leave_balances_on_organization_id_and_user_id"
+    t.index ["organization_id"], name: "index_leave_balances_on_organization_id"
   end
 
   create_table "leave_types", force: :cascade do |t|
@@ -228,6 +245,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_14_074634) do
   add_foreign_key "attendance_records", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "attendance_records", "work_patterns", column: ["organization_id", "work_pattern_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "company_calendars", "organizations"
+  add_foreign_key "leave_balances", "leave_types", column: ["organization_id", "leave_type_id"], primary_key: ["organization_id", "id"]
+  add_foreign_key "leave_balances", "organizations"
+  add_foreign_key "leave_balances", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "leave_types", "organizations"
   add_foreign_key "organization_settings", "organizations"
   add_foreign_key "reason_templates", "organizations"
