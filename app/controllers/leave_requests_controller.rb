@@ -32,6 +32,11 @@ class LeaveRequestsController < ApplicationController
     @leave_request = e.record
     @leave_types = LeaveType.where(active: true)
     render :new, status: :unprocessable_entity
+  rescue ArgumentError, Date::Error, TypeError
+    @leave_request = LeaveRequest.new(create_params.except(:start_date, :end_date))
+    @leave_types = LeaveType.where(active: true)
+    @leave_request.errors.add(:base, "申請内容が正しくありません（日付・期間・半休をご確認ください）")
+    render :new, status: :unprocessable_entity
   end
 
   def cancel

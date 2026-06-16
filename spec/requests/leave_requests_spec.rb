@@ -23,6 +23,15 @@ RSpec.describe "LeaveRequests", type: :request do
       expect(record.days_requested).to eq(BigDecimal("1"))   # client の 99 を無視
       expect(record.approval_status).to eq("applying")        # client の approved を無視
     end
+
+    it "空/不正な日付は 422（500 にしない）" do
+      expect {
+        post leave_requests_url(host: tenant_host(org)),
+             params: { leave_request: { leave_type_id: leave_type.id, start_date: "",
+                                        end_date: "", half_day_type: "none", reason: "x" } }
+      }.not_to change { ActsAsTenant.with_tenant(org) { LeaveRequest.count } }
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
   end
 
   describe "GET index" do
