@@ -45,6 +45,20 @@ class LeaveRequestsController < ApplicationController
     redirect_to leave_requests_path, status: :see_other, notice: "申請を取り消しました"
   end
 
+  def preview
+    authorize LeaveRequest, :preview?   # persisted record 不在 → class-level（MPR 原則整合）
+    @estimate = LeaveRequests::Estimate.call(
+      requester: current_user,           # ★params の requester_id/user_id は使わない（C3）
+      leave_type: LeaveType.find(preview_params[:leave_type_id]),
+      start_date: Date.parse(preview_params[:start_date]),
+      end_date: Date.parse(preview_params[:end_date]),
+      half_day_type: preview_params[:half_day_type]
+    )
+    render :preview
+  rescue ArgumentError, Date::Error
+    head :unprocessable_entity   # 半休×複数日・span 超・不正日付
+  end
+
   private
 
   # 他人の申請 id は policy_scope 経由 find で 404（scope + policy の二層・MPR セキュリティ）
@@ -55,5 +69,9 @@ class LeaveRequestsController < ApplicationController
   # requester_id/user_id/days_requested/approval_status は受けない（サーバ権威）
   def create_params
     params.require(:leave_request).permit(:leave_type_id, :start_date, :end_date, :half_day_type, :reason)
+  end
+
+  def preview_params
+    params.permit(:leave_type_id, :start_date, :end_date, :half_day_type)
   end
 end

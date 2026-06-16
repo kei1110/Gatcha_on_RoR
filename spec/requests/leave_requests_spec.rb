@@ -61,4 +61,30 @@ RSpec.describe "LeaveRequests", type: :request do
       expect(response).to have_http_status(:not_found)
     end
   end
+
+  describe "GET preview（サーバ往復・Turbo Frame）" do
+    let!(:paid) { ActsAsTenant.with_tenant(org) { create(:leave_type, system_type: :annual, paid_leave: true) } }
+    before do
+      ActsAsTenant.with_tenant(org) do
+        create(:leave_balance, user:, leave_type: paid, fiscal_year: "2026",
+               granted_days: 10, granted_on: Date.new(2026, 4, 1))
+      end
+    end
+
+    it "日数と残高状態を含む frame を返す" do
+      get preview_leave_requests_url(host: tenant_host(org)),
+          params: { leave_type_id: paid.id, start_date: "2026-05-01", end_date: "2026-05-01", half_day_type: "none" }
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("leave_estimate")   # turbo_frame_tag id
+      expect(response.body).to include("1")                # days_requested
+    end
+
+    it "requester_id を渡しても自分の見積りのみ（他者残高を読まない・MPR C3）" do
+      other = ActsAsTenant.with_tenant(org) { create(:user) }
+      get preview_leave_requests_url(host: tenant_host(org)),
+          params: { leave_type_id: paid.id, start_date: "2026-05-01", end_date: "2026-05-01",
+                    half_day_type: "none", requester_id: other.id }
+      expect(response).to have_http_status(:ok)   # requester_id は無視（current_user 固定）
+    end
+  end
 end
