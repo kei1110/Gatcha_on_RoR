@@ -151,7 +151,7 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **WHAT**: `add_exclusion_constraint` で `where: "active"` 等の**裸のカラム参照**を使うと、`db:schema:dump` が `where: "ctiv"` という壊れた値を出力する。`db:schema:load` で `PG::UndefinedColumn: column "ctiv" does not exist` エラーになりラウンドトリップが失敗する。
 - **WHY**: `schema_statements.rb` の `predicate.from(2).to(-3)` が WHERE 節を常に二重括弧 `((expr))` と仮定して 2 文字ずつ剥がしている。だが pg_get_constraintdef の括弧数は PG バージョンではなく**述語の形状**に依存する（PG 17.10 で直接プローブして確認）: 裸カラム `active` → `WHERE (active)`（単一括弧・壊れる）／演算子式 `b > 1` → `WHERE ((b > 1))`（二重括弧・既存コードでも動く）。正しくは `from(1).to(-2)` で外側 1 対だけ剥がす — 演算子式は `(b > 1)` になるが Rails が再度 `(...)` で包むため両形状でラウンドトリップ安定。
 - **HOW**: `config/initializers/rails_exclusion_constraint_where_fix.rb` で `ExclusionConstraintWhereFix` モジュールを `prepend` して修正済み。upstream Rails main は 2026-06-12 時点でも未修正のため、ガードは `ActiveRecord::VERSION::MAJOR == 8`（8 系なら適用）。upstream 修正後に適用されても同等ロジックの上書きで無害。Rails メジャーアップ時に upstream の `exclusion_constraints`（schema_statements.rb の `predicate.from(2).to(-3)` 付近）を再確認し、修正されていたら本ファイルを削除する。initializer は `require "active_record/connection_adapters/postgresql_adapter"` で先読みしてから prepend すること（定数未ロードエラー防止）。
-- verified: Rails 8.1.3 / PostgreSQL 17.10 / 2026-06-12（0b-4 Task 2 で発覚・レビューで診断訂正）
+- verified: Rails 8.1.3 / PostgreSQL 17.10 / 2026-06-12（0b-4 Task 2 で発覚・レビューで診断訂正）。**PG 18.4 でも同挙動を直接プローブで再確認（2026-06-16・裸カラム `WHERE (a)` 単一括弧／演算子式 `WHERE ((b > 1))` 二重括弧）— 回避策据え置き**
 
 ### fx の SchemaDumper フックと exclusion-constraint パッチは共存できる（別メソッド prepend で順序非依存）
 
@@ -159,6 +159,20 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **WHY**: 両者は**別メソッドへの prepend** で干渉しない。fx は `ActiveRecord::SchemaDumper` 系に prepend して `create_trigger` 行を吐く出力フック、自前パッチは `PostgreSQL::SchemaStatements#exclusion_constraints` に prepend する読み取り修正。patch するメソッドが異なるため initializer のロード順に依存しない（どちらが先でも結果が同じ）
 - **HOW**: 追記専用トリガー（`db/triggers/attendance_histories_no_mutate_v01.sql` 等）は fx の `create_trigger` で管理し、UserWorkPattern の exclusion constraint と同じ schema.rb に同居させる。新規にトリガー or exclusion を足したら `RAILS_ENV=test bin/rails db:schema:load`（or `db:test:prepare`）でラウンドトリップを 1 度通して両出力が壊れていないか確認する
 - verified: fx 0.11.0 / Rails 8.1.3 / PG 17 / 2026-06-13（1-3 Task 1-2 で実装・schema.rb に exclusion_constraint と create_trigger 2 件が共存・load 実証済）
+
+### fx のトリガー dump 順序が非決定的（同一テーブルに複数トリガーで churn）
+
+- **WHAT**: 同一テーブルに複数トリガーがあると、`db:schema:dump` が出力する `create_trigger` 行の順序が PG バージョン・クエリ実行ごとに揺れ、schema.rb に無意味な diff（churn）が出る。
+- **WHY**: fx 0.11.0 の `Triggers::TRIGGERS_WITH_DEFINITIONS_QUERY` は `ORDER BY pc.oid`（トリガーが属する**テーブル**の OID）のみ。同一テーブルのトリガー群は pc.oid が同値でタイブレークが無く、行順が PostgreSQL の物理ヒープ順（未規定）に委ねられる。PG17→18 で実踏 — **同一の手動クエリでも `[no_mutate, no_truncate]` と `[no_truncate, no_mutate]` の両順を観測**し非決定性を確証。
+- **HOW**: `config/initializers/fx_trigger_dump_order_fix.rb` で `Triggers.all` を prepend し `super.sort` で name 昇順に決定化（`Fx::Trigger` は `include Comparable` で `<=>` を name に委譲）。SQL を複製しないため fx 本体のクエリ変更が透過的に流れ、fx が将来 ORDER BY を自前修正しても整列済み配列の再整列（no-op）で無害（自己無害化）。既存 `rails_exclusion_constraint_where_fix.rb` と同じ prepend 流儀。CI に `bin/rails db:schema:dump && git diff --exit-code db/schema.rb`（`db:test:prepare` 直後・rspec の `before(:suite)` がテスト専用表を作る前）を置き、本パッチ／exclusion パッチの回帰と migration 後の schema.rb commit 漏れを dump 方向で検知する。
+- verified: fx 0.11.0 / PostgreSQL 18.4 / 2026-06-16（PG17→18 アップグレードで発覚・patch 後に `db:schema:dump` の schema.rb 差分ゼロを実証）
+
+### precompiled な pg gem は libpq を自前同梱し Homebrew libpq に非依存（PG メジャー版アップで再ビルド不要）
+
+- **WHAT**: Homebrew PostgreSQL をメジャーアップ（17→18）しても、`pg` gem の再ビルドは不要。サーバを入れ替えるだけでよい。
+- **WHY**: 本機が使う precompiled `pg-1.6.3-arm64-darwin` を `otool -L` で検査すると、外部リンクは gem 同梱の `@loader_path/../../ports/arm64-darwin/lib/libpq-ruby-pg.1.dylib`（current version 5.18.0 = PG18 世代）と `/usr/lib/libSystem` のみで、`/opt/homebrew/opt/postgresql@NN/lib/libpq.dylib` を一切参照しない。サーバ版差はワイヤプロトコル互換で吸収される。当初「導入時の libpq に動的リンク・再ビルド必須」と想定したが実測で否定された。
+- **HOW**: 確認は `otool -L "$(find "$(bundle show pg)" -name '*.bundle' | head -1)"`。`bundle config force_ruby_platform true` で source 版へ切替えた場合のみ Homebrew libpq 依存に戻るため、その時だけ `@NN/bin/pg_config` を指して再ビルドが要る。
+- verified: pg 1.6.3 (arm64-darwin) / PostgreSQL 18.4 / 2026-06-16（PG17→18 で otool により Homebrew libpq 非依存を確認・サーバ 18 で rspec 589 緑）
 
 ## ActiveRecord association
 
