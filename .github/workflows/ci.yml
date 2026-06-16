@@ -48,4 +48,8 @@ jobs:
         with:
           bundler-cache: true
       - run: bin/rails db:test:prepare
+      # schema.rb が DB と一致するか（fx/exclusion パッチの回帰・migration 後の
+      # schema.rb commit 漏れを dump 方向で検知）。rspec の before(:suite) が
+      # テスト専用表を作る前に実行すること。
+      - run: bin/rails db:schema:dump && git diff --exit-code db/schema.rb
       - run: bundle exec rspec

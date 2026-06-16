@@ -164,7 +164,7 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 
 - **WHAT**: 同一テーブルに複数トリガーがあると、`db:schema:dump` が出力する `create_trigger` 行の順序が PG バージョン・クエリ実行ごとに揺れ、schema.rb に無意味な diff（churn）が出る。
 - **WHY**: fx 0.11.0 の `Triggers::TRIGGERS_WITH_DEFINITIONS_QUERY` は `ORDER BY pc.oid`（トリガーが属する**テーブル**の OID）のみ。同一テーブルのトリガー群は pc.oid が同値でタイブレークが無く、行順が PostgreSQL の物理ヒープ順（未規定）に委ねられる。PG17→18 で実踏 — **同一の手動クエリでも `[no_mutate, no_truncate]` と `[no_truncate, no_mutate]` の両順を観測**し非決定性を確証。
-- **HOW**: `config/initializers/fx_trigger_dump_order_fix.rb` で当該 frozen 定数を `remove_const`→`const_set` し、`ORDER BY pc.oid, pt.tgname` とタイブレークを付与して決定化（既存 `rails_exclusion_constraint_where_fix.rb` と同じ「dump 癖を initializer で patch」流儀）。トリガー名は一意ゆえ版非依存で安定。fx 本体が tgname を含む ORDER BY に修正されたら本ファイルを削除。
+- **HOW**: `config/initializers/fx_trigger_dump_order_fix.rb` で `Triggers.all` を prepend し `super.sort` で name 昇順に決定化（`Fx::Trigger` は `include Comparable` で `<=>` を name に委譲）。SQL を複製しないため fx 本体のクエリ変更が透過的に流れ、fx が将来 ORDER BY を自前修正しても整列済み配列の再整列（no-op）で無害（自己無害化）。既存 `rails_exclusion_constraint_where_fix.rb` と同じ prepend 流儀。CI に `bin/rails db:schema:dump && git diff --exit-code db/schema.rb`（`db:test:prepare` 直後・rspec の `before(:suite)` がテスト専用表を作る前）を置き、本パッチ／exclusion パッチの回帰と migration 後の schema.rb commit 漏れを dump 方向で検知する。
 - verified: fx 0.11.0 / PostgreSQL 18.4 / 2026-06-16（PG17→18 アップグレードで発覚・patch 後に `db:schema:dump` の schema.rb 差分ゼロを実証）
 
 ### precompiled な pg gem は libpq を自前同梱し Homebrew libpq に非依存（PG メジャー版アップで再ビルド不要）

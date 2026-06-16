@@ -92,7 +92,7 @@ G. bundle exec rspec 緑（17 退場後）      # pg gem が Homebrew libpq 非�
 
 - **ポート 5432 衝突**（§2-B/C）— stop 17 → start 18 の順序で回避。
 - **`pg_get_constraintdef` 括弧挙動の 18 変化**（§4）— 既存の schema dump round-trip が壊れると `db:schema:load` や test が落ちる形で**確実に検出**される。緑 suite が安全網。
-- **pg gem は再ビルド不要**（§0 実測）— 自前 libpq 同梱ゆえ 17 退場後も生存。§2-G で実証。仮に将来 `force_ruby_platform` で source 版に切替えるなら Homebrew libpq 依存に戻る点だけ留意。
+- **pg gem は再ビルド不要**（§0 実測）— 自前 libpq 同梱ゆえ 17 退場後も生存（§2-G で実証。`force_ruby_platform` 時の例外は §0）。
 - **postgres MCP の再接続** — DB 名・ポート不変ゆえ恐らく自動復帰。要すれば `/mcp` 再接続。**rails MCP は Ruby 依存ゆえ無関係**。
 - **psql keg-only PATH の取り違え** — 退場前は 17/18 が併存し PATH 衝突の温床。`/opt/homebrew/opt/postgresql@18/bin` をフルパス指定で扱い、退場（F）後に docs の PATH 記述を 18 一本化（C5）。
 - **ロールバック方針** — F（17 uninstall + data dir 削除）が唯一の不可逆点。それ以前は 17 が健在なので、17 を再 start すれば原状復帰できる。F は §4 緑を確認してからのみ実行。
