@@ -13,12 +13,14 @@ Salesforce 2GP 勤怠パッケージ「Gatcha」を **Ruby on Rails 8 マルチ�
 - [docs/MIGRATION_FROM_SF.md](docs/MIGRATION_FROM_SF.md) — SF 版からの移植対応表（歴史的経緯・参照任意。SF 版原典 `../Gatcha/docs/SPEC.md` が手元に無くても支障なし）
 
 ## スタック
-Rails 8 / PostgreSQL 18 / Hotwire(Turbo+Stimulus)+ViewComponent / Devise / acts_as_tenant（行レベル）/ Pundit / SolidQueue(recurring) / SolidCable / AASM。Ruby 4.0.2。
+Rails 8 / PostgreSQL 18 / Hotwire(Turbo+Stimulus)+ViewComponent / Devise / acts_as_tenant（行レベル）/ Pundit / SolidQueue(recurring) / SolidCable / AASM。Ruby は `.ruby-version` にピン。
 
 ## 環境（整備済み）
-- **Ruby:** 4.0.2（rbenv・`.ruby-version` でこのリポジトリに固定。PR #27/#28 で 3.3.11 から直行アップグレード済み）
+- **Ruby:** `.ruby-version` にピン（rbenv。PR #27/#28 で 3.3.11 → 4.0.2 に直行アップグレード済み）
 - **Postgres:** 18（`brew services` 常駐）。DB `gatcha_development` / `gatcha_test` 作成済み。psql は keg-only → `/opt/homebrew/opt/postgresql@18/bin`
 - **MCP（.mcp.json）:** jp-labor-evidence / sentry（OAuth 済み）/ rails / postgres — **全 4 サーバー接続済み**（詳細・再現手順は docs/MCP_SETUP.md）
+
+> **バージョン記法（drift 防止）:** 現行 Ruby 版は `.ruby-version` が SSOT。prose/docs に数字をベタ書きせずファイルを指す（CI の `setup-ruby` も無記述で追従・Dockerfile ARG だけは build 用 literal で同期コメント付き）。過去の移行記録（PR #27 の 3.3.11 → 4.0.2 等・凍結事実）は数字可。
 
 ## Git
 - このリポジトリのコミットは **kei1110 <eoh2145@gmail.com>**（local config 済み・グローバル設定とは別）
@@ -38,7 +40,7 @@ PreToolUse/PostToolUse の開発ガード（**Claude Code 再起動＋承認**�
 - `block-gemfile-lock-edit`（Edit/Write）— Gemfile.lock の手編集を禁止（bundle 経由を強制）
 
 ## Gotchas（非自明・重要）
-- **OpenSSL:** `~/.zshrc` に Intel 時代の openssl@1.1 設定が残存（chezmoi 管理・未修正）。Ruby ビルド時は `RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@3)"` ＋ `LDFLAGS=/CPPFLAGS=/PKG_CONFIG_PATH=` のクリアで回避。グローバル ruby 2.7.2 は openssl@1.1 欠落で壊れている（本リポジトリは 4.0.2 ゆえ無関係）
+- **OpenSSL:** `~/.zshrc` に Intel 時代の openssl@1.1 設定が残存（chezmoi 管理・未修正）。Ruby ビルド時は `RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@3)"` ＋ `LDFLAGS=/CPPFLAGS=/PKG_CONFIG_PATH=` のクリアで回避。グローバル ruby 2.7.2 は openssl@1.1 欠落で壊れている（本リポジトリは `.ruby-version` 固定の Ruby ゆえ無関係）
 - **rails MCP:** `rails-mcp-server`（rbenv shim）は cwd の `.ruby-version` で Ruby を解決 → プロジェクト直下で起動されること。**Ruby アップグレード時は新 Ruby へ `gem install rails-mcp-server` で入れ直す**（Bundler 管理外の実行系ツールゆえ bundle では追従しない。怠ると `/mcp` が `Failed to reconnect: -32000` で死ぬ。詳細は docs/RAILS_GOTCHAS.md「Ruby / ツールチェーン」）
 - **マルチテナント安全（SPEC §3.6）:** SolidQueue バッチはリクエスト無 → `ActsAsTenant.with_tenant(org)` でラップ必須（全社横断漏洩を防ぐ）。自己参照 FK は同一テナント強制
 - **コンプラ判定は法定(legal)基準固定**（SPEC §8）。36 協定の上限・割増率は定数（テナント設定で改変不可）

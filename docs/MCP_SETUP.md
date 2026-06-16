@@ -26,7 +26,7 @@
 整備済みの構成（再現手順を兼ねた記録）:
 
 ```bash
-# Ruby 3.3.11（rbenv・.ruby-version でリポジトリに固定済み）
+# Ruby（rbenv・.ruby-version でリポジトリに固定済み）
 gem install rails-mcp-server        # 1.5.1 導入済み
 
 # ~/.config/rails-mcp/projects.yml（登録済み）:
