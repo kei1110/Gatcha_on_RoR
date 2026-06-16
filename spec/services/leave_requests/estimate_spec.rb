@@ -104,5 +104,18 @@ RSpec.describe LeaveRequests::Estimate do
              end_date: Date.new(2026, 1, 1) + LeaveRequest::MAX_SPAN_DAYS + 1)
       }.to raise_error(ArgumentError)
     end
+
+    it "half_day_type が nil でも :none 扱いで落ちない" do
+      r = described_class.call(requester: user, leave_type: paid,
+                               start_date: Date.new(2026, 5, 1), end_date: Date.new(2026, 5, 1),
+                               half_day_type: nil)
+      expect(r.days_requested).to eq(BigDecimal("1"))
+    end
+
+    it "end < start は見積りエラー" do
+      expect {
+        call(start_date: Date.new(2026, 5, 2), end_date: Date.new(2026, 5, 1))
+      }.to raise_error(ArgumentError)
+    end
   end
 end

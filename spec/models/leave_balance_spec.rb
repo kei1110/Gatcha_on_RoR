@@ -78,4 +78,22 @@ RSpec.describe LeaveBalance do
       expect(b.errors[:leave_type]).to be_present
     end
   end
+
+  describe "DB 最終防衛（FK）" do
+    it "validate:false の越境 user_id は FK 違反" do
+      other_org = create(:organization)
+      outsider = ActsAsTenant.with_tenant(other_org) { create(:user) }
+      expect {
+        in_savepoint { build(:leave_balance).tap { |b| b.user_id = outsider.id }.save!(validate: false) }
+      }.to raise_error(ActiveRecord::InvalidForeignKey)
+    end
+
+    it "validate:false の越境 leave_type_id は FK 違反" do
+      other_org = create(:organization)
+      outsider = ActsAsTenant.with_tenant(other_org) { create(:leave_type) }
+      expect {
+        in_savepoint { build(:leave_balance).tap { |b| b.leave_type_id = outsider.id }.save!(validate: false) }
+      }.to raise_error(ActiveRecord::InvalidForeignKey)
+    end
+  end
 end

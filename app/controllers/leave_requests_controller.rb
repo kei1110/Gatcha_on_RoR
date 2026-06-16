@@ -43,6 +43,8 @@ class LeaveRequestsController < ApplicationController
     authorize @leave_request, :cancel?
     Approvals::Cancel.call(approvable: @leave_request, by: current_user)
     redirect_to leave_requests_path, status: :see_other, notice: "申請を取り消しました"
+  rescue AASM::InvalidTransition
+    redirect_to leave_requests_path, status: :see_other, alert: "この申請は取り消せません"
   end
 
   def preview

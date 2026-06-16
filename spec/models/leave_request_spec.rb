@@ -102,5 +102,17 @@ RSpec.describe LeaveRequest do
         end
       }.to raise_error(ActiveRecord::InvalidForeignKey)
     end
+
+    it "DB 最終防衛: validate:false の越境 leave_type_id は FK 違反" do
+      other_org = create(:organization)
+      outsider = ActsAsTenant.with_tenant(other_org) { create(:leave_type) }
+      expect {
+        in_savepoint do
+          record = build(:leave_request)
+          record.leave_type_id = outsider.id
+          record.save!(validate: false)
+        end
+      }.to raise_error(ActiveRecord::InvalidForeignKey)
+    end
   end
 end

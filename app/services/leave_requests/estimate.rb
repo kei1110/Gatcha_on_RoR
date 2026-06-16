@@ -16,7 +16,7 @@ module LeaveRequests
     end
 
     def self.call(requester:, leave_type:, start_date:, end_date:, half_day_type:)
-      new(requester, leave_type, start_date, end_date, half_day_type.to_sym).call
+      new(requester, leave_type, start_date, end_date, (half_day_type || "none").to_sym).call
     end
 
     def initialize(requester, leave_type, start_date, end_date, half_day_type)
@@ -44,6 +44,7 @@ module LeaveRequests
 
     # 半休は単日（calculator 呼出前の fail-closed・MPR）。span 上限も見積り段階で弾く
     def validate_input!
+      raise ArgumentError, "終了日は開始日以降にしてください" if @end_date < @start_date
       if @half_day_type != :none && @start_date != @end_date
         raise ArgumentError, "半休は単日申請でのみ指定できます"
       end
