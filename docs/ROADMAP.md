@@ -20,7 +20,7 @@
 
 - [x] rails new・テナント解決（fail-closed）・Devise テナントスコープ・Pundit 強制・CI + required checks・seed 組織・最小ホーム
 
-### Phase 0b — マスタ CRUD（次はここ）
+### Phase 0b — マスタ CRUD ✅
 
 > 完了条件: hr_admin が画面から全マスタを整備でき、§16.7 のオンボーディング手順が seed + 画面で一周する
 
@@ -30,7 +30,7 @@
 - [x] **0b-4 UserWorkPattern**（PR #16）: 割当 CRUD（社員詳細ネスト）・期間重複バリデーション（§4.6・モデル検証 + exclusion constraint の二重防衛）・割当済み WorkPattern の無効化ガード（**ガード②同型の拒否で確定** — 0b-2 設計 §0 の宿題回収）・`Organization#today` TZ 契約・未割当バナー（E 原則準拠）
 - [x] **0b-5 OrganizationSetting + ReasonTemplate**（PR #17）: 設定画面（v1 は closing_day / submit_deadline_days / fiscal_year_end_month の 3 項目・残カラムは消費 Phase 後送り）・テンプレート CRUD・**fiscal_year_end_month 変更は同一 tx で CompanyCalendar.fiscal_year 自動再計算に確定**（0b-3 設計 §0 の宿題回収・`Organization#setting` アクセサ規約）
 
-### Phase 1 — 打刻と計算エンジン
+### Phase 1 — 打刻と計算エンジン ✅
 
 > 完了条件: 社員がブラウザから打刻し、退勤時に実労働・残業・深夜・遅刻早退が正しく保存される
 
@@ -38,7 +38,7 @@
 - [x] **1-2 計算オブジェクト 4 種**: WorkTime / Overtime / DeepNight / LateEarly（§5.1〜5.4・分単位整数 + HALF_UP・TZ 入力契約）。退勤・再計算時にサービスから保存（週 40h 週次算出は Phase 3 の集計で導入）（PR #23）
 - [x] **1-3 AttendanceHistory + 代理打刻**: 追記専用モデル（3 段不変防御・fx トリガー/TRUNCATE 拒否・§4.14）・代理打刻（§6.1・本人バナー前倒し・通知本体は Phase 4）（PR #26）
 
-### Phase 2 — 申請・承認
+### Phase 2 — 申請・承認（次はここ）
 
 > 完了条件: 休暇・打刻変更・休日出勤が申請 → 2 段承認 → 副作用（記録更新・残高・履歴）まで一周し、撤回で復元できる
 
