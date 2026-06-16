@@ -66,6 +66,15 @@ RSpec.describe LeaveRequest do
     end
   end
 
+  describe "half_day_type 毒入力" do
+    it "不正値は ArgumentError でなく検証で弾く（validate: true）" do
+      r = build(:leave_request)
+      r.half_day_type = "bogus"
+      expect(r).to be_invalid
+      expect(r.errors[:half_day_type]).to be_present
+    end
+  end
+
   describe "テナント越境（ID 基点 fail-closed）" do
     it "他テナントの requester は無効" do
       outsider = ActsAsTenant.with_tenant(create(:organization)) { create(:user) }
