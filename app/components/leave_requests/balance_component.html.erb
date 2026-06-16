@@ -1,0 +1,8 @@
+<%# app/components/leave_requests/balance_component.html.erb %>
+<div class="text-sm <%= style[:css] %>" data-leave-balance>
+  <span>確定残 <%= confirmed.to_s("F") %> 日 / 仮残 <%= provisional.to_s("F") %> 日</span>
+  <span>申請後 <%= remaining_after.to_s("F") %> 日</span>
+  <% if style[:note] %>
+    <span data-balance-note>ℹ️ <%= style[:note] %></span>
+  <% end %>
+</div>
