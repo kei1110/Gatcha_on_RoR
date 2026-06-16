@@ -94,8 +94,14 @@ RSpec.describe Organization, type: :model do
       expect(org.fiscal_year_range("2026")).to eq(Date.new(2026, 1, 1)..Date.new(2026, 12, 31))
     end
 
-    it "範囲内の全日が fiscal_year_for で同じ年度へ戻る（往復一致）" do
+    it "範囲の先頭・末尾の境界日が fiscal_year_for で同じ年度へ戻る（往復一致）" do
       org = build(:organization, fiscal_year_end_month: 3)
+      range = org.fiscal_year_range("2026")
+      expect([ range.first, range.last ].map { |d| org.fiscal_year_for(d) }).to all(eq("2026"))
+    end
+
+    it "12 月決算でも境界日が往復一致する" do
+      org = build(:organization, fiscal_year_end_month: 12)
       range = org.fiscal_year_range("2026")
       expect([ range.first, range.last ].map { |d| org.fiscal_year_for(d) }).to all(eq("2026"))
     end
