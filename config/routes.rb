@@ -64,5 +64,10 @@ Rails.application.routes.draw do
     end
   end
 
+  resources :leave_requests, only: %i[index new create] do
+    collection { get :preview }   # ← Task 14 で使用（ここで定義しておく）
+    member { patch :cancel }
+  end
+
   root "home#show"
 end
