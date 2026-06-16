@@ -8,7 +8,7 @@
 |---------|------|------|
 | **jp-labor-evidence** | 日本の労基法・労安法・行政通達の原文エビデンス取得 | ✅ 接続済み（npx・前提なし） |
 | **rails** | Rails プロジェクト解析（モデル・ルート・スキーマ） | ✅ 接続済み（gem 1.5.1 + projects.yml 登録済み） |
-| **postgres** | スキーマ参照・クエリ・性能解析 | ✅ 接続済み（Postgres 17 常駐・`gatcha_development`） |
+| **postgres** | スキーマ参照・クエリ・性能解析 | ✅ 接続済み（Postgres 18 常駐・`gatcha_development`） |
 | **sentry** | エラー追跡・原因調査 | ✅ 接続済み（OAuth 認可済み・2026-06-13） |
 
 ## ① jp-labor-evidence — 日本労務法令エビデンス MCP（sub-account）
@@ -39,9 +39,9 @@ gem install rails-mcp-server        # 1.5.1 導入済み
 
 ## ③ postgres — @modelcontextprotocol/server-postgres（公式・読み取り中心）
 
-- Postgres 17 が `brew services` で常駐済み。DB `gatcha_development` / `gatcha_test` 作成済み
+- Postgres 18 が `brew services` で常駐済み。DB `gatcha_development` / `gatcha_test` 作成済み
 - `.mcp.json` の接続文字列は `postgresql://localhost/gatcha_development`（local trust 認証・調整不要）
-- psql が必要なら keg-only パス `/opt/homebrew/opt/postgresql@17/bin` を使う
+- psql が必要なら keg-only パス `/opt/homebrew/opt/postgresql@18/bin` を使う
 - 本番では**読み取り専用**構成を厳守。性能解析（インデックス提案・クエリプラン）が欲しくなったら、Node を要しない **Postgres MCP Pro**（`crystaldba/postgres-mcp`）への差し替えを検討（Docker or pipx）
 
 ## ④ sentry — Sentry リモート MCP（公式・HTTP + OAuth）

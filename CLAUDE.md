@@ -13,11 +13,11 @@ Salesforce 2GP 勤怠パッケージ「Gatcha」を **Ruby on Rails 8 マルチ�
 - [docs/MIGRATION_FROM_SF.md](docs/MIGRATION_FROM_SF.md) — SF 版からの移植対応表（歴史的経緯・参照任意。SF 版原典 `../Gatcha/docs/SPEC.md` が手元に無くても支障なし）
 
 ## スタック
-Rails 8 / PostgreSQL 17 / Hotwire(Turbo+Stimulus)+ViewComponent / Devise / acts_as_tenant（行レベル）/ Pundit / SolidQueue(recurring) / SolidCable / AASM。Ruby 4.0.2。
+Rails 8 / PostgreSQL 18 / Hotwire(Turbo+Stimulus)+ViewComponent / Devise / acts_as_tenant（行レベル）/ Pundit / SolidQueue(recurring) / SolidCable / AASM。Ruby 4.0.2。
 
 ## 環境（整備済み）
 - **Ruby:** 4.0.2（rbenv・`.ruby-version` でこのリポジトリに固定。PR #27/#28 で 3.3.11 から直行アップグレード済み）
-- **Postgres:** 17（`brew services` 常駐）。DB `gatcha_development` / `gatcha_test` 作成済み。psql は keg-only → `/opt/homebrew/opt/postgresql@17/bin`
+- **Postgres:** 18（`brew services` 常駐）。DB `gatcha_development` / `gatcha_test` 作成済み。psql は keg-only → `/opt/homebrew/opt/postgresql@18/bin`
 - **MCP（.mcp.json）:** jp-labor-evidence / sentry（OAuth 済み）/ rails / postgres — **全 4 サーバー接続済み**（詳細・再現手順は docs/MCP_SETUP.md）
 
 ## Git

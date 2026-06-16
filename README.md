@@ -18,7 +18,7 @@ Salesforce 2GP 勤怠パッケージ「Gatcha」を Ruby on Rails 8 で再設計
 | 層 | 採用技術 |
 |----|---------|
 | 言語 / FW | Ruby 3.3.11 / Rails 8（モノリス） |
-| データベース | PostgreSQL 17 |
+| データベース | PostgreSQL 18 |
 | マルチテナント | acts_as_tenant（行レベル分離・`require_tenant = true`） |
 | 認証 / 認可 | Devise / Pundit |
 | フロントエンド | Hotwire（Turbo + Stimulus）+ ViewComponent + Tailwind CSS |
@@ -33,8 +33,8 @@ Salesforce 2GP 勤怠パッケージ「Gatcha」を Ruby on Rails 8 で再設計
 
 ```bash
 # 前提: rbenv で Ruby 3.3.11（.ruby-version で固定）
-#       PostgreSQL 17（brew services start postgresql@17）
-#       psql は keg-only → PATH に /opt/homebrew/opt/postgresql@17/bin
+#       PostgreSQL 18（brew services start postgresql@18）
+#       psql は keg-only → PATH に /opt/homebrew/opt/postgresql@18/bin
 
 bin/setup        # 依存インストール + DB 作成
 bin/dev          # 開発サーバー起動（rails server + tailwindcss:watch）
