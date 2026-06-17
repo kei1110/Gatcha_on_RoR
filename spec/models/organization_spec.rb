@@ -83,6 +83,58 @@ RSpec.describe Organization, type: :model do
     end
   end
 
+  describe "#fiscal_year_range" do
+    it "fiscal_year_for の逆（3 月決算: '2026' → 2026-04-01..2027-03-31）" do
+      org = build(:organization, fiscal_year_end_month: 3)
+      expect(org.fiscal_year_range("2026")).to eq(Date.new(2026, 4, 1)..Date.new(2027, 3, 31))
+    end
+
+    it "12 月決算は暦年に一致（'2026' → 2026-01-01..2026-12-31）" do
+      org = build(:organization, fiscal_year_end_month: 12)
+      expect(org.fiscal_year_range("2026")).to eq(Date.new(2026, 1, 1)..Date.new(2026, 12, 31))
+    end
+
+    it "範囲の先頭・末尾の境界日が fiscal_year_for で同じ年度へ戻る（往復一致）" do
+      org = build(:organization, fiscal_year_end_month: 3)
+      range = org.fiscal_year_range("2026")
+      expect([ range.first, range.last ].map { |d| org.fiscal_year_for(d) }).to all(eq("2026"))
+    end
+
+    it "12 月決算でも境界日が往復一致する" do
+      org = build(:organization, fiscal_year_end_month: 12)
+      range = org.fiscal_year_range("2026")
+      expect([ range.first, range.last ].map { |d| org.fiscal_year_for(d) }).to all(eq("2026"))
+    end
+  end
+
+  describe "fiscal_year_end_month 変更ガード（残高あり）" do
+    let(:org) { create(:organization, fiscal_year_end_month: 3) }
+
+    it "残高が存在すると変更を拒否" do
+      ActsAsTenant.with_tenant(org) { create(:leave_balance) }
+      org.fiscal_year_end_month = 12
+      expect(org).to be_invalid
+      expect(org.errors[:fiscal_year_end_month]).to be_present
+    end
+
+    it "残高がなければ変更可" do
+      org.fiscal_year_end_month = 12
+      expect(org).to be_valid
+    end
+
+    it "他属性の変更は残高ありでも通る（過剰ブロック回避）" do
+      ActsAsTenant.with_tenant(org) { create(:leave_balance) }
+      org.name = "新社名"
+      expect(org).to be_valid
+    end
+
+    it "他テナントの残高は当組織をロックしない" do
+      ActsAsTenant.with_tenant(create(:organization)) { create(:leave_balance) }
+      org.fiscal_year_end_month = 12
+      expect(org).to be_valid
+    end
+  end
+
   describe "#today（0b-4 設計 §0 の TZ 契約）" do
     it "組織 TZ の当日を返す（アプリ TZ = UTC と日付が割れる時刻帯）" do
       org = build(:organization, time_zone: "Asia/Tokyo")

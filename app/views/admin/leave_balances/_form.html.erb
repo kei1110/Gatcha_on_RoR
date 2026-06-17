@@ -1,0 +1,15 @@
+<%# app/views/admin/leave_balances/_form.html.erb %>
+<%= form_with model: [:admin, user, leave_balance], local: true do |f| %>
+  <% if leave_balance.errors.any? %>
+    <div class="text-red-600 mb-2"><%= leave_balance.errors.full_messages.join("。") %></div>
+  <% end %>
+  <div class="mb-2">
+    <%= f.label :leave_type_id, "休暇種別" %>
+    <%= f.collection_select :leave_type_id, LeaveType.where(active: true), :id, :name %>
+  </div>
+  <div class="mb-2"><%= f.label :fiscal_year, "年度" %><%= f.text_field :fiscal_year %></div>
+  <div class="mb-2"><%= f.label :granted_days, "付与日数" %><%= f.number_field :granted_days, step: 0.5 %></div>
+  <div class="mb-2"><%= f.label :carry_over_days, "繰越日数" %><%= f.number_field :carry_over_days, step: 0.5 %></div>
+  <div class="mb-2"><%= f.label :granted_on, "付与日（有給は必須）" %><%= f.date_field :granted_on %></div>
+  <%= f.submit "保存", class: "bg-blue-600 text-white px-4 py-2 rounded" %>
+<% end %>

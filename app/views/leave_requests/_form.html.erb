@@ -1,0 +1,42 @@
+<%# app/views/leave_requests/_form.html.erb %>
+<%= form_with model: leave_request, url: leave_requests_path, method: :post,
+              data: { controller: "leave-request-form",
+                      "leave-request-form-preview-url-value": preview_leave_requests_path } do |f| %>
+  <% if leave_request.errors.any? %>
+    <div class="text-red-600 mb-2"><%= leave_request.errors.full_messages.join("。") %></div>
+  <% end %>
+  <div class="mb-2">
+    <%= f.label :leave_type_id, "休暇種別" %>
+    <%= f.collection_select :leave_type_id, leave_types, :id, :name, {},
+          data: { action: "change->leave-request-form#refresh", "leave-request-form-target": "leaveType" } %>
+  </div>
+  <div class="mb-2">
+    <%= f.label :start_date, "開始日" %>
+    <%= f.date_field :start_date, data: { action: "change->leave-request-form#refresh", "leave-request-form-target": "startDate" } %>
+  </div>
+  <div class="mb-2">
+    <%= f.label :end_date, "終了日" %>
+    <%= f.date_field :end_date, data: { action: "change->leave-request-form#refresh", "leave-request-form-target": "endDate" } %>
+  </div>
+  <div class="mb-2">
+    <%= f.label :half_day_type, "半休" %>
+    <%= f.select :half_day_type, [["なし","none"],["午前","morning"],["午後","afternoon"]], {},
+          data: { action: "change->leave-request-form#refresh", "leave-request-form-target": "halfDay" } %>
+  </div>
+
+  <%# preview の着地（Task 14 で Turbo Frame src を Stimulus が更新） %>
+  <%= turbo_frame_tag "leave_estimate", data: { "leave-request-form-target": "estimate" } %>
+
+  <div class="mb-2">
+    <%= f.label :reason, "理由" %>
+    <%= f.text_area :reason, data: { "leave-request-form-target": "reason" } %>
+    <div class="mt-1 flex gap-1 flex-wrap">
+      <% ReasonTemplate.where(active: true, applies_to: [:leave, :both]).each do |tpl| %>
+        <button type="button" class="text-xs border rounded px-2 py-1"
+                data-action="leave-request-form#applyTemplate"
+                data-template="<%= tpl.template_text %>"><%= tpl.label %></button>
+      <% end %>
+    </div>
+  </div>
+  <%= f.submit "申請する", class: "bg-blue-600 text-white px-4 py-2 rounded" %>
+<% end %>

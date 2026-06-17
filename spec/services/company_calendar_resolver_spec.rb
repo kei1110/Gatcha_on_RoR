@@ -54,4 +54,24 @@ RSpec.describe CompanyCalendarResolver do
   it "organization: nil は ArgumentError" do
     expect { described_class.new(organization: nil) }.to raise_error(ArgumentError)
   end
+
+  describe "#day_classifications" do
+    let(:org) { create(:organization) }
+    subject(:resolver) { described_class.new(organization: org) }
+
+    it "登録日は day_type と counts_as_paid_leave を surface する" do
+      ActsAsTenant.with_tenant(org) do
+        create(:company_calendar, date: Date.new(2026, 5, 1), day_type: :company_holiday,
+                                  counts_as_paid_leave: true, name: "創立記念日")
+      end
+      result = resolver.day_classifications(Date.new(2026, 5, 1), Date.new(2026, 5, 1))
+      expect(result[Date.new(2026, 5, 1)]).to eq(day_type: :company_holiday, counts_as_paid_leave: true)
+    end
+
+    it "未登録日は ISO 曜日 fallback・counts_as_paid_leave は false" do
+      # 2026-05-02 は土曜
+      result = resolver.day_classifications(Date.new(2026, 5, 2), Date.new(2026, 5, 2))
+      expect(result[Date.new(2026, 5, 2)]).to eq(day_type: :saturday, counts_as_paid_leave: false)
+    end
+  end
 end

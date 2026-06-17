@@ -1,0 +1,13 @@
+<%# app/views/leave_requests/index.html.erb %>
+<h1 class="text-xl font-bold mb-4">休暇申請</h1>
+<%= link_to "新規申請", new_leave_request_path, class: "text-blue-600" %>
+<ul class="mt-4 divide-y">
+  <% @leave_requests.each do |r| %>
+    <li class="py-2 flex justify-between">
+      <span><%= r.start_date %>〜<%= r.end_date %> / <%= r.leave_type.name %> / <%= r.days_requested.to_s("F") %>日 / <%= t("leave_request.status.#{r.approval_status}", default: r.approval_status) %></span>
+      <% if r.applying? %>
+        <%= button_to "取消", cancel_leave_request_path(r), method: :patch, class: "text-red-600" %>
+      <% end %>
+    </li>
+  <% end %>
+</ul>

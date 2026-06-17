@@ -24,6 +24,7 @@ Rails.application.routes.draw do
           patch :activate
         end
       end
+      resources :leave_balances, only: %i[new create edit update]   # ← 追加（フラット controller）
     end
     resources :work_patterns, except: :destroy do
       member do
@@ -61,6 +62,11 @@ Rails.application.routes.draw do
       post :clock_in    # :id = 対象社員 id
       post :clock_out
     end
+  end
+
+  resources :leave_requests, only: %i[index new create] do
+    collection { get :preview }   # ← Task 14 で使用（ここで定義しておく）
+    member { patch :cancel }
   end
 
   root "home#show"

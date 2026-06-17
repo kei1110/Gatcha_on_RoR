@@ -1,0 +1,5 @@
+<%# app/views/leave_requests/preview.html.erb %>
+<%= turbo_frame_tag "leave_estimate" do %>
+  <div class="text-sm">取得日数: <strong><%= @estimate.days_requested.to_s("F") %></strong> 日</div>
+  <%= render LeaveRequests::BalanceComponent.new(estimate: @estimate) %>
+<% end %>

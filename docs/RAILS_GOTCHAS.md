@@ -59,6 +59,13 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **HOW**: `enum :role, {...}, validate: true`（Rails 7.1+）で通常のバリデーションエラー（422）に変える。permit している enum カラムには必須
 - verified: Rails 8.1.3 / 2026-06-11
 
+### enum 値名が AR/モデルのメソッドと衝突するとクラスロード時 `ArgumentError`（`none` 等）
+
+- **WHAT**: `enum :half_day_type, { none: 0, ... }` は値ごとのスコープ/述語生成時に `none` を作ろうとし、`ActiveRecord::Base.none`（空リレーション）と衝突してクラスロード時に `ArgumentError`（"this will generate a class method 'none', which is already defined by Active Record"）で落ちる
+- **WHY**: Rails enum は値名でスコープ・述語メソッドを生成する。値名が既存メソッド（`none` / `new` / `valid` 等）と被ると衝突する
+- **HOW**: `prefix: <名前>`（例 `prefix: :half_day`）で生成メソッドを `half_day_none?` 等へ逃がす。**enum の値シンボル（`:none` 等）は不変**ゆえ DB 値・factory・代入は変わらず、述語/スコープ名だけ変わる（モデル内の `none?` 参照は `half_day_none?` へ）。`validate: true` と併用可
+- verified: Rails 8.1.3 / 2026-06-16（Phase 2-2a `LeaveRequest.half_day_type` で実踏）
+
 ### ShowExceptions ミドルウェア経由の例外応答は session が commit されない
 
 - **WHAT**: 例外を middleware の 404/500 描画に任せると、そのリクエストでの `reset_session` や Warden ログインが**クライアントに届かない**（連続リクエストのテストで 2 回目が 302 になる等）
