@@ -69,5 +69,12 @@ Rails.application.routes.draw do
     member { patch :cancel }
   end
 
+  resources :approval_assignments, only: %i[index] do
+    member do
+      patch :approve
+      patch :reject
+    end
+  end
+
   root "home#show"
 end

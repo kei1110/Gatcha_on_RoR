@@ -57,6 +57,17 @@ RSpec.describe LeaveRequest do
     end
   end
 
+  describe "#apply_approval_effects!（2-2b・委譲）" do
+    around { |ex| ActsAsTenant.with_tenant(create(:organization)) { ex.run } }
+
+    it "ApplyApproval へ委譲する" do
+      lr = build(:leave_request)
+      actor = build(:user, :manager_role)
+      expect(LeaveRequests::ApplyApproval).to receive(:call).with(leave_request: lr, acting_user: actor)
+      lr.apply_approval_effects!(acting_user: actor)
+    end
+  end
+
   describe "半休可能種別（§6.2・MPR）" do
     it "allow_half_day=false の種別で半休は無効" do
       lt = create(:leave_type, allow_half_day: false)

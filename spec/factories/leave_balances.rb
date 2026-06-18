@@ -9,5 +9,6 @@ FactoryBot.define do
     granted_days { 20 }
     carry_over_days { 0 }
     used_days { 0 }
+    granted_on { Date.current }   # paid_annual? 検証で required — paid leave_type を渡す spec に備えてデフォルト付与
   end
 end

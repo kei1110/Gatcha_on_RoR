@@ -62,4 +62,55 @@ RSpec.describe Clockings::Recalculate do
     expect { described_class.call(record:) }.not_to raise_error
     expect(record.reload.actual_work_hours).to eq(8.5)
   end
+
+  describe "day_part を status から導出（2-2b）" do
+    let(:org) { create(:organization) }
+    around { |ex| ActsAsTenant.with_tenant(org) { ex.run } }
+
+    # 固定時間制 09:00-18:00。遅刻判定が効くよう 10:00 出勤（= 遅刻）
+    let(:pattern) do
+      create(:work_pattern, start_time: "09:00", end_time: "18:00", break_minutes: 60)
+    end
+    let(:user) { create(:user, organization: org) }
+
+    def record_with(status:)
+      create(:attendance_record, user:, work_pattern: pattern, status:,
+             work_date: Date.new(2026, 6, 1),
+             clock_in: Time.utc(2026, 6, 1, 1),    # JST 10:00（遅刻）
+             clock_out: Time.utc(2026, 6, 1, 9))   # JST 18:00
+    end
+
+    it "morning_half は遅刻を免除（is_late=false）" do
+      record = record_with(status: :morning_half)
+      Clockings::Recalculate.call(record:)
+      expect(record.reload.is_late).to be false
+    end
+
+    it "full（clocked_out）は遅刻を計上（is_late=true）" do
+      record = record_with(status: :clocked_out)
+      Clockings::Recalculate.call(record:)
+      expect(record.reload.is_late).to be true
+    end
+
+    # afternoon_half / early_leave 対称テスト
+    # 所定終業 18:00 より前の 17:00（UTC 08:00）退勤 → full なら早退、afternoon_half なら免除
+    def record_early_out(status:)
+      create(:attendance_record, user:, work_pattern: pattern, status:,
+             work_date: Date.new(2026, 6, 2),
+             clock_in:  Time.utc(2026, 6, 2, 0),   # JST 09:00（定時出勤）
+             clock_out: Time.utc(2026, 6, 2, 8))    # JST 17:00（1h 早退）
+    end
+
+    it "afternoon_half は早退を免除（is_early_leave=false）" do
+      record = record_early_out(status: :afternoon_half)
+      Clockings::Recalculate.call(record:)
+      expect(record.reload.is_early_leave).to be false
+    end
+
+    it "full（clocked_out）は早退を計上（is_early_leave=true）" do
+      record = record_early_out(status: :clocked_out)
+      Clockings::Recalculate.call(record:)
+      expect(record.reload.is_early_leave).to be true
+    end
+  end
 end

@@ -1,0 +1,15 @@
+<% content_for :title, "承認インボックス" %>
+<div class="max-w-3xl mx-auto p-4">
+  <h1 class="text-xl font-bold mb-4">承認インボックス</h1>
+
+  <% if @assignments.empty? %>
+    <p class="text-gray-500">承認待ちの申請はありません。</p>
+  <% else %>
+    <% @assignments.each do |assignment| %>
+      <% case assignment.approvable %>
+      <% when LeaveRequest %>
+        <%= render Approvals::LeaveRequestRowComponent.new(assignment:) %>
+      <% end %>
+    <% end %>
+  <% end %>
+</div>

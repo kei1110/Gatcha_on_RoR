@@ -20,7 +20,10 @@ module Approvals
         guard!
         assignment = current_assignment!
         assignment.update!(decision: :approved, acted_at: Time.current, comment: @comment)
-        @approvable.approve! if @approvable.all_stages_approved?
+        if @approvable.all_stages_approved?
+          @approvable.approve!                                  # AASM applying→approved
+          @approvable.apply_approval_effects!(acting_user: @acting_user)  # 副作用（§13.6・2-2b）
+        end
       end
       @approvable
     end

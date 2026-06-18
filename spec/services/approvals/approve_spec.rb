@@ -79,4 +79,25 @@ RSpec.describe Approvals::Approve do
       expect { approve(approver: boss) }.to raise_error(Approvals::NotCurrentApprover)
     end
   end
+
+  describe "副作用 hook（2-2b）" do
+    it "最終承認時のみ apply_approval_effects! を撃つ（acting_user 付き）" do
+      approve(approver: boss) # stage1（非最終）— 撃たない
+      expect(host).to receive(:apply_approval_effects!).with(acting_user: dept).once
+      approve(approver: dept) # stage2（最終）
+    end
+
+    it "非最終段階（stage1）では撃たない" do
+      expect(host).not_to receive(:apply_approval_effects!)
+      approve(approver: boss)
+    end
+
+    it "単段ルートは 1 回の承認で撃つ" do
+      top = create(:user, :manager_role, organization: org)
+      solo = create(:user, organization: org, manager: top)
+      h = ApprovalTestRecord.create!(requester: solo).tap { |x| Approvals::Start.call(x) }
+      expect(h).to receive(:apply_approval_effects!).with(acting_user: top).once
+      described_class.call(approvable: h, approver: top)
+    end
+  end
 end

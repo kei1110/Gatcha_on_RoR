@@ -51,4 +51,17 @@ RSpec.describe LeaveDaysCalculator do
         .to raise_error(ArgumentError)
     end
   end
+
+  describe ".counted_dates（2-2b・計上日抽出の共有 API）" do
+    it "weekday と paid company_holiday を計上日として返す" do
+      classifications = {
+        Date.new(2026, 5, 1) => { day_type: :weekday, counts_as_paid_leave: false },        # 計上
+        Date.new(2026, 5, 2) => { day_type: :saturday, counts_as_paid_leave: false },        # 除外
+        Date.new(2026, 5, 4) => { day_type: :company_holiday, counts_as_paid_leave: true },  # 計上
+        Date.new(2026, 5, 5) => { day_type: :company_holiday, counts_as_paid_leave: false }  # 除外
+      }
+      expect(described_class.counted_dates(classifications))
+        .to contain_exactly(Date.new(2026, 5, 1), Date.new(2026, 5, 4))
+    end
+  end
 end

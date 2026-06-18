@@ -23,7 +23,12 @@ module Clockings
         window = ScheduledWindow.for(pattern:, work_date: @record.work_date, zone:)
         clock_in = @record.clock_in.in_time_zone(zone)   # §5 入力契約: 組織 TZ 変換済みを渡す
         clock_out = @record.clock_out.in_time_zone(zone)
-        day_part = :full # Phase 2 で status（morning_half 等）から導出
+        day_part =
+          case @record.status
+          when "morning_half" then :morning_half
+          when "afternoon_half" then :afternoon_half
+          else :full   # working / clocked_out / on_leave
+          end
 
         actual = WorkTimeCalculator.call(clock_in:, clock_out:, window:, day_part:)
         overtime = OvertimeCalculator.call(actual_work_minutes: actual, clock_out:, window:)

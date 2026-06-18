@@ -12,9 +12,14 @@ class LeaveDaysCalculator
       raise ArgumentError, "半休は単日のみ（classifications.size=#{classifications.size}）"
     end
 
-    counted = classifications.count { |_date, info| counted?(info) }
+    counted = counted_dates(classifications).size
     factor = half_day_type == :none ? 1 : 0.5
     BigDecimal(counted.to_s) * BigDecimal(factor.to_s)
+  end
+
+  # 計上日の Date 配列（2-2b・ApplyApproval と call が共有 = 計上基準の単一ソース）。
+  def self.counted_dates(classifications)
+    classifications.select { |_date, info| counted?(info) }.keys
   end
 
   def self.counted?(info)

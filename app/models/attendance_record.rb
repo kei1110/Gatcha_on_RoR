@@ -10,10 +10,13 @@ class AttendanceRecord < ApplicationRecord
   # fail-closed 検証を追加すること — 複合 FK は最終防衛（1-1 設計 §1）
   belongs_to :work_pattern, optional: true
 
-  # 残り 4 値は SPEC §4.8 の列挙順で整数を予約: morning_half: 2 / afternoon_half: 3 /
-  # on_leave: 4 / absent: 5（消費スライス 2-2/4-2 で追記 — 1-1 設計 §1。
-  # plain enum は意図的逸脱: AASM 化は状態が 3 つ以上になる 2-2 で再判断・SPEC §13 実装注記）
-  enum :status, { working: 0, clocked_out: 1 }, validate: true
+  # §4.8 列挙順の予約整数。absent: 5 は 4-2 で追加。
+  # plain enum は意図的逸脱: AASM 化は 2-2b 完了後に再判断 = D3 で据置確定（SPEC §13 実装注記）。
+  enum :status, { working: 0, clocked_out: 1,
+                  morning_half: 2, afternoon_half: 3, on_leave: 4 }, validate: true
+
+  # 全休/半休 AR は打刻が無い（休暇承認の副作用が作成・2-2b）。working/clocked_out は従来必須。
+  LEAVE_STATUSES = %w[morning_half afternoon_half on_leave].freeze
 
   # 代理打刻の理由（§6.1）。NULL = 通常打刻。permit する enum ゆえ allow_nil: true で毒入力のみ 422 に
   # （NULL は一覧外だが許容する — validate: true のみだと nil が拒否される）
@@ -34,7 +37,7 @@ class AttendanceRecord < ApplicationRecord
   scope :calculated, -> { where.not(actual_work_hours: nil) }
 
   validates :work_date, presence: true
-  validates :clock_in, presence: true
+  validates :clock_in, presence: true, unless: :leave_status?
   validates :actual_work_hours, :legal_overtime_hours, :scheduled_overtime_hours,
             :deep_night_hours, :late_minutes, :early_leave_minutes,
             numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
@@ -43,6 +46,8 @@ class AttendanceRecord < ApplicationRecord
   validate :clock_out_not_before_clock_in
 
   private
+
+  def leave_status? = LEAVE_STATUSES.include?(status)
 
   def clock_out_not_before_clock_in
     return if clock_out.blank? || clock_in.blank? || clock_out >= clock_in

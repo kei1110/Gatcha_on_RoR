@@ -26,6 +26,11 @@ class LeaveRequest < ApplicationRecord
   validate :requester_must_belong_to_same_organization
   validate :leave_type_must_belong_to_same_organization
 
+  # 承認確定時の副作用（§6.2・§13.6）。Approve エンジンの with_lock 内・同一 tx で呼ばれる。
+  def apply_approval_effects!(acting_user:)
+    LeaveRequests::ApplyApproval.call(leave_request: self, acting_user:)
+  end
+
   private
 
   def end_date_not_before_start_date
