@@ -12,5 +12,10 @@ FactoryBot.define do
       status { :clocked_out }
       clock_out { clock_in + 9.hours }
     end
+
+    # clock_out + work_pattern が揃った状態で作成した場合は実際の ClockOut 後の状態を再現する
+    after(:create) do |record|
+      Clockings::Recalculate.call(record:) if record.clock_out.present? && record.work_pattern.present?
+    end
   end
 end

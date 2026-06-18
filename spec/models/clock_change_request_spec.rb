@@ -81,4 +81,13 @@ RSpec.describe ClockChangeRequest do
   it "approval_status は初期 applying" do
     expect(build_ccr.tap(&:validate)).to be_applying
   end
+
+  describe "#apply_approval_effects!（2-3・委譲）" do
+    it "ApplyApproval へ委譲する" do
+      c = build(:clock_change_request, requester: user, attendance_record: record)
+      actor = build(:user, :manager_role)
+      expect(ClockChangeRequests::ApplyApproval).to receive(:call).with(clock_change_request: c, acting_user: actor)
+      c.apply_approval_effects!(acting_user: actor)
+    end
+  end
 end

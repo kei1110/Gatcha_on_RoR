@@ -23,6 +23,11 @@ class ClockChangeRequest < ApplicationRecord
   validate :requester_must_belong_to_same_organization
   validate :attendance_record_must_belong_to_same_organization
 
+  # 承認確定時の副作用（§6.3・§13.6）。Approve エンジンの with_lock 内・同一 tx で呼ばれる。
+  def apply_approval_effects!(acting_user:)
+    ClockChangeRequests::ApplyApproval.call(clock_change_request: self, acting_user:)
+  end
+
   private
 
   def new_times_present_for_change_type
