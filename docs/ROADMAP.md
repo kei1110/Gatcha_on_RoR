@@ -44,7 +44,7 @@
 
 - [x] **2-1 承認エンジン core**: ApprovalAssignment・固定 2 段ルート解決（単段縮約）・自己承認防止 #1/#2/#3（§7.2〜7.3）・AASM 業務ステータス（#1）。対象非依存エンジンをテスト専用 approvable で検証。**後置**: 撤回（#4・2-5）／副作用・LeaveRequest（2-2）／delegate 基盤（§7.5）／Cancel サービス・Scope・承認 UI（2-2）。サービス/Approve/Reject はリクエスト文脈前提（ジョブ化時は `ActsAsTenant.with_tenant` ラップ必須・§8）
 - [x] **2-2a LeaveRequest + LeaveBalance（申請側）**: 申請 UI（LeaveDaysCalculator §5.5・Estimate 単一ソース・残高 2 段階表示・サーバ往復 preview）・hr_admin 残高 CRUD・取消（`Approvals::Cancel`）・決算月ガード格上げ（残高ありで `fiscal_year_end_month` 変更禁止・社労士確認 #13）（PR [#6](https://github.com/kei1110/Gatcha_on_RoR/pull/6)）
-- [ ] **2-2b 承認 + 副作用**: 承認インボックス UI・`ApprovalAssignmentPolicy::Scope`・`approve` 副作用サービス（`lock!`・AR 更新/作成・`LateEarly` 再計算・履歴）・月跨ぎ/年度跨ぎ（§6.2）・`AttendanceRecord.status` enum 拡張（morning_half/afternoon_half/on_leave）
+- [x] **2-2b 承認 + 副作用**: 承認インボックス UI・`ApprovalAssignmentPolicy::Scope`・`approve` 副作用サービス（`LeaveRequests::ApplyApproval`＝残高 `lock!`加算/over-balance ハード拒否・AR upsert on_leave/半休・`LateEarly` 再計算・`AttendanceHistory(leave_approved)`）・月跨ぎ per-day 計上・年度跨ぎ start_date 統一・`AttendanceRecord.status` enum 拡張（PR #<PR番号>）
 - [ ] **2-3 ClockChangeRequest**: 競合チェック（§7.4）・new_entry・再計算接続
 - [ ] **2-4 HolidayWorkRequest**: 4 値ステータス・代休残高 +1・is_holiday_work 連動（§6.11。未打刻検出は Phase 4）
 - [ ] **2-5 撤回フロー**: withdrawal_requested（承認イベント未定義）・履歴参照復元・イベント単位副作用（§7.6・§13.6）
@@ -99,6 +99,8 @@
 - [x] **Ruby 4.0.2 アップグレード**（PR #27）: 3.3.11 → 4.0.2 直行（Rails 8.1.3 据え置き＝既に 8.1 native）。実機検証で全 CI ゲート green を確認（rspec 523/0・rubocop・brakeman・C 拡張 4.0 ABI ロード可）後にスライス化。bundler 4.0.14・`gem "cgi"` 予防追加・frozen_string_literal 一括付与（計 181 ファイル）を同梱。YJIT 有効化・4.0.5 追従は別 PR。設計 `docs/superpowers/specs/2026-06-14-ruby-4-0-2-upgrade-design.md`
 - [x] **YJIT 有効化（調査の結果 Rails 8.1 既定で production 有効・実装不要）**（PR #28）: `config.load_defaults 8.1` が `config.yjit` を production のみ true に設定し boot で `RubyVM::YJIT.enable`。Ruby 4.0.2 も `+YJIT` 同梱。dev/test は OFF（正）。明示 `config.yjit = true` は omakase に反し drift 源ゆえ追加せず。別 PR の実装対象なし（docs のみ・GOTCHAS「Ruby / ツールチェーン」に記録）
 - [x] **PostgreSQL 17→18 アップグレード**（PR #3）: ローカル開発機を 17.10→18.4。dev/test はクリーン再生成（data dir 非移行）・17 は完全退場。pg gem は libpq 自前同梱で再ビルド不要（`otool` 実測）・exclusion-constraint 罠 152 は PG18.4 でも不変。新発見の fx トリガー dump 順非決定性を `config/initializers/fx_trigger_dump_order_fix.rb` で決定化。rspec 589/0 緑（退場後も）。CI image を `postgres:18` へ。設計 `docs/superpowers/specs/2026-06-16-postgres-18-upgrade-design.md`
+- [ ] **半休日への後続打刻連携（§13.1 `morning_half → morning_half`）**: 先に半休休暇が承認され半休 status の AR が存在する日に、本人が残り半日を打刻する経路が未対応（`Clockings::ClockIn` は `(user, work_date)` unique index に衝突し得る）。2-2b は leave 承認が AR を作る側に集中し本連携を退避（2-2b 設計 D5）。`ClockIn` を「既存 AR があれば status を壊さず clock_in を埋める upsert」へ改修する Phase 1 clocking PR で回収
+- [ ] **clocked 済 AR への全休承認で計算列が stale**: 既に出退勤打刻済（clocked_out・計算 8 列 non-NULL）の日に全休が承認されると、status は on_leave に上書きされるが `on_leave?` 早期 return で再計算されず clock_in/clock_out・計算 8 列が stale のまま残り、下流集計を誤らせ得る（§13.1 非掲載の運用上想定外ケース）。2-2b 設計 §1.5 / §8 handoff #2 で既知。打刻済日への全休は競合検出（却下推奨）or 計算列クリアの要否を後続スライスで判断
 
 ## 横断ルール（順序の根拠）
 

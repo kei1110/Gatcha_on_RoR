@@ -192,12 +192,14 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 
 ---
 
-### with_lock（トランザクション）内で SQL 例外を rescue すると「偽 success + 更新消失」
+### with_lock 内の副作用 — rescue するか伝播させるかは「巻き戻したいか」で決まる（2-2b・verified 2026-06-18）
 
-- **WHAT**: with_lock ブロック内で `update!` 成功 → 後続処理の SQL 例外（StatementInvalid 等）を rescue して正常 return すると、成功レスポンスなのに update! が消える
-- **WHY**: PG は SQL エラーでトランザクション全体が aborted 状態になり、rescue 後の COMMIT は黙って ROLLBACK に化ける。Ruby 例外（RecordInvalid・RuntimeError 等 SQL 未発行のもの）なら commit は生きるため、**例外の種類で結果が分岐**し気づきにくい
-- **HOW**: 「確定させたい書き込み」と「失敗してよい後続処理」は同一 tx に同居させない — 後続を with_lock の外（commit 後）へ出すか、`transaction(requires_new: true)`（savepoint）で隔離する（1-2 ClockOut → Recalculate の構造）
-- verified: Rails 8.1.3 / PG 17 / 2026-06-13（1-2 品質レビュー②で実踏 — nonexistent_table 実験で偽 success + working 残留を再現・Ruby 例外 3 種は commit 維持を対照確認）
+- **WHAT:** `with_lock` 内の tx で失敗し得る副作用を `rescue` して握り潰すと、ロールバック済みの更新が消えたまま「成功」を返す（偽 success + 更新消失）。
+- **WHY:** 2 つの正反対の正解が文脈で決まる。
+  - **1-2 ClockOut→Recalculate:** 「打刻だけは保全したい」→ 失敗し得る後続（再計算）を **commit 後/savepoint に隔離**し、打刻本体を守る。
+  - **2-2b Approve→ApplyApproval:** 「残高違反なら承認ごと無効が正」→ `OverBalanceError` を **rescue せず raise 伝播**させ、assignment 承認・残高加算・AR 生成・履歴を atomic に巻き戻す。controller 層で rescue して flash 再描画。
+- **HOW:** 「この副作用が失敗したら主操作も無かったことにすべきか？」を先に問う。Yes → 同一 tx で raise 伝播。No → savepoint/commit 後へ隔離。機械的コピー厳禁。
+- verified: Rails 8.1.3 / PG 17-18 / 2026-06-13・2026-06-18（1-2 品質レビュー②で初踏・2-2b で文脈別正解を確立）
 
 ---
 
