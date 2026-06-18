@@ -9,6 +9,8 @@
       <% case assignment.approvable %>
       <% when LeaveRequest %>
         <%= render Approvals::LeaveRequestRowComponent.new(assignment:) %>
+      <% when ClockChangeRequest %>
+        <%= render Approvals::ClockChangeRequestRowComponent.new(assignment:) %>
       <% end %>
     <% end %>
   <% end %>

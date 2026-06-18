@@ -22,6 +22,9 @@ class ApprovalAssignmentsController < ApplicationController
   rescue Approvals::OverBalanceError
     redirect_to approval_assignments_path, status: :see_other,
                 alert: "残高不足で承認できません（人事へ残高の付与をご依頼ください）"
+  rescue Approvals::ConflictError
+    redirect_to approval_assignments_path, status: :see_other,
+                alert: "変更前時刻が現在の記録と一致しません（申請者へ再申請をご依頼ください）"
   rescue AASM::InvalidTransition, Approvals::NotCurrentApprover
     redirect_to approval_assignments_path, status: :see_other, alert: "この申請は既に処理されています"
   end
