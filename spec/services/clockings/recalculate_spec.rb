@@ -91,5 +91,26 @@ RSpec.describe Clockings::Recalculate do
       Clockings::Recalculate.call(record:)
       expect(record.reload.is_late).to be true
     end
+
+    # afternoon_half / early_leave 対称テスト
+    # 所定終業 18:00 より前の 17:00（UTC 08:00）退勤 → full なら早退、afternoon_half なら免除
+    def record_early_out(status:)
+      create(:attendance_record, user:, work_pattern: pattern, status:,
+             work_date: Date.new(2026, 6, 2),
+             clock_in:  Time.utc(2026, 6, 2, 0),   # JST 09:00（定時出勤）
+             clock_out: Time.utc(2026, 6, 2, 8))    # JST 17:00（1h 早退）
+    end
+
+    it "afternoon_half は早退を免除（is_early_leave=false）" do
+      record = record_early_out(status: :afternoon_half)
+      Clockings::Recalculate.call(record:)
+      expect(record.reload.is_early_leave).to be false
+    end
+
+    it "full（clocked_out）は早退を計上（is_early_leave=true）" do
+      record = record_early_out(status: :clocked_out)
+      Clockings::Recalculate.call(record:)
+      expect(record.reload.is_early_leave).to be true
+    end
   end
 end

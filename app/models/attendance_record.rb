@@ -10,10 +10,8 @@ class AttendanceRecord < ApplicationRecord
   # fail-closed 検証を追加すること — 複合 FK は最終防衛（1-1 設計 §1）
   belongs_to :work_pattern, optional: true
 
-  # 残り 4 値は SPEC §4.8 の列挙順で整数を予約: morning_half: 2 / afternoon_half: 3 /
-  # on_leave: 4 / absent: 5（消費スライス 2-2/4-2 で追記 — 1-1 設計 §1。
-  # plain enum は意図的逸脱: AASM 化は状態が 3 つ以上になる 2-2 で再判断・SPEC §13 実装注記）
-  # 整数は §4.8 列挙順の予約どおり（absent:5 は 4-2）。
+  # §4.8 列挙順の予約整数。absent: 5 は 4-2 で追加。
+  # plain enum は意図的逸脱: AASM 化は 2-2b 完了後に再判断 = D3 で据置確定（SPEC §13 実装注記）。
   enum :status, { working: 0, clocked_out: 1,
                   morning_half: 2, afternoon_half: 3, on_leave: 4 }, validate: true
 

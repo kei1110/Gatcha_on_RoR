@@ -7,8 +7,10 @@ class ApprovalAssignmentsController < ApplicationController
 
   def index
     authorize ApprovalAssignment
+    # approvable は polymorphic ゆえ nested preload 不可（型混在で AssociationNotFoundError）。
+    # 表示 N+1 は §16.1 許容・型別 preload は 2-3 で（ROADMAP backlog）
     @assignments = policy_scope(ApprovalAssignment)
-                   .includes(approvable: %i[requester leave_type])
+                   .includes(:approvable)
                    .select { |assignment| policy(assignment).approve? }   # 現段階の actionable のみ
   end
 
