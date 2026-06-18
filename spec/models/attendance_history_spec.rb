@@ -151,4 +151,20 @@ RSpec.describe AttendanceHistory do
       expect(h.errors[:source]).to be_present
     end
   end
+
+  describe "leave_approved の actor 必須（2-2b）" do
+    around { |ex| ActsAsTenant.with_tenant(create(:organization)) { ex.run } }
+
+    it "actor 無しの leave_approved は invalid" do
+      record = build(:attendance_history, event_type: :leave_approved, actor: nil)
+      expect(record).to be_invalid
+      expect(record.errors[:actor_id]).to be_present
+    end
+
+    it "actor ありの leave_approved は valid" do
+      record = build(:attendance_history, event_type: :leave_approved,
+                                          actor: create(:user, :manager_role))
+      expect(record).to be_valid
+    end
+  end
 end
