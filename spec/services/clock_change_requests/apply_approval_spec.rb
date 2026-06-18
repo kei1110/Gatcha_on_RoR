@@ -14,6 +14,7 @@ RSpec.describe ClockChangeRequests::ApplyApproval do
     create(:attendance_record, user:, work_pattern: pattern, status: :clocked_out,
            work_date: Date.new(2026, 6, 1),
            clock_in: Time.utc(2026, 6, 1, 1), clock_out: Time.utc(2026, 6, 1, 9))
+      .tap { |r| Clockings::Recalculate.call(record: r) }
   end
 
   def ccr(**attrs)
