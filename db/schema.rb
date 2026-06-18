@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_18_051646) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_18_165558) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -85,6 +85,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_18_051646) do
     t.index ["organization_id", "id"], name: "index_attendance_records_on_organization_id_and_id", unique: true
     t.index ["organization_id"], name: "index_attendance_records_on_organization_id"
     t.index ["user_id", "work_date"], name: "index_attendance_records_on_user_id_and_work_date", unique: true
+  end
+
+  create_table "clock_change_requests", force: :cascade do |t|
+    t.integer "approval_status", default: 0, null: false
+    t.bigint "attendance_record_id"
+    t.integer "change_type", null: false
+    t.datetime "created_at", null: false
+    t.date "last_stale_notified_on"
+    t.timestamptz "new_clock_in"
+    t.timestamptz "new_clock_out"
+    t.bigint "organization_id", null: false
+    t.timestamptz "original_clock_in"
+    t.timestamptz "original_clock_out"
+    t.text "reason"
+    t.bigint "requester_id", null: false
+    t.date "target_date"
+    t.datetime "updated_at", null: false
+    t.text "withdrawal_reason"
+    t.index ["organization_id", "id"], name: "index_clock_change_requests_on_organization_id_and_id", unique: true
+    t.index ["organization_id", "requester_id", "approval_status"], name: "idx_ccr_requester_status"
+    t.index ["organization_id"], name: "index_clock_change_requests_on_organization_id"
   end
 
   create_table "company_calendars", force: :cascade do |t|
@@ -262,6 +283,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_18_051646) do
   add_foreign_key "attendance_records", "organizations"
   add_foreign_key "attendance_records", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "attendance_records", "work_patterns", column: ["organization_id", "work_pattern_id"], primary_key: ["organization_id", "id"]
+  add_foreign_key "clock_change_requests", "attendance_records", column: ["organization_id", "attendance_record_id"], primary_key: ["organization_id", "id"]
+  add_foreign_key "clock_change_requests", "organizations"
+  add_foreign_key "clock_change_requests", "users", column: ["organization_id", "requester_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "company_calendars", "organizations"
   add_foreign_key "leave_balances", "leave_types", column: ["organization_id", "leave_type_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "leave_balances", "organizations"
