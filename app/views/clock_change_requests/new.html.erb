@@ -1,0 +1,9 @@
+<%# app/views/clock_change_requests/new.html.erb %>
+<h1 class="text-xl font-bold mb-4">打刻変更を申請</h1>
+<% tz = current_user.organization.time_zone %>
+<div class="mb-3 text-sm text-gray-600" data-current-times>
+  対象 <%= @attendance_record.work_date %>
+  ：現在 出勤 <%= @attendance_record.clock_in&.in_time_zone(tz)&.strftime("%H:%M") %>
+  / 退勤 <%= @attendance_record.clock_out&.in_time_zone(tz)&.strftime("%H:%M") %>
+</div>
+<%= render "form", clock_change_request: @clock_change_request, attendance_record: @attendance_record %>

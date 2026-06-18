@@ -1,0 +1,32 @@
+<%# app/views/clock_change_requests/_form.html.erb %>
+<%= form_with model: clock_change_request, url: clock_change_requests_path, method: :post,
+              data: { controller: "reason-chips" } do |f| %>
+  <% if clock_change_request.errors.any? %>
+    <div class="text-red-600 mb-2"><%= clock_change_request.errors.full_messages.join("。") %></div>
+  <% end %>
+  <%= f.hidden_field :attendance_record_id, value: attendance_record.id %>
+  <div class="mb-2">
+    <%= f.label :change_type, "変更対象" %>
+    <%= f.select :change_type, [["出勤時刻", "clock_in"], ["退勤時刻", "clock_out"], ["両方", "both"]] %>
+  </div>
+  <div class="mb-2">
+    <%= f.label :new_clock_in, "新しい出勤時刻" %>
+    <%= f.datetime_field :new_clock_in %>
+  </div>
+  <div class="mb-2">
+    <%= f.label :new_clock_out, "新しい退勤時刻" %>
+    <%= f.datetime_field :new_clock_out %>
+  </div>
+  <div class="mb-2">
+    <%= f.label :reason, "理由" %>
+    <%= f.text_area :reason, data: { "reason-chips-target": "reason" } %>
+    <div class="mt-1 flex gap-1 flex-wrap">
+      <% ReasonTemplate.where(active: true, applies_to: [:clock_change, :both]).each do |tpl| %>
+        <button type="button" class="text-xs border rounded px-2 py-1"
+                data-action="reason-chips#apply"
+                data-reason-chips-text-param="<%= tpl.template_text %>"><%= tpl.label %></button>
+      <% end %>
+    </div>
+  </div>
+  <%= f.submit "申請する", class: "bg-blue-600 text-white px-4 py-2 rounded" %>
+<% end %>
