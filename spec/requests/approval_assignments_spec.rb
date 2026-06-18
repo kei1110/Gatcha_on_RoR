@@ -52,6 +52,24 @@ RSpec.describe "ApprovalAssignments", type: :request do
       patch approve_approval_assignment_url(assignment_for(1), host: tenant_host(org))  # stage1 は boss 担当
       expect(response).to have_http_status(:not_found)
     end
+
+    it "別 organization（他テナント）の assignment は acts_as_tenant default_scope で 404" do
+      other_org = create(:organization)
+      other_leave = ActsAsTenant.with_tenant(other_org) do
+        lt   = create(:leave_type, paid_leave: false)
+        mgr  = create(:user, :manager_role)
+        emp2 = create(:user, manager: mgr)
+        LeaveRequests::Create.call(requester: emp2, leave_type: lt,
+                                   start_date: Date.new(2026, 5, 6),
+                                   end_date: Date.new(2026, 5, 6),
+                                   half_day_type: "none", reason: "他社テスト")
+      end
+      other_asgn = ActsAsTenant.with_tenant(other_org) { other_leave.approval_assignments.first }
+
+      sign_in boss
+      patch approve_approval_assignment_url(other_asgn, host: tenant_host(org))
+      expect(response).to have_http_status(:not_found)
+    end
   end
 
   describe "PATCH approve（over-balance ハード拒否）" do
@@ -75,6 +93,7 @@ RSpec.describe "ApprovalAssignments", type: :request do
         expect(AttendanceRecord.where(user: emp).count).to eq(0)
         expect(AttendanceHistory.where(event_type: :leave_approved).count).to eq(0)
         expect(paid_assignment(2).decision).to eq("pending")          # assignment も巻き戻る
+        expect(LeaveBalance.count).to eq(0)                           # rollback で balance 行も未作成
       end
       follow_redirect!
       expect(response.body).to include("残高不足")

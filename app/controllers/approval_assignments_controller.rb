@@ -8,7 +8,7 @@ class ApprovalAssignmentsController < ApplicationController
   def index
     authorize ApprovalAssignment
     @assignments = policy_scope(ApprovalAssignment)
-                   .includes(:approvable)
+                   .includes(approvable: %i[requester leave_type])
                    .select { |assignment| policy(assignment).approve? }   # 現段階の actionable のみ
   end
 
