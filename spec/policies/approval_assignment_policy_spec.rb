@@ -63,4 +63,43 @@ RSpec.describe ApprovalAssignmentPolicy, type: :policy do
       expect(described_class.new(boss, record.reload).approve?).to be(false)
     end
   end
+
+  describe "Scope" do
+    def resolved_for(actor) = ApprovalAssignmentPolicy::Scope.new(actor, ApprovalAssignment).resolve
+
+    it "自分が approver の pending のみ返す" do
+      host # stage1=boss(pending), stage2=dept(pending)
+      expect(resolved_for(boss)).to contain_exactly(host.approval_assignments.find_by(position: 1))
+    end
+
+    it "決裁済（approved）は除外する" do
+      Approvals::Approve.call(approvable: host, approver: boss)
+      expect(resolved_for(boss)).to be_empty
+    end
+
+    it "他者の pending は含めない" do
+      host
+      expect(resolved_for(dept)).to contain_exactly(host.approval_assignments.find_by(position: 2))
+      expect(resolved_for(dept)).not_to include(host.approval_assignments.find_by(position: 1))
+    end
+
+    it "他テナントの pending を漏らさない" do
+      host
+      other_org = create(:organization)
+      other_assignment = ActsAsTenant.with_tenant(other_org) do
+        oemp = create(:user, organization: other_org)
+        oboss = create(:user, :manager_role, organization: other_org)
+        oemp.update!(manager: oboss)
+        h = ApprovalTestRecord.create!(requester: oemp).tap { |x| Approvals::Start.call(x) }
+        h.approval_assignments.find_by(position: 1)
+      end
+      expect(resolved_for(boss)).not_to include(other_assignment)
+    end
+  end
+
+  describe "#index?" do
+    it "ログインユーザーに許可" do
+      expect(described_class.new(boss, ApprovalAssignment).index?).to be true
+    end
+  end
 end
