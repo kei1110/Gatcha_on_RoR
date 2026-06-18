@@ -44,7 +44,9 @@ class ClockChangeRequest < ApplicationRecord
   end
 
   def target_record_clocked_out
-    return if attendance_record.nil? || attendance_record.clock_out.present?
+    return if attendance_record.nil?
+    return if attendance_record.on_leave?   # not_on_leave 検証に一本化（二重エラー防止）
+    return if attendance_record.clock_out.present?
 
     errors.add(:attendance_record, "は勤務中の記録のため変更できません（退勤後にお申し込みください）")
   end

@@ -66,6 +66,16 @@ RSpec.describe ClockChangeRequest do
       expect(ccr).to be_invalid
       expect(ccr.errors[:requester]).to be_present
     end
+
+    it "他テナントの attendance_record を拒否（association）" do
+      other_org = create(:organization)
+      other_record = ActsAsTenant.with_tenant(other_org) do
+        create(:attendance_record, :done, user: create(:user, organization: other_org))
+      end
+      ccr = build(:clock_change_request, organization: org, requester: user, attendance_record: other_record)
+      expect(ccr).to be_invalid
+      expect(ccr.errors[:attendance_record]).to include("は同一組織でなければなりません")
+    end
   end
 
   it "approval_status は初期 applying" do
