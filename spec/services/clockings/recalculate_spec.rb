@@ -62,4 +62,34 @@ RSpec.describe Clockings::Recalculate do
     expect { described_class.call(record:) }.not_to raise_error
     expect(record.reload.actual_work_hours).to eq(8.5)
   end
+
+  describe "day_part を status から導出（2-2b）" do
+    let(:org) { create(:organization) }
+    around { |ex| ActsAsTenant.with_tenant(org) { ex.run } }
+
+    # 固定時間制 09:00-18:00。遅刻判定が効くよう 10:00 出勤（= 遅刻）
+    let(:pattern) do
+      create(:work_pattern, start_time: "09:00", end_time: "18:00", break_minutes: 60)
+    end
+    let(:user) { create(:user, organization: org) }
+
+    def record_with(status:)
+      create(:attendance_record, user:, work_pattern: pattern, status:,
+             work_date: Date.new(2026, 6, 1),
+             clock_in: Time.utc(2026, 6, 1, 1),    # JST 10:00（遅刻）
+             clock_out: Time.utc(2026, 6, 1, 9))   # JST 18:00
+    end
+
+    it "morning_half は遅刻を免除（is_late=false）" do
+      record = record_with(status: :morning_half)
+      Clockings::Recalculate.call(record:)
+      expect(record.reload.is_late).to be false
+    end
+
+    it "full（clocked_out）は遅刻を計上（is_late=true）" do
+      record = record_with(status: :clocked_out)
+      Clockings::Recalculate.call(record:)
+      expect(record.reload.is_late).to be true
+    end
+  end
 end
