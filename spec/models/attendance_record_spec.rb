@@ -5,7 +5,10 @@ require "rails_helper"
 RSpec.describe AttendanceRecord, type: :model do
   describe "status enum" do
     it "整数マッピングを固定する（残り 4 値は §4.8 列挙順で 2〜5 を予約 — 並べ替え事故防止）" do
-      expect(described_class.statuses).to eq("working" => 0, "clocked_out" => 1)
+      expect(described_class.statuses).to eq(
+        "working" => 0, "clocked_out" => 1,
+        "morning_half" => 2, "afternoon_half" => 3, "on_leave" => 4
+      )
     end
   end
 
@@ -101,6 +104,29 @@ RSpec.describe AttendanceRecord, type: :model do
       rec = build(:attendance_record)
       rec.proxy_clock_reason = "bogus"
       expect(rec).to be_invalid
+    end
+  end
+
+  describe "leave status（2-2b）" do
+    around { |ex| ActsAsTenant.with_tenant(create(:organization)) { ex.run } }
+
+    it "on_leave / morning_half / afternoon_half は clock_in nil でも valid" do
+      %i[on_leave morning_half afternoon_half].each do |st|
+        record = build(:attendance_record, status: st, clock_in: nil)
+        expect(record).to be_valid, "#{st} は clock_in nil で valid のはず: #{record.errors.full_messages}"
+      end
+    end
+
+    it "working / clocked_out は clock_in nil なら invalid（条件付き presence 維持）" do
+      record = build(:attendance_record, status: :working, clock_in: nil)
+      expect(record).to be_invalid
+      expect(record.errors[:clock_in]).to be_present
+    end
+
+    it "新 enum 3 値が登録済み" do
+      expect(AttendanceRecord.statuses).to include(
+        "morning_half" => 2, "afternoon_half" => 3, "on_leave" => 4
+      )
     end
   end
 
