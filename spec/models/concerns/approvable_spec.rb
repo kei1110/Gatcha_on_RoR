@@ -94,4 +94,28 @@ RSpec.describe Approvable do
       expect(host).to be_approved      # bang は guard を経ずに状態を変える＝呼んではならない
     end
   end
+
+  describe "副作用 hook と導出ヘルパ（2-2b）" do
+    it "apply_approval_effects! は既定 no-op（nil 返し）" do
+      expect(host.apply_approval_effects!(acting_user: approver1)).to be_nil
+    end
+
+    it "single_stage? は assignment 1 件で true / 2 件で false" do
+      add_assignment(position: 1, approver: approver1)
+      expect(host.single_stage?).to be true
+      add_assignment(position: 2, approver: approver2)
+      expect(host.single_stage?).to be false
+    end
+
+    it "pending_approver は現段階の approver（stage1 approved 後は stage2）" do
+      add_assignment(position: 1, approver: approver1, decision: :approved, acted_at: Time.current)
+      add_assignment(position: 2, approver: approver2)
+      expect(host.pending_approver).to eq(approver2)
+    end
+
+    it "pending_approver は pending 皆無なら nil" do
+      add_assignment(position: 1, approver: approver1, decision: :approved, acted_at: Time.current)
+      expect(host.pending_approver).to be_nil
+    end
+  end
 end
