@@ -34,7 +34,7 @@ RSpec.describe ClockChangeRequests::Create do
     orphan_record = create(:attendance_record, :done, user: orphan, work_date: Date.new(2026, 6, 2))
     expect {
       described_class.call(requester: orphan, attendance_record: orphan_record, change_type: "clock_in",
-                           new_clock_in: Time.utc(2026, 6, 2, 0), new_clock_out: nil, reason: "x")
+                           new_clock_in: Time.utc(2026, 6, 1, 1), new_clock_out: nil, reason: "x")
     }.to raise_error(Approvals::RouteError)
     expect(ClockChangeRequest.count).to eq(0)
   end

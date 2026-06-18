@@ -15,8 +15,10 @@ class ClockChangeRequest < ApplicationRecord
        validate: true, prefix: :change
 
   validates :reason, presence: true
+  # new_entry は Phase 4-2 で解除予定。現時点では受け付けない（設計 §0 D1・§1.1「Create が弾く」）
+  validates :change_type, exclusion: { in: %w[new_entry], message: "は現在この種別の申請を受け付けていません" }
   validate :new_times_present_for_change_type
-  validate :new_clock_out_after_in
+  validate :resulting_times_consistent
   validate :target_record_not_on_leave
   validate :target_record_clocked_out
   validate :requester_owns_target_record
@@ -35,11 +37,17 @@ class ClockChangeRequest < ApplicationRecord
     errors.add(:new_clock_out, "を入力してください") if (change_clock_out? || change_both?) && new_clock_out.blank?
   end
 
-  def new_clock_out_after_in
-    return unless change_both? && new_clock_in.present? && new_clock_out.present?
-    return if new_clock_out > new_clock_in
+  # 片側・両側いずれの変更型でも、変更後の最終 clock_in/out が矛盾しないことを保証する。
+  # 変更しない側は attendance_record の現値を使用（target_record_clocked_out で clock_out 存在保証済み）。
+  def resulting_times_consistent
+    return if attendance_record.nil?
 
-    errors.add(:new_clock_out, "は出勤時刻以降にしてください")
+    final_in  = (change_clock_in? || change_both?) ? new_clock_in  : attendance_record.clock_in
+    final_out = (change_clock_out? || change_both?) ? new_clock_out : attendance_record.clock_out
+    return if final_in.blank? || final_out.blank?
+    return if final_out > final_in
+
+    errors.add(:base, "変更後の退勤時刻は出勤時刻以降にしてください")
   end
 
   def target_record_not_on_leave

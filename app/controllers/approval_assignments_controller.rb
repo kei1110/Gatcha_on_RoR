@@ -25,6 +25,9 @@ class ApprovalAssignmentsController < ApplicationController
   rescue Approvals::ConflictError
     redirect_to approval_assignments_path, status: :see_other,
                 alert: "変更前時刻が現在の記録と一致しません（申請者へ再申請をご依頼ください）"
+  rescue ActiveRecord::RecordInvalid
+    redirect_to approval_assignments_path, status: :see_other,
+                alert: "承認できませんでした（記録の整合性エラー）"
   rescue AASM::InvalidTransition, Approvals::NotCurrentApprover
     redirect_to approval_assignments_path, status: :see_other, alert: "この申請は既に処理されています"
   end

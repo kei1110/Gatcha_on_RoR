@@ -34,6 +34,39 @@ RSpec.describe ClockChangeRequest do
     end
   end
 
+  describe "resulting_times_consistent（片側変更の in/out 反転防止）" do
+    # record の clock_in = Time.utc(2026,6,1,0)、clock_out = Time.utc(2026,6,1,9)
+
+    it "clock_out 単独で new_clock_out が既存 clock_in より前なら invalid" do
+      expect(
+        build_ccr(change_type: :clock_out, new_clock_in: nil,
+                  new_clock_out: Time.utc(2026, 5, 31, 23))   # clock_out(23:00) < clock_in(00:00)
+      ).to be_invalid
+    end
+
+    it "clock_in 単独で new_clock_in が既存 clock_out より後なら invalid" do
+      expect(
+        build_ccr(change_type: :clock_in,
+                  new_clock_in: Time.utc(2026, 6, 1, 10))   # clock_in(10:00) > clock_out(09:00)
+      ).to be_invalid
+    end
+
+    it "正常な片側変更（clock_in を既存 clock_out 以前に修正）は valid" do
+      expect(
+        build_ccr(change_type: :clock_in, new_clock_in: Time.utc(2026, 6, 1, 1))
+      ).to be_valid
+    end
+  end
+
+  describe "new_entry 拒否（Phase 4-2 まで）" do
+    it "change_type=new_entry は invalid" do
+      ccr = build(:clock_change_request, organization: org, requester: user,
+                  attendance_record: nil, change_type: :new_entry, reason: "新規")
+      expect(ccr).to be_invalid
+      expect(ccr.errors[:change_type]).to be_present
+    end
+  end
+
   it "reason 必須" do
     expect(build_ccr(reason: "")).to be_invalid
   end
