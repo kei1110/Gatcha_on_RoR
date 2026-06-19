@@ -27,7 +27,7 @@ module LeaveRequests
     private
 
     def add_to_balance
-      return unless @leave_request.leave_type.paid_leave?
+      return unless @leave_request.leave_type.balance_tracked?
 
       fiscal_year = @leave_request.organization.fiscal_year_for(@leave_request.start_date)  # §6.2 年度跨ぎ統一
       # UNIQUE [org,user,type,fiscal_year] が単一行を保証。.lock で FOR UPDATE（並行承認の二重加算防止）
