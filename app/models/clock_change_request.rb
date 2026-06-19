@@ -25,12 +25,22 @@ class ClockChangeRequest < ApplicationRecord
   validate :requester_must_belong_to_same_organization
   validate :attendance_record_must_belong_to_same_organization
 
+  # フォームは出退勤の両欄を常時表示するため、change_type の対象外に入力された値を捨てる。
+  # 残すと承認行で「退勤 X → Y」と表示されるのに apply_times! は触らず、表示と反映が乖離する（Codex review）。
+  before_validation :clear_non_target_new_times
+
   # 承認確定時の副作用（§6.3・§13.6）。Approve エンジンの with_lock 内・同一 tx で呼ばれる。
   def apply_approval_effects!(acting_user:)
     ClockChangeRequests::ApplyApproval.call(clock_change_request: self, acting_user:)
   end
 
   private
+
+  # change_type の対象側だけ new_* を残し、対象外は nil にする（表示・保存・反映の一致を担保）
+  def clear_non_target_new_times
+    self.new_clock_in = nil unless change_clock_in? || change_both?
+    self.new_clock_out = nil unless change_clock_out? || change_both?
+  end
 
   def new_times_present_for_change_type
     errors.add(:new_clock_in, "を入力してください") if (change_clock_in? || change_both?) && new_clock_in.blank?

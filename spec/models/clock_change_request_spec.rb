@@ -17,6 +17,32 @@ RSpec.describe ClockChangeRequest do
     expect(build_ccr).to be_valid
   end
 
+  describe "対象外の new_* をクリア（Codex review・申請種別と表示/反映の不一致防止）" do
+    it "change_type=clock_in は new_clock_out をクリア（対象外入力を保存しない）" do
+      ccr = build_ccr(change_type: :clock_in, new_clock_in: Time.utc(2026, 6, 1, 0),
+                      new_clock_out: Time.utc(2026, 6, 1, 10))
+      ccr.valid?
+      expect(ccr.new_clock_in).to eq(Time.utc(2026, 6, 1, 0))
+      expect(ccr.new_clock_out).to be_nil
+    end
+
+    it "change_type=clock_out は new_clock_in をクリア" do
+      ccr = build_ccr(change_type: :clock_out, new_clock_in: Time.utc(2026, 6, 1, 0),
+                      new_clock_out: Time.utc(2026, 6, 1, 10))
+      ccr.valid?
+      expect(ccr.new_clock_out).to eq(Time.utc(2026, 6, 1, 10))
+      expect(ccr.new_clock_in).to be_nil
+    end
+
+    it "change_type=both は両方保持" do
+      ccr = build_ccr(change_type: :both, new_clock_in: Time.utc(2026, 6, 1, 0),
+                      new_clock_out: Time.utc(2026, 6, 1, 10))
+      ccr.valid?
+      expect(ccr.new_clock_in).to eq(Time.utc(2026, 6, 1, 0))
+      expect(ccr.new_clock_out).to eq(Time.utc(2026, 6, 1, 10))
+    end
+  end
+
   describe "change_type 別 new_clock_* presence" do
     it "clock_in は new_clock_in 必須" do
       expect(build_ccr(change_type: :clock_in, new_clock_in: nil)).to be_invalid
