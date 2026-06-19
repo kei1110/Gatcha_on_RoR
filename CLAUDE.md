@@ -29,6 +29,12 @@ Rails 8 / PostgreSQL 18 / Hotwire(Turbo+Stimulus)+ViewComponent / Devise / acts_
 ## カスタムスキル（.claude/skills/）
 - `/spec-check` — SPEC↔実装の整合 ／ `/multi-perspective-review` — 多視点並列 critique ／ `/gen-spec` — spec 雛形生成
 - `/legal-citation-audit` — 労務法令を jp-labor-evidence MCP で原典照合 ／ `/preflight` — push 前 CI 等価チェック
+- `/create-migration` — 複合 FK `[organization_id, id]` 標的・partial unique・acts_as_tenant 列の migration 規約参照（§3.6 の DB 最終防衛 idiom）
+
+## サブエージェント（.claude/agents/・PROACTIVELY 起動・読み取り専用）
+- `tenant-isolation-reviewer` — テナント分離（acts_as_tenant・§3.6）。models/jobs/migration に触れたら merge 前
+- `labor-law-compliance-reviewer` — 労務コンプラ（§8 法定値）。calculator/compliance/OrganizationSetting に触れたら merge 前（+ `/legal-citation-audit`）
+- `approval-engine-reviewer` — 承認エンジン（§7 自己承認・固定 2 段）/ AASM 状態機械（§13）/ 副作用 atomicity。Approvable/ApplyApproval/状態 enum/撤回/締め に触れたら merge 前
 
 ## フック（.claude/settings.json → scripts/claude-hooks/）
 PreToolUse/PostToolUse の開発ガード（**Claude Code 再起動＋承認**で有効化）:
@@ -36,6 +42,7 @@ PreToolUse/PostToolUse の開発ガード（**Claude Code 再起動＋承認**�
 - `block-secrets`（Edit/Write）— master.key・credentials の鍵・.env を保護
 - `block-schema-edit`（Edit/Write）— db/schema.rb の手編集を禁止（migration 経由を強制）
 - `check-tenant-scope`（Write）— app/models の `acts_as_tenant` 欠落を警告（§3.6）
+- `check-job-tenant-wrap`（Edit/Write）— app/jobs の perform が `ActsAsTenant.with_tenant` 未ラップ（かつ非ディスパッチャ）なら警告（§3.6・check-tenant-scope の jobs 対称版）
 - `rubocop-autoformat`（Edit/Write）— .rb を自動整形
 - `block-gemfile-lock-edit`（Edit/Write）— Gemfile.lock の手編集を禁止（bundle 経由を強制）
 
