@@ -34,6 +34,11 @@ class ClockChangeRequest < ApplicationRecord
     ClockChangeRequests::ApplyApproval.call(clock_change_request: self, acting_user:)
   end
 
+  # 撤回確定時の逆操作（§7.6・§13.6）。Approve エンジンの with_lock 内・同一 tx で呼ばれる。
+  def apply_withdrawal_effects!(acting_user:)
+    ClockChangeRequests::Withdraw.call(clock_change_request: self, acting_user:)
+  end
+
   private
 
   # change_type の対象側だけ new_* を残し、対象外は nil にする（表示・保存・反映の一致を担保）
