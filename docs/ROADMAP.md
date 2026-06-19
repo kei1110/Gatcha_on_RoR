@@ -46,7 +46,7 @@
 - [x] **2-2a LeaveRequest + LeaveBalance（申請側）**: 申請 UI（LeaveDaysCalculator §5.5・Estimate 単一ソース・残高 2 段階表示・サーバ往復 preview）・hr_admin 残高 CRUD・取消（`Approvals::Cancel`）・決算月ガード格上げ（残高ありで `fiscal_year_end_month` 変更禁止・社労士確認 #13）（PR [#6](https://github.com/kei1110/Gatcha_on_RoR/pull/6)）
 - [x] **2-2b 承認 + 副作用**: 承認インボックス UI・`ApprovalAssignmentPolicy::Scope`・`approve` 副作用サービス（`LeaveRequests::ApplyApproval`＝残高 `lock!`加算/over-balance ハード拒否・AR upsert on_leave/半休・`LateEarly` 再計算・`AttendanceHistory(leave_approved)`）・月跨ぎ per-day 計上・年度跨ぎ start_date 統一・`AttendanceRecord.status` enum 拡張（PR [#7](https://github.com/kei1110/Gatcha_on_RoR/pull/7)）
 - [x] **2-3 ClockChangeRequest**: 打刻変更申請（clock_in/clock_out/both）・`ClockChangeRequests::Create`（original_* snapshot）・`ApplyApproval`（§7.4 競合チェック→時刻更新→§5 再計算→前後値 `AttendanceHistory(clock_change_approved)`）・インボックス CCR 行（型別描画）・組織 TZ 入力 parse。**new_entry は absent 依存ゆえ 4-2 へ後置**（PR [#8](https://github.com/kei1110/Gatcha_on_RoR/pull/8)）
-- [ ] **2-4 HolidayWorkRequest**: 4 値ステータス・代休残高 +1・is_holiday_work 連動（§6.11。未打刻検出は Phase 4）
+- [x] **2-4 HolidayWorkRequest**: 4 値ステータス・代休残高 +1（`LeaveType#balance_tracked?` で付与=消費を対称化）・is_holiday_work 双方向連動（承認=予約＋既存AR付与 / ClockIn・ProxyClockIn=事前付与）・承認時 work_date 平日性再検証（`ConflictError`）・代休限定（振替後置）（§6.11。35% は Phase 3 / 未打刻検出は Phase 4-2）（PR [#9](https://github.com/kei1110/Gatcha_on_RoR/pull/9)）
 - [ ] **2-5 撤回フロー**: withdrawal_requested（承認イベント未定義）・履歴参照復元・イベント単位副作用（§7.6・§13.6）
 
 ### Phase 3 — 月次締め
@@ -102,6 +102,13 @@
 - [ ] **汎用インボックスの polymorphic preload を型非依存化**: `ApprovalAssignmentsController#index` は表示 N+1 回避のための nested preload を入れられない（approvable 型混在で `leave_type` 等を CCR に探し `AssociationNotFoundError`）。現状 `includes(:approvable)` で N+1 は §16.1 許容。2-3 で ClockChangeRequest が approvable に加わる前に型別 conditional preload を導入（2-2b 最終レビュー I-1）
 - [ ] **半休日への後続打刻連携（§13.1 `morning_half → morning_half`）**: 先に半休休暇が承認され半休 status の AR が存在する日に、本人が残り半日を打刻する経路が未対応（`Clockings::ClockIn` は `(user, work_date)` unique index に衝突し得る）。2-2b は leave 承認が AR を作る側に集中し本連携を退避（2-2b 設計 D5）。`ClockIn` を「既存 AR があれば status を壊さず clock_in を埋める upsert」へ改修する Phase 1 clocking PR で回収
 - [ ] **clocked 済 AR への全休承認で計算列が stale**: 既に出退勤打刻済（clocked_out・計算 8 列 non-NULL）の日に全休が承認されると、status は on_leave に上書きされるが `on_leave?` 早期 return で再計算されず clock_in/clock_out・計算 8 列が stale のまま残り、下流集計を誤らせ得る（§13.1 非掲載の運用上想定外ケース）。2-2b 設計 §1.5 / §8 handoff #2 で既知。打刻済日への全休は競合検出（却下推奨）or 計算列クリアの要否を後続スライスで判断
+- [ ] **振替休日（substitute_holiday）の実装**: 振替元休日・振替先労働日の事前特定モデリング（HWR にカラム追加 or 別テーブル）＋ 35% 抑制根拠完備＋ `balance_tracked?` への substitute_holiday 追加可否（振替は日付 swap で割増免除＝残高に乗らない可能性）を再判断。2-4 は代休限定で出荷（D3・§6.11 事前特定ノート）。`LeaveType` の `system_type=substitute_holiday && paid_leave=true` 禁止検証も同スライスで（Codex C3）
+- [ ] **HWR 承認↔打刻 write-skew の整合バッチ**: 承認 tx（未コミット）と ClockIn tx の競合で `is_holiday_work` が false 確定し得る（balance ロックは承認同士のみ直列化・ClockIn は balance を lock しない）。Phase 4-2 で「approved HWR × 当日 AR あり × is_holiday_work=false」を未打刻検出と同じ走査で補正（2-4 設計 §2.2③・Codex C1）。**finalize 前ゲート**
+- [ ] **代休の事前消費ハザード**: HWR 承認で代休 +1 → 実勤務前/未打刻で LeaveRequest 消費 → 未打刻なら Phase 4-2 取消（granted −1）で remaining 負になり得る。over-balance は付与超は防ぐが勤務前消費は防がない。Phase 4-2 の取消フローで「消費済代休の負残高/差戻し」を扱う＋**社労士確認**（実労働なき代償休暇付与・先取り消費の可否）。**finalize 前ゲート**（2-4 Codex C4・§6.11 L851）
+- [ ] **Phase 3-1 の 35% 母数**: `holiday_work_hours`（35%）の母数は `is_holiday_work` 単独でなく **`is_holiday_work AND day_type==legal_holiday`** で確定（所定休日労働は対象外・§8.1）。legal_holiday 登録漏れの未登録日曜が resolver フォールバックで `:sunday` 降格し漏れる点は §4.7「要確認」と整合（2-4 R4/Codex C5・既存「legal_holiday カバレッジ失効」と同根）
+- [ ] **代休 LeaveBalance の繰越除外**: `balance_tracked?` 拡張で代休も used_days/over-balance 対象になるが、年度繰越ジョブ（Phase 4-4・§4.10）のフィルタを `paid_annual?` に限定し代休を含めない（代休に carry_over は不適切・2-4 R8）
+- [ ] **holiday-work の AttendanceHistory イベント / 遡及付与の証跡**: 事後申請で打刻済 AR に遡及で is_holiday_work=true を立てる経路は AttendanceHistory に残らず、証跡は HWR.approval_status + ApprovalAssignment に依存。労基法 109 条の証跡要件を満たすか社労士確認・§4.14 taxonomy 末尾に `holiday_work_approved` 追加を Phase 3/4 で再判断（2-4 D5・LABOR_LAW_REVIEW_NOTES #17 追記案）
+- [ ] **承認インボックスの ConflictError flash を型別に**: `ApprovalAssignmentsController` の `rescue Approvals::ConflictError` は CCR 由来の「変更前時刻が現在の記録と一致しません」固定文言。HWR の D4 平日化 ConflictError でこの打刻時刻向け文言が出て意味がずれる（rollback は正・fail-closed・cosmetic）。汎用文言化（「申請の前提条件が変わりました」）or approvable_type 別分岐へ。2-4 設計が flash 流用を明示受容ゆえ後送り（2-4 最終レビュー M1・未テスト path ゆえ request spec も同時に）
 
 ## 横断ルール（順序の根拠）
 

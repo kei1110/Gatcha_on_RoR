@@ -96,6 +96,47 @@ RSpec.describe LeaveRequests::ApplyApproval do
     end
   end
 
+  describe "代休 LeaveRequest 消費（D2 一般化）" do
+    let(:org) { create(:organization) }
+    around { |ex| ActsAsTenant.with_tenant(org) { ex.run } }
+    let(:user) { create(:user, organization: org) }
+    let(:approver) { create(:user, :manager_role, organization: org) }
+    let(:comp) { create(:leave_type, system_type: :compensatory_leave, paid_leave: false, organization: org) }
+    let(:fy) { org.fiscal_year_for(Date.new(2026, 6, 7)) }
+
+    def consume(days:, start_date: Date.new(2026, 6, 7))
+      lr = create(:leave_request, organization: org, requester: user, leave_type: comp,
+                                  start_date:, end_date: start_date, days_requested: days,
+                                  approval_status: :approved)
+      described_class.call(leave_request: lr, acting_user: approver)
+    end
+
+    it "残高ありで取得すると used_days が減算される" do
+      create(:leave_balance, organization: org, user:, leave_type: comp, fiscal_year: fy, granted_days: 2)
+      consume(days: 1)
+      expect(LeaveBalance.find_by(user:, leave_type: comp, fiscal_year: fy).used_days).to eq(1)
+    end
+
+    it "残高超過は OverBalanceError + used_days 不変 + AR/history 未作成" do
+      create(:leave_balance, organization: org, user:, leave_type: comp, fiscal_year: fy, granted_days: 1)
+      expect { consume(days: 2) }.to raise_error(Approvals::OverBalanceError)
+      bal = LeaveBalance.find_by(user:, leave_type: comp, fiscal_year: fy)
+      expect(bal.used_days).to eq(0)
+      expect(AttendanceRecord.where(user:, work_date: Date.new(2026, 6, 7))).to be_empty
+    end
+
+    it "境界（消費 == 残高）は成功" do
+      create(:leave_balance, organization: org, user:, leave_type: comp, fiscal_year: fy, granted_days: 1)
+      expect { consume(days: 1) }.not_to raise_error
+    end
+
+    it "代休 LeaveBalance は carry_over_days=0 を維持（繰越対象外・R8）" do
+      create(:leave_balance, organization: org, user:, leave_type: comp, fiscal_year: fy, granted_days: 2)
+      consume(days: 1)
+      expect(LeaveBalance.find_by(user:, leave_type: comp, fiscal_year: fy).carry_over_days).to eq(0)
+    end
+  end
+
   describe "年度跨ぎ（§6.2 start_date 年度に統一）" do
     it "start_date の年度の残高にのみ加算する" do
       # 3月決算（4月開始）想定でも robust に: start_date 年度の残高だけ動く

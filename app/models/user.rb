@@ -16,6 +16,7 @@ class User < ApplicationRecord
   has_many :attendance_records, dependent: :restrict_with_error
   has_many :leave_balances, dependent: :destroy
   has_many :leave_requests, foreign_key: :requester_id, inverse_of: :requester, dependent: :destroy
+  has_many :holiday_work_requests, foreign_key: :requester_id, inverse_of: :requester, dependent: :destroy
 
   enum :role, { employee: 0, manager: 1, hr_admin: 2 }, validate: true
 
@@ -35,6 +36,10 @@ class User < ApplicationRecord
   validate :deactivation_requires_no_active_subordinates, on: :update
   validate :manager_chain_must_not_cycle, if: :manager_id_changed?
   validate :manager_must_be_active, if: -> { manager_id_changed? || (active_changed? && active?) }
+
+  # 承認済 HWR が当日にあるか（ClockIn/ProxyClockIn が打刻 AR の is_holiday_work 初期値に使う・§2.3）。
+  # acts_as_tenant default_scope + association 起点ゆえ他人/他テナントの HWR を拾わない。
+  def holiday_work_reserved_on?(date) = holiday_work_requests.approved.exists?(work_date: date)
 
   # 在籍フラグを認証に接続（fail-closed）
   def active_for_authentication?

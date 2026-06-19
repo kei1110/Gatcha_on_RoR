@@ -92,4 +92,23 @@ RSpec.describe Clockings::ClockIn do
       expect(result.error).to eq(:already_clocked_in)
     end
   end
+
+  describe "is_holiday_work 連動（2-4）" do
+    it "承認済 HWR がある日の出勤打刻で is_holiday_work=true" do
+      org = user.organization
+      # HolidayWorkRequest の work_date バリデーション（平日以外のみ）を満たすため
+      # org.today を legal_holiday として登録してから HWR を作成する
+      create(:company_calendar, organization: org, date: org.today,
+             day_type: :legal_holiday, name: "テスト休日")
+      create(:holiday_work_request, organization: org, requester: user,
+             work_date: org.today, approval_status: :approved)
+      result = described_class.call(user:)
+      expect(result.record.is_holiday_work).to be(true)
+    end
+
+    it "承認済 HWR が無ければ false" do
+      result = described_class.call(user:)
+      expect(result.record.is_holiday_work).to be(false)
+    end
+  end
 end

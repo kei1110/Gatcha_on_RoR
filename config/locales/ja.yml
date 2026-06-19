@@ -10,6 +10,7 @@ ja:
       organization_setting: 組織設定
       reason_template: 申請理由テンプレート
       attendance_record: 勤怠記録
+      holiday_work_request: 休日出勤申請
     attributes:
       user:
         name: 氏名
@@ -74,6 +75,10 @@ ja:
           unreachable: 連絡不能
           forgot_punch: 打刻忘れ
           other: その他
+      holiday_work_request:
+        work_date: 出勤予定日
+        compensation_leave_type: 代償休暇種別
+        reason: 出勤理由
   leave_types:
     system_types:
       annual: 有給休暇
@@ -129,6 +134,12 @@ ja:
       done: 本日打刻済
       reason: 理由
   leave_request:
+    status:
+      applying: 申請中
+      approved: 承認済
+      rejected: 却下
+      canceled: 取消
+  holiday_work_request:
     status:
       applying: 申請中
       approved: 承認済

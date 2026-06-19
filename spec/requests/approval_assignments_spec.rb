@@ -164,4 +164,39 @@ RSpec.describe "ApprovalAssignments", type: :request do
       expect(response.body).to include("一致しません")
     end
   end
+
+  describe "HolidayWorkRequest の承認（2-4）" do
+    let(:org) { create(:organization) }
+    let(:manager) { ActsAsTenant.with_tenant(org) { create(:user, :manager_role, organization: org) } }
+    let(:requester) { ActsAsTenant.with_tenant(org) { create(:user, organization: org, manager:) } }
+    let(:comp) { ActsAsTenant.with_tenant(org) { create(:leave_type, system_type: :compensatory_leave, organization: org) } }
+    let(:hwr) do
+      ActsAsTenant.with_tenant(org) do
+        HolidayWorkRequests::Create.call(requester:, work_date: Date.new(2026, 6, 7),
+                                         compensation_leave_type: comp, reason: "x")
+      end
+    end
+
+    before do
+      host! "#{org.subdomain}.example.com"
+      sign_in manager
+    end
+
+    it "インボックスに HWR 行が出る" do
+      hwr
+      get approval_assignments_path
+      expect(response.body).to include("休日出勤").and include(requester.name)
+    end
+
+    it "承認すると代休残高が +1 される" do
+      assignment = ActsAsTenant.with_tenant(org) do
+        hwr.approval_assignments.find_by(position: hwr.current_approval_position)
+      end
+      patch approve_approval_assignment_path(assignment)
+      balance = ActsAsTenant.with_tenant(org) do
+        LeaveBalance.find_by(user: requester, leave_type: comp, fiscal_year: org.fiscal_year_for(Date.new(2026, 6, 7)))
+      end
+      expect(balance.granted_days).to eq(1)
+    end
+  end
 end
