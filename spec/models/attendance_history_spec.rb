@@ -167,4 +167,20 @@ RSpec.describe AttendanceHistory do
       expect(record).to be_valid
     end
   end
+
+  describe "clock_change_approved の actor 必須（2-3）" do
+    around { |ex| ActsAsTenant.with_tenant(create(:organization)) { ex.run } }
+
+    it "actor 無しは invalid" do
+      record = build(:attendance_history, event_type: :clock_change_approved, actor: nil)
+      expect(record).to be_invalid
+      expect(record.errors[:actor_id]).to be_present
+    end
+
+    it "actor ありは valid" do
+      record = build(:attendance_history, event_type: :clock_change_approved,
+                                          actor: create(:user, :manager_role))
+      expect(record).to be_valid
+    end
+  end
 end

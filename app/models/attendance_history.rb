@@ -23,6 +23,7 @@ class AttendanceHistory < ApplicationRecord
   # proxy_clock のみ必須（残り event_type の actor 必須は各 Phase で追記）。不変ゆえ事前防御
   validates :actor_id, presence: true, if: :proxy_clock?
   validates :actor_id, presence: true, if: :leave_approved?  # 2-2b（不変ゆえ事前防御）
+  validates :actor_id, presence: true, if: :clock_change_approved?  # 2-3（不変ゆえ事前防御）
   validate :user_must_belong_to_same_organization
   validate :actor_must_belong_to_same_organization
   validate :source_must_belong_to_same_organization

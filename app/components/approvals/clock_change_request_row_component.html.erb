@@ -1,0 +1,22 @@
+<div class="border rounded p-4 mb-3" data-approval-row>
+  <div class="font-medium"><%= @ccr.requester.name %> ／ 打刻変更（<%= change_type_label %>）</div>
+  <div class="text-sm text-gray-600">
+    対象 <%= @ccr.attendance_record.work_date %>：
+    出勤 <%= fmt(@ccr.original_clock_in) %> → <%= fmt(@ccr.new_clock_in) || "（変更なし）" %>
+    ／ 退勤 <%= fmt(@ccr.original_clock_out) %> → <%= fmt(@ccr.new_clock_out) || "（変更なし）" %>
+    <span class="ml-2"><%= stage_label %></span>
+  </div>
+  <% if @ccr.reason.present? %>
+    <div class="text-sm text-gray-500 mt-1"><%= @ccr.reason %></div>
+  <% end %>
+  <div class="mt-2 flex flex-wrap items-center gap-2">
+    <%= button_to "承認", approve_approval_assignment_path(@assignment), method: :patch,
+          class: "bg-blue-600 text-white px-3 py-1 rounded text-sm",
+          data: { turbo_confirm: "承認しますか？" } %>
+    <%= form_with url: reject_approval_assignment_path(@assignment), method: :patch,
+          class: "flex items-center gap-1" do |f| %>
+      <%= f.text_field :comment, placeholder: "却下理由（必須）", class: "border rounded px-2 py-1 text-sm" %>
+      <%= f.submit "却下", class: "bg-gray-200 px-3 py-1 rounded text-sm" %>
+    <% end %>
+  </div>
+</div>

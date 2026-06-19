@@ -114,4 +114,54 @@ RSpec.describe "ApprovalAssignments", type: :request do
       ActsAsTenant.with_tenant(org) { expect(leave.reload.approval_status).to eq("applying") }
     end
   end
+
+  describe "CCR（打刻変更）の承認（2-3）" do
+    let!(:ccr_record) do
+      ActsAsTenant.with_tenant(org) do
+        create(:attendance_record, :done, user: emp, work_date: Date.new(2026, 6, 1),
+               clock_in: Time.utc(2026, 6, 1, 1), clock_out: Time.utc(2026, 6, 1, 9),
+               work_pattern: create(:work_pattern))
+      end
+    end
+    let!(:ccr) do
+      ActsAsTenant.with_tenant(org) do
+        ClockChangeRequests::Create.call(requester: emp, attendance_record: ccr_record,
+                                         change_type: "clock_in", new_clock_in: Time.utc(2026, 6, 1, 0),
+                                         new_clock_out: nil, reason: "修正")
+      end
+    end
+    def ccr_assignment(pos) = ActsAsTenant.with_tenant(org) { ccr.approval_assignments.find_by(position: pos) }
+
+    it "インボックスに CCR 行が型別描画される" do
+      sign_in boss
+      get approval_assignments_url(host: tenant_host(org))
+      expect(response.body).to include("打刻変更")
+    end
+
+    it "承認で記録時刻更新 + 履歴記録（一周）" do
+      sign_in boss
+      patch approve_approval_assignment_url(ccr_assignment(1), host: tenant_host(org))
+      sign_in dept
+      patch approve_approval_assignment_url(ccr_assignment(2), host: tenant_host(org))
+      ActsAsTenant.with_tenant(org) do
+        expect(ccr_record.reload.clock_in).to eq(Time.utc(2026, 6, 1, 0))
+        expect(AttendanceHistory.where(event_type: :clock_change_approved).count).to eq(1)
+      end
+    end
+
+    it "競合（申請後に記録変更）承認で alert + DB 無変化" do
+      sign_in boss
+      patch approve_approval_assignment_url(ccr_assignment(1), host: tenant_host(org))
+      ActsAsTenant.with_tenant(org) { ccr_record.update_column(:clock_in, Time.utc(2026, 6, 1, 2)) }
+      sign_in dept
+      patch approve_approval_assignment_url(ccr_assignment(2), host: tenant_host(org))
+      ActsAsTenant.with_tenant(org) do
+        expect(ccr.reload.approval_status).to eq("applying")           # rollback
+        expect(ccr_record.reload.clock_in).to eq(Time.utc(2026, 6, 1, 2))
+        expect(AttendanceHistory.where(event_type: :clock_change_approved).count).to eq(0)
+      end
+      follow_redirect!
+      expect(response.body).to include("一致しません")
+    end
+  end
 end

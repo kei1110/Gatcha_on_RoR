@@ -69,6 +69,10 @@ Rails.application.routes.draw do
     member { patch :cancel }
   end
 
+  resources :clock_change_requests, only: %i[index new create] do
+    member { patch :cancel }
+  end
+
   resources :approval_assignments, only: %i[index] do
     member do
       patch :approve
