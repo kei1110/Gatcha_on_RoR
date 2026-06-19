@@ -1,0 +1,29 @@
+<%= form_with model: @holiday_work_request, url: holiday_work_requests_path do |f| %>
+  <% if @holiday_work_request.errors.any? %>
+    <div class="bg-red-50 border border-red-200 text-red-700 rounded p-3 mb-4">
+      <ul class="list-disc list-inside text-sm">
+        <% @holiday_work_request.errors.full_messages.each do |msg| %>
+          <li><%= msg %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <div class="mb-4">
+    <%= f.label :work_date, "出勤予定日（休日のみ）", class: "block text-sm font-medium mb-1" %>
+    <%= f.date_field :work_date, class: "border rounded px-2 py-1" %>
+  </div>
+
+  <div class="mb-4">
+    <%= f.label :compensation_leave_type_id, "代償休暇種別（代休）", class: "block text-sm font-medium mb-1" %>
+    <%= f.collection_select :compensation_leave_type_id, @compensation_leave_types, :id, :name,
+          { prompt: "選択してください" }, class: "border rounded px-2 py-1" %>
+  </div>
+
+  <div class="mb-4">
+    <%= f.label :reason, "出勤理由", class: "block text-sm font-medium mb-1" %>
+    <%= f.text_area :reason, rows: 3, class: "border rounded px-2 py-1 w-full" %>
+  </div>
+
+  <%= f.submit "申請する", class: "bg-blue-600 text-white px-4 py-2 rounded" %>
+<% end %>

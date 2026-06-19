@@ -134,6 +134,12 @@ ja:
       approved: 承認済
       rejected: 却下
       canceled: 取消
+  holiday_work_request:
+    status:
+      applying: 申請中
+      approved: 承認済
+      rejected: 却下
+      canceled: 取消
   devise:
     mailer:
       invitation_instructions:

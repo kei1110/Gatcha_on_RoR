@@ -1,0 +1,32 @@
+<% content_for :title, "休日出勤申請" %>
+<div class="max-w-3xl mx-auto p-4">
+  <div class="flex items-center justify-between mb-4">
+    <h1 class="text-xl font-bold">休日出勤申請</h1>
+    <%= link_to "新規申請", new_holiday_work_request_path, class: "bg-blue-600 text-white px-3 py-1 rounded text-sm" %>
+  </div>
+
+  <% if @holiday_work_requests.empty? %>
+    <p class="text-gray-500">申請はありません。</p>
+  <% else %>
+    <table class="w-full text-sm">
+      <thead><tr class="text-left text-gray-500">
+        <th class="py-1">出勤日</th><th>代償種別</th><th>状態</th><th></th>
+      </tr></thead>
+      <tbody>
+        <% @holiday_work_requests.each do |hwr| %>
+          <tr class="border-t">
+            <td class="py-1"><%= hwr.work_date %></td>
+            <td><%= hwr.compensation_leave_type.name %></td>
+            <td><%= t("holiday_work_request.status.#{hwr.approval_status}") %></td>
+            <td class="text-right">
+              <% if hwr.applying? %>
+                <%= button_to "取消", cancel_holiday_work_request_path(hwr), method: :patch,
+                      class: "text-red-600", data: { turbo_confirm: "取り消しますか？" } %>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+</div>
