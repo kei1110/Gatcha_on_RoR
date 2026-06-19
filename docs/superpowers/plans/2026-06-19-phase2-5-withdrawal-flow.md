@@ -321,13 +321,12 @@ RSpec.describe Withdrawable do
   end
 
   describe "whiny_persistence 継承（R-whiny ④）" do
-    it "save 失敗時に false でなく例外を上げる" do
-      host.update!(approval_status: :withdrawal_requested, withdrawal_reason: nil)  # presence 違反を仕込む
-      # reject_withdrawal! は approved へ戻すが withdrawal_reason presence は withdrawal_requested? のみ ゆえ通る
-      # ここでは presence 違反を保てる approve_withdrawal を使い save 失敗を誘発
-      withdrawal_assignment(decision: :approved)
-      host.withdrawal_reason = nil
-      expect { host.approve_withdrawal! }.to raise_error(ActiveRecord::RecordInvalid).or raise_error(AASM::InvalidTransition)
+    # 遷移先が withdrawal_requested ゆえ presence 検証（if: :withdrawal_requested?）が target 状態で発火。
+    # save 失敗時に whiny_persistence が false でなく例外を上げることを決定的に検証。
+    it "save 失敗時に false でなく RecordInvalid を上げ、状態はロールバック" do
+      host.withdrawal_reason = nil   # 遷移先 withdrawal_requested で presence 違反
+      expect { host.request_withdrawal! }.to raise_error(ActiveRecord::RecordInvalid)
+      expect(host.reload).to be_approved
     end
   end
 
