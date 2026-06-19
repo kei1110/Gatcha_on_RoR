@@ -110,6 +110,16 @@ RSpec.describe HolidayWorkRequest do
       expect(hwr).to be_invalid
       expect(hwr.errors[:compensation_leave_type]).to include("は同一組織でなければなりません")
     end
+
+    it "他テナント compensation_leave_type は DB FK で弾く" do
+      other_comp = ActsAsTenant.with_tenant(other_org) do
+        create(:leave_type, system_type: :compensatory_leave, organization: other_org)
+      end
+      hwr = build_hwr(compensation_leave_type: other_comp)
+      hwr.compensation_leave_type_id = other_comp.id
+      expect { in_savepoint { hwr.save!(validate: false) } }
+        .to raise_error(ActiveRecord::InvalidForeignKey)
+    end
   end
 
   describe "Approvable lifecycle" do
