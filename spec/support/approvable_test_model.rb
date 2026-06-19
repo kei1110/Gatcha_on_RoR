@@ -8,6 +8,13 @@ class ApprovalTestRecord < ApplicationRecord
   include Approvable
 end
 
+# Withdrawable（撤回つき）検証用のテスト専用ホスト。
+class WithdrawalTestRecord < ApplicationRecord
+  acts_as_tenant(:organization)
+  belongs_to :requester, class_name: "User"
+  include Withdrawable
+end
+
 RSpec.configure do |config|
   config.before(:suite) do
     conn = ActiveRecord::Base.connection
@@ -15,6 +22,13 @@ RSpec.configure do |config|
       t.references :organization, null: false
       t.references :requester, null: false
       t.integer :approval_status, null: false, default: 0
+      t.timestamps
+    end
+    conn.create_table(:withdrawal_test_records, if_not_exists: true) do |t|
+      t.references :organization, null: false
+      t.references :requester, null: false
+      t.integer :approval_status, null: false, default: 0
+      t.text :withdrawal_reason
       t.timestamps
     end
   end

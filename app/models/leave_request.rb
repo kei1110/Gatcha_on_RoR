@@ -8,7 +8,7 @@ class LeaveRequest < ApplicationRecord
   belongs_to :requester, class_name: "User"
   belongs_to :leave_type
 
-  include Approvable   # approval_status の AASM + has_many :approval_assignments（2-1）
+  include Withdrawable # approval_status の AASM + 撤回フロー（2-5）
 
   MAX_SPAN_DAYS = 366  # 1 年度相当の上限（不定・DoS 抑止）
 
