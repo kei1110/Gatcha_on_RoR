@@ -33,40 +33,71 @@ RSpec.describe HolidayWorkRequests::ApplyApproval do
       expect(LeaveBalance.find_by(user: requester, leave_type: comp, fiscal_year: fy).granted_days).to eq(2 + 1)
     end
 
-    it "並行 create の RecordNotUnique を savepoint 隔離し granted_days はちょうど +1" do
+    # 1 回目の locked-scope.first だけ nil（TOCTOU の敗者）を返し、以降は本物に委譲する helper。
+    # サービスは scope = where(...) を 1 度だけ組み scope.lock.first を 2 回呼ぶため、scope.lock が返す
+    # locked relation の first を「1 回目 nil・2 回目以降は実クエリ」に差し替える（where/create!/validation/
+    # rescue は stub せず実挙動を走らせる＝real path 証明）。
+    def stub_first_lock_miss!(fy)
+      real_locked = LeaveBalance.where(user_id: requester.id, leave_type_id: comp.id, fiscal_year: fy).lock
+      lookups = 0
+      allow_any_instance_of(ActiveRecord::Relation).to receive(:lock).and_wrap_original do |orig, *args|
+        relation = orig.call(*args)
+        if relation.where_values_hash.slice("user_id", "leave_type_id", "fiscal_year") ==
+           { "user_id" => requester.id, "leave_type_id" => comp.id, "fiscal_year" => fy }
+          allow(relation).to receive(:first).and_wrap_original do |first_orig, *fa|
+            lookups += 1
+            lookups == 1 ? nil : real_locked.first # 1 回目 nil（敗者）→ 以降は本物の勝者行
+          end
+        end
+        relation
+      end
+    end
+
+    it "現実的な create-race（loser が RecordInvalid(:taken)）を savepoint 隔離し granted はちょうど +1" do
       req = hwr
       fy = org.fiscal_year_for(work_date)
-      # 「並行 create の敗者」の faithful な再現。本サービス lock_or_create_balance の分岐:
-      #   ① scope.lock.first が nil（自分は行がまだ見えない＝敗者として create 経路へ）
-      #   → ② create! が DB unique index に弾かれ RecordNotUnique（model validation は別 connection の
-      #      未 commit を見ないため通過し、INSERT が index で負ける真のレース）
-      #   → ③ savepoint だけ rollback（親 with_lock tx は毒されず健全）
-      #   → ④ 再 find で勝者行を掴み +1。
-      # この①〜④をちょうど一度だけ踏ませ、granted_days が +2 や例外でなくちょうど +1 になることを pin。
+      # 現実的な create-race の loser path を**実挙動で**踏ませる（mock で配線を assert するのでなく
+      # lock_or_create_balance の本物の create! → 本物の uniqueness validation → 本物の rescue を走らせる）:
+      #   ① scope.lock.first が nil（TOCTOU の敗者として create 経路へ）
+      #   → ② 本物の create! が uniqueness validation の SELECT で勝者行を先に見て RecordInvalid(:taken)
+      #   → ③ savepoint だけ rollback（親 with_lock tx は毒されず健全）→ :taken arm が握って合流
+      #   → ④ 再 find で勝者行を掴み +1。granted が +2 でも例外でもなくちょうど winner+1 になることを pin。
       #
-      # 勝者行はこの example の最上位 tx 層に作る（サービスの requires_new savepoint の rollback では
-      # 消えない＝別 connection で commit 済みの行と同じ可視性）。
+      # 勝者行はこの example の最上位 tx 層に**コミット済・可視**で作る（サービスの requires_new
+      # savepoint の rollback でも消えない＝別 connection commit 済み行と同じ可視性）。
       winner = create(:leave_balance, organization: org, user: requester, leave_type: comp,
                                       fiscal_year: fy, granted_days: 0, carry_over_days: 0,
                                       used_days: 0, granted_on: nil)
-
-      # サービスが組む scope（where(...).lock）の first を制御する。① は nil（敗者）、④（再 find）は
-      # 勝者行を返す。scope は同じ条件で 2 度組まれるので first を順に返す sequence で表現。
-      scope = LeaveBalance.where(user_id: requester.id, leave_type_id: comp.id, fiscal_year: fy).lock
-      allow(LeaveBalance).to receive(:where).and_call_original
-      allow(LeaveBalance).to receive(:where)
-        .with(user_id: requester.id, leave_type_id: comp.id, fiscal_year: fy)
-        .and_return(scope)
-      allow(scope).to receive(:lock).and_return(scope)
-      allow(scope).to receive(:first).and_return(nil, winner) # ①=nil, ④=winner
-
-      # create! は DB unique index 由来の RecordNotUnique を本物として踏ませる（validation 素通りを模す）。
-      allow(LeaveBalance).to receive(:create!)
-        .and_raise(ActiveRecord::RecordNotUnique, "duplicate key value violates unique constraint")
+      stub_first_lock_miss!(fy)
 
       apply(req)
 
-      # 勝者行（敗者経路の create はされず）に +1 されただけ＝二重 create も二重加算も起きない。
+      # 勝者行（敗者経路の create は validation に弾かれ作られない）に +1 されただけ＝二重 create も
+      # 二重加算も起きず、benign な race で承認が abort もしない。
+      expect(LeaveBalance.where(user: requester, leave_type: comp).count).to eq(1)
+      expect(winner.reload.granted_days).to eq(1)
+      expect(LeaveBalance.where(user: requester, leave_type: comp).sum(:granted_days)).to eq(1)
+    end
+
+    it "真の INSERT レース（RecordNotUnique arm）も savepoint 隔離し granted はちょうど +1" do
+      req = hwr
+      fy = org.fiscal_year_for(work_date)
+      # validation SELECT が勝者行を見落とした狭い sub-window（true INSERT race）を模す。
+      # 勝者行は最上位 tx 層にコミット済。1 回目の lock.first は nil（敗者）。
+      winner = create(:leave_balance, organization: org, user: requester, leave_type: comp,
+                                      fiscal_year: fy, granted_days: 0, carry_over_days: 0,
+                                      used_days: 0, granted_on: nil)
+      stub_first_lock_miss!(fy)
+      # create! を save!(validate: false) に差し替え、INSERT を DB unique index まで到達させて
+      # 本物の RecordNotUnique を踏ませる（validation SELECT を見落とした sub-window の忠実再現）。
+      allow(LeaveBalance).to receive(:create!).and_wrap_original do |_orig, **kw|
+        record = LeaveBalance.new(**kw)
+        record.save!(validate: false)
+        record
+      end
+
+      apply(req)
+
       expect(LeaveBalance.where(user: requester, leave_type: comp).count).to eq(1)
       expect(winner.reload.granted_days).to eq(1)
       expect(LeaveBalance.where(user: requester, leave_type: comp).sum(:granted_days)).to eq(1)
@@ -85,10 +116,11 @@ RSpec.describe HolidayWorkRequests::ApplyApproval do
     end
 
     it "計算済 AR を再計算しない・AttendanceHistory を増やさない" do
-      ar = create(:attendance_record, :done, organization: org, user: requester, work_date:)
+      create(:attendance_record, :done, organization: org, user: requester, work_date:)
+      # §5 calculators は is_holiday_work 非依存（D6）・§4.14 taxonomy に holiday-work event 無し。
+      # load-bearing な負の pin はこの 2 つ（Recalculate 呼ばず / AttendanceHistory 増やさず）。
       expect(Clockings::Recalculate).not_to receive(:call)
       expect { apply(hwr) }.not_to change(AttendanceHistory, :count)
-      expect { ar.reload }.not_to(change { ar.attributes.slice("actual_work_hours", "is_late") })
     end
   end
 

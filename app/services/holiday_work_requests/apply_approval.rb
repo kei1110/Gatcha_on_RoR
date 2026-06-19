@@ -39,8 +39,10 @@ module HolidayWorkRequests
       balance.update!(granted_days: balance.granted_days + 1)
     end
 
-    # FOR UPDATE で取得（2-2b add_to_balance 同型）。無ければ savepoint で create し RecordNotUnique を隔離
-    # （外側 with_lock の同一 tx を RecordNotUnique で毒さない・設計 R2）。
+    # FOR UPDATE で取得（lock.first は 2-2b add_to_balance と同型）。無ければ本パターン新規の
+    # savepoint-create で行を作る（2-2b は paid 種別の残高行が無ければ over-balance で弾く＝create しないため
+    # savepoint-create に前例なし）。create-race の敗者は savepoint のみ rollback し外側 with_lock の
+    # 同一 tx を毒さず（設計 R2）、再 find で勝者行へ合流して +1 する。
     def lock_or_create_balance(user_id, leave_type_id, fiscal_year)
       scope = LeaveBalance.where(user_id:, leave_type_id:, fiscal_year:)
       balance = scope.lock.first
@@ -52,7 +54,12 @@ module HolidayWorkRequests
                                granted_days: 0, carry_over_days: 0, used_days: 0)
         end
       rescue ActiveRecord::RecordNotUnique
-        # 並行 create の敗者 — 行は既に存在。savepoint のみ rollback、親 tx は健全
+        # 真の INSERT レース（validation SELECT も勝者行を見落とした狭い sub-window）。savepoint のみ
+        # rollback され親 tx は健全。再 find で合流。
+      rescue ActiveRecord::RecordInvalid => e
+        # 現実的な create-race の主経路: validation SELECT が勝者行を先に見て :taken を上げる同レース。
+        # :taken 以外（numericality・テナント検証 §3.6 等の本物の失敗）は握り潰さず再 raise。
+        raise unless e.record.errors.details[:fiscal_year]&.any? { |d| d[:error] == :taken }
       end
       scope.lock.first
     end
