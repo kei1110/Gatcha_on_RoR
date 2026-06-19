@@ -139,6 +139,8 @@ ja:
       approved: 承認済
       rejected: 却下
       canceled: 取消
+      withdrawal_requested: 撤回承認待ち
+      withdrawn: 撤回済
   holiday_work_request:
     status:
       applying: 申請中

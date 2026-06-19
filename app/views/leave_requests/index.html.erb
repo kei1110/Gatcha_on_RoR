@@ -8,6 +8,15 @@
       <% if r.applying? %>
         <%= button_to "取消", cancel_leave_request_path(r), method: :patch, class: "text-red-600" %>
       <% end %>
+      <% if policy(r).request_withdrawal? %>
+        <%= form_with url: request_withdrawal_leave_request_path(r), method: :patch, scope: :leave_request, class: "inline-flex gap-1" do |f| %>
+          <%= f.text_field :withdrawal_reason, placeholder: "撤回理由", required: true, class: "border text-sm" %>
+          <%= f.submit "撤回申請", class: "text-orange-600" %>
+        <% end %>
+      <% end %>
+      <% if r.withdrawal_requested? %>
+        <span class="text-orange-500 text-sm">撤回承認待ち</span>
+      <% end %>
     </li>
   <% end %>
 </ul>
