@@ -194,5 +194,11 @@ RSpec.describe AttendanceHistory do
       expect(h).not_to be_valid
       expect(h.errors[:actor_id]).to be_present
     end
+
+    it "clock_change_withdrawn は actor 必須" do
+      h = build(:attendance_history, event_type: :clock_change_withdrawn, actor: nil)
+      expect(h).not_to be_valid
+      expect(h.errors[:actor_id]).to be_present
+    end
   end
 end

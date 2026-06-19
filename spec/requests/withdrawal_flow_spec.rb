@@ -59,6 +59,52 @@ RSpec.describe "撤回フロー", type: :request do
     expect(ActsAsTenant.with_tenant(org) { leave.reload }).to be_approved
   end
 
+  # CCR 撤回フロー（clock_out 変更の一周）
+  let!(:ccr) do
+    ActsAsTenant.with_tenant(org) do
+      ar = create(:attendance_record, :done, user: emp,
+                  work_date: Date.new(2026, 6, 1),
+                  clock_in: Time.utc(2026, 6, 1, 0),
+                  clock_out: Time.utc(2026, 6, 1, 9))
+      ccr = ClockChangeRequests::Create.call(
+        requester: emp, attendance_record: ar,
+        change_type: :clock_out,
+        new_clock_in: nil, new_clock_out: Time.utc(2026, 6, 1, 10),
+        reason: "退勤打刻誤り"
+      )
+      Approvals::Approve.call(approvable: ccr, approver: boss)
+      Approvals::Approve.call(approvable: ccr, approver: dept)
+      ccr.reload
+    end
+  end
+
+  it "CCR 撤回申請 → 2 段承認 → withdrawn + AR 復元（一周）" do
+    original_clock_out = Time.utc(2026, 6, 1, 9)
+
+    sign_in emp
+    patch request_withdrawal_clock_change_request_url(ccr, host: tenant_host(org)),
+          params: { clock_change_request: { withdrawal_reason: "誤申請" } }
+    expect(ActsAsTenant.with_tenant(org) { ccr.reload }).to be_withdrawal_requested
+
+    w1, w1_approver = ActsAsTenant.with_tenant(org) do
+      a = ccr.approval_assignments.find_by(purpose: :withdrawal, position: 1)
+      [ a, a.approver ]
+    end
+    sign_in w1_approver
+    patch approve_approval_assignment_url(w1, host: tenant_host(org))
+    w2, w2_approver = ActsAsTenant.with_tenant(org) do
+      a = ccr.approval_assignments.find_by(purpose: :withdrawal, position: 2)
+      [ a, a.approver ]
+    end
+    sign_in w2_approver
+    patch approve_approval_assignment_url(w2, host: tenant_host(org))
+
+    expect(ActsAsTenant.with_tenant(org) { ccr.reload }).to be_withdrawn
+    ar = ActsAsTenant.with_tenant(org) { AttendanceRecord.find_by(user: emp, work_date: Date.new(2026, 6, 1)) }
+    expect(ar.clock_out).to eq(original_clock_out)
+    expect(ActsAsTenant.with_tenant(org) { AttendanceHistory.find_by(event_type: :clock_change_withdrawn) }).to be_present
+  end
+
   it "他人の撤回申請は 404" do
     other = ActsAsTenant.with_tenant(org) { create(:user) }
     sign_in other

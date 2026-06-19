@@ -33,7 +33,10 @@ module LeaveRequests
                 .where(user_id: @leave_request.requester_id,
                        leave_type_id: @leave_request.leave_type_id, fiscal_year:)
                 .lock.first
-      return if balance.nil?
+      if balance.nil?
+        Rails.error.report(StandardError.new("LeaveRequests::Withdraw: balance_tracked type has no balance row at withdrawal"), handled: true)
+        return
+      end
 
       new_used = balance.used_days - @leave_request.days_requested
       Rails.error.report(StandardError.new("withdraw underflow: balance would go negative"), handled: true) if new_used.negative?
