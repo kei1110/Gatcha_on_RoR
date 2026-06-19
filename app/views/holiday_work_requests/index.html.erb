@@ -16,7 +16,7 @@
         <% @holiday_work_requests.each do |hwr| %>
           <tr class="border-t">
             <td class="py-1"><%= hwr.work_date %></td>
-            <td><%= hwr.compensation_leave_type.name %></td>
+            <td><%= hwr.compensation_leave_type&.name %></td>
             <td><%= t("holiday_work_request.status.#{hwr.approval_status}") %></td>
             <td class="text-right">
               <% if hwr.applying? %>

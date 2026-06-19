@@ -3,10 +3,10 @@
 require "rails_helper"
 
 RSpec.describe "HolidayWorkRequests", type: :request do
-  let!(:org) { create(:organization, subdomain: "acme") }
-  let!(:manager) { ActsAsTenant.with_tenant(org) { create(:user, :manager_role, organization: org) } }
-  let!(:user) { ActsAsTenant.with_tenant(org) { create(:user, organization: org, manager:) } }
-  let!(:comp) { ActsAsTenant.with_tenant(org) { create(:leave_type, system_type: :compensatory_leave, organization: org) } }
+  let(:org) { create(:organization, subdomain: "acme") }
+  let(:manager) { ActsAsTenant.with_tenant(org) { create(:user, :manager_role, organization: org) } }
+  let(:user) { ActsAsTenant.with_tenant(org) { create(:user, organization: org, manager:) } }
+  let(:comp) { ActsAsTenant.with_tenant(org) { create(:leave_type, system_type: :compensatory_leave, organization: org) } }
 
   before { sign_in user }
 
