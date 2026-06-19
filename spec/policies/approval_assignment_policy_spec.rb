@@ -97,6 +97,20 @@ RSpec.describe ApprovalAssignmentPolicy, type: :policy do
     end
   end
 
+  describe "actionable?（撤回承認・2-5）" do
+    let(:wh) { WithdrawalTestRecord.create!(requester: emp, approval_status: :withdrawal_requested, withdrawal_reason: "x") }
+    let!(:asg) { wh.approval_assignments.create!(organization: org, approver: boss, position: 1, purpose: :withdrawal, decision: :pending) }
+
+    it "撤回世代の現段階担当者は actionable" do
+      expect(described_class.new(boss, asg).approve?).to be true
+    end
+
+    it "host が approved（awaiting でない）なら non-actionable" do
+      wh.update_column(:approval_status, 1)
+      expect(described_class.new(boss, asg.reload).approve?).to be false
+    end
+  end
+
   describe "#index?" do
     it "ログインユーザーに許可" do
       expect(described_class.new(boss, ApprovalAssignment).index?).to be true

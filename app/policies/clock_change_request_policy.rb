@@ -8,6 +8,10 @@ class ClockChangeRequestPolicy < ApplicationPolicy
 
   def cancel? = record.requester_id == user.id && record.applying?
 
+  def request_withdrawal?
+    record.requester_id == user.id && record.approved? && record.no_prior_withdrawal_round?
+  end
+
   class Scope < ApplicationPolicy::Scope
     def resolve = scope.where(requester_id: user.id)
   end
