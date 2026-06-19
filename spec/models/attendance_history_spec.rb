@@ -183,4 +183,16 @@ RSpec.describe AttendanceHistory do
       expect(record).to be_valid
     end
   end
+
+  describe "撤回 event_type（2-5）" do
+    it "clock_change_withdrawn は整数 9（append-only 末尾）" do
+      expect(AttendanceHistory.event_types["clock_change_withdrawn"]).to eq(9)
+    end
+
+    it "leave_withdrawn / clock_change_withdrawn は actor 必須" do
+      h = build(:attendance_history, event_type: :leave_withdrawn, actor: nil)
+      expect(h).not_to be_valid
+      expect(h.errors[:actor_id]).to be_present
+    end
+  end
 end
