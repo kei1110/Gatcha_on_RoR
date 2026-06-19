@@ -29,6 +29,23 @@ RSpec.describe LeaveRequestPolicy do
     end
   end
 
+  describe "request_withdrawal?" do
+    let(:lr) { create(:leave_request, requester: owner, approval_status: :approved) }
+
+    it "本人 && approved && 撤回世代なし で許可" do
+      expect(described_class.new(owner, lr).request_withdrawal?).to be true
+    end
+
+    it "他人は不可" do
+      expect(described_class.new(other, lr).request_withdrawal?).to be false
+    end
+
+    it "applying は不可" do
+      lr.update_column(:approval_status, 0)
+      expect(described_class.new(owner, lr).request_withdrawal?).to be false
+    end
+  end
+
   describe "Scope" do
     it "自分の申請のみ返す" do
       mine = request

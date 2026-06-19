@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_19_024050) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_19_133628) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -25,11 +25,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_19_024050) do
     t.integer "decision", default: 0, null: false
     t.bigint "organization_id", null: false
     t.integer "position", null: false
+    t.integer "purpose", default: 0, null: false
     t.datetime "updated_at", null: false
     t.index ["approvable_type", "approvable_id"], name: "index_approval_assignments_on_approvable"
-    t.index ["organization_id", "approvable_type", "approvable_id", "position"], name: "index_approval_assignments_unique_stage", unique: true
+    t.index ["organization_id", "approvable_type", "approvable_id", "purpose", "position"], name: "index_approval_assignments_unique_stage", unique: true
     t.index ["organization_id", "approver_id", "decision"], name: "index_approval_assignments_on_approver"
     t.index ["organization_id"], name: "index_approval_assignments_on_organization_id"
+  end
+
+  create_table "approval_test_records", force: :cascade do |t|
+    t.integer "approval_status", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.bigint "organization_id", null: false
+    t.bigint "requester_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["organization_id"], name: "index_approval_test_records_on_organization_id"
+    t.index ["requester_id"], name: "index_approval_test_records_on_requester_id"
   end
 
   create_table "attendance_histories", force: :cascade do |t|
@@ -167,6 +178,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_19_024050) do
     t.bigint "requester_id", null: false
     t.date "start_date", null: false
     t.datetime "updated_at", null: false
+    t.text "withdrawal_reason"
     t.index ["organization_id", "id"], name: "index_leave_requests_on_organization_id_and_id", unique: true
     t.index ["organization_id", "requester_id", "approval_status"], name: "idx_on_organization_id_requester_id_approval_status_1501b5b67c"
     t.index ["organization_id", "requester_id", "leave_type_id", "start_date"], name: "idx_on_organization_id_requester_id_leave_type_id_s_b5292a3d17"

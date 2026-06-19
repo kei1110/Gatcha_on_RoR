@@ -100,4 +100,16 @@ RSpec.describe Approvals::Approve do
       described_class.call(approvable: h, approver: top)
     end
   end
+
+  describe "撤回承認の撃ち分け（2-5）" do
+    let(:requester) { emp }
+    let(:approver1) { boss }
+    let(:wh) { WithdrawalTestRecord.create!(requester:, approval_status: :withdrawal_requested, withdrawal_reason: "誤申請") }
+
+    it "撤回世代を全段 approve すると withdrawn（approve_withdrawal を撃つ）" do
+      wh.approval_assignments.create!(organization: org, approver: approver1, position: 1, purpose: :withdrawal, decision: :pending)
+      described_class.call(approvable: wh, approver: approver1)
+      expect(wh.reload).to be_withdrawn
+    end
+  end
 end

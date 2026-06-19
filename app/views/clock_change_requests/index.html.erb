@@ -11,6 +11,15 @@
         <%= button_to "取消", cancel_clock_change_request_path(ccr), method: :patch,
               class: "text-xs underline", form_class: "inline" %>
       <% end %>
+      <% if policy(ccr).request_withdrawal? %>
+        <%= form_with url: request_withdrawal_clock_change_request_path(ccr), method: :patch, scope: :clock_change_request, class: "inline-flex gap-1" do |f| %>
+          <%= f.text_field :withdrawal_reason, placeholder: "撤回理由", required: true, class: "border text-sm" %>
+          <%= f.submit "撤回申請", class: "text-orange-600" %>
+        <% end %>
+      <% end %>
+      <% if ccr.withdrawal_requested? %>
+        <span class="text-orange-500 text-sm">撤回承認待ち</span>
+      <% end %>
     </div>
   <% end %>
 <% end %>

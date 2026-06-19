@@ -3,7 +3,7 @@
 # 社員の休暇申請（Phase 2-2a 設計 §4）。requester=current_user 構造固定 — params から
 # requester_id/user_id を一切受けない（MPR C3・残高漏洩の唯一の壁）。
 class LeaveRequestsController < ApplicationController
-  before_action :set_leave_request, only: :cancel
+  before_action :set_leave_request, only: %i[cancel request_withdrawal]
 
   def index
     authorize LeaveRequest
@@ -47,6 +47,19 @@ class LeaveRequestsController < ApplicationController
     redirect_to leave_requests_path, status: :see_other, alert: "この申請は取り消せません"
   end
 
+  def request_withdrawal
+    authorize @leave_request, :request_withdrawal?
+    Approvals::RequestWithdrawal.call(approvable: @leave_request, requester: current_user,
+                                      reason: withdrawal_params[:withdrawal_reason])
+    redirect_to leave_requests_path, status: :see_other, notice: "撤回を申請しました。承認をお待ちください。"
+  rescue AASM::InvalidTransition, Approvals::NotRequester
+    redirect_to leave_requests_path, status: :see_other, alert: "この申請は撤回できません。"
+  rescue Approvals::RouteError
+    redirect_to leave_requests_path, status: :see_other, alert: "承認経路を解決できません。管理者にご連絡ください。"
+  rescue ArgumentError, ActiveRecord::RecordInvalid => e
+    redirect_to leave_requests_path, status: :see_other, alert: e.message
+  end
+
   def preview
     authorize LeaveRequest, :preview?   # persisted record 不在 → class-level（MPR 原則整合）
     @estimate = LeaveRequests::Estimate.call(
@@ -76,4 +89,6 @@ class LeaveRequestsController < ApplicationController
   def preview_params
     params.permit(:leave_type_id, :start_date, :end_date, :half_day_type)
   end
+
+  def withdrawal_params = params.require(:leave_request).permit(:withdrawal_reason)
 end

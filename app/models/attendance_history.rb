@@ -11,12 +11,12 @@ class AttendanceHistory < ApplicationRecord
   belongs_to :actor, class_name: "User", optional: true   # 操作者（§3.5 オーナー/操作者分離）
   belongs_to :source, polymorphic: true, optional: true
 
-  # §4.14 が全 9 値を順序固定する taxonomy（AttendanceRecord.status の非宣言予約とは扱いが違う）。
+  # §4.14 が全 10 値を順序固定する taxonomy（AttendanceRecord.status の非宣言予約とは扱いが違う）。
   # 整数マッピングは append-only/凍結（リオーダ禁止 — 履歴の誤デコードを防ぐ）
   enum :event_type, {
     clock_in: 0, clock_out: 1, leave_approved: 2, leave_withdrawn: 3,
     clock_change_approved: 4, absence_confirmed: 5, absence_to_paid: 6,
-    proxy_clock: 7, interval_shortage: 8
+    proxy_clock: 7, interval_shortage: 8, clock_change_withdrawn: 9
   }, validate: true
 
   validates :event_date, presence: true
@@ -24,6 +24,8 @@ class AttendanceHistory < ApplicationRecord
   validates :actor_id, presence: true, if: :proxy_clock?
   validates :actor_id, presence: true, if: :leave_approved?  # 2-2b（不変ゆえ事前防御）
   validates :actor_id, presence: true, if: :clock_change_approved?  # 2-3（不変ゆえ事前防御）
+  validates :actor_id, presence: true, if: :leave_withdrawn?          # 2-5
+  validates :actor_id, presence: true, if: :clock_change_withdrawn?   # 2-5
   validate :user_must_belong_to_same_organization
   validate :actor_must_belong_to_same_organization
   validate :source_must_belong_to_same_organization

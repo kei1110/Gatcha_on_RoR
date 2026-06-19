@@ -506,7 +506,7 @@ polymorphic 関連（`ApprovalAssignment.approvable` / `AttendanceHistory.source
 | user_id | bigint | 対象社員（オーナー＝当事者・§3.5） |
 | actor_id | bigint | 操作者（NULL=システム起因。代理打刻はオーナーと別人を記録・§3.5。`proxy_clock` では必須） |
 | event_date | date | 対象勤務日 |
-| event_type | integer (enum) | clock_in / clock_out / leave_approved / leave_withdrawn / clock_change_approved / absence_confirmed / absence_to_paid / proxy_clock / interval_shortage |
+| event_type | integer (enum) | clock_in / clock_out / leave_approved / leave_withdrawn / clock_change_approved / absence_confirmed / absence_to_paid / proxy_clock / interval_shortage / clock_change_withdrawn |
 | source_type / source_id | string / bigint | 起因レコード（polymorphic: LeaveRequest 等） |
 | previous_status / new_status | integer | 前後の AttendanceRecord.status |
 | previous_clock_in / new_clock_in | timestamptz | 前後の出勤時刻 |

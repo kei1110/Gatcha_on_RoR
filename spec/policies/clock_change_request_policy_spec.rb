@@ -29,6 +29,23 @@ RSpec.describe ClockChangeRequestPolicy, type: :policy do
     it { is_expected.to forbid_actions(%i[cancel]) }
   end
 
+  describe "request_withdrawal?" do
+    let(:ccr) { create(:clock_change_request, requester: owner, attendance_record: ar, approval_status: :approved) }
+
+    it "本人 && approved && 撤回世代なし で許可" do
+      expect(described_class.new(owner, ccr).request_withdrawal?).to be true
+    end
+
+    it "他人は不可" do
+      expect(described_class.new(other, ccr).request_withdrawal?).to be false
+    end
+
+    it "applying は不可" do
+      ccr.update_column(:approval_status, 0)
+      expect(described_class.new(owner, ccr).request_withdrawal?).to be false
+    end
+  end
+
   describe "Scope" do
     it "自分の申請のみ" do
       mine = record

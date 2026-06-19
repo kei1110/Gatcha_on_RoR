@@ -11,7 +11,8 @@ class ApprovalAssignmentPolicy < ApplicationPolicy
 
   def actionable?
     record.pending? &&
-      record.approvable.applying? &&                                    # terminal は不可
+      record.approvable.awaiting_decision? &&                           # applying || withdrawal_requested（terminal は不可）
+      record.purpose == record.approvable.active_purpose.to_s &&        # アクティブ世代の assignment のみ（R7 purpose 照合）
       record.approver_id == user.id &&                                  # 現段階の担当者本人（§7.5 で delegate 緩和）
       record.position == record.approvable.current_approval_position && # 段階順序
       !Approvals::SelfApproval.violated?(

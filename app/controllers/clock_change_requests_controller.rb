@@ -3,7 +3,7 @@
 # 社員の打刻変更申請（2-3 設計 §3.2）。requester=current_user 構造固定。
 # ★new_clock_* は組織 TZ で parse（config.time_zone 未設定＝UTC ゆえ Time.zone.parse は不可）。
 class ClockChangeRequestsController < ApplicationController
-  before_action :set_clock_change_request, only: :cancel
+  before_action :set_clock_change_request, only: %i[cancel request_withdrawal]
 
   def index
     authorize ClockChangeRequest
@@ -45,6 +45,19 @@ class ClockChangeRequestsController < ApplicationController
     redirect_to clock_change_requests_path, status: :see_other, alert: "この申請は取り消せません"
   end
 
+  def request_withdrawal
+    authorize @clock_change_request, :request_withdrawal?
+    Approvals::RequestWithdrawal.call(approvable: @clock_change_request, requester: current_user,
+                                      reason: withdrawal_params[:withdrawal_reason])
+    redirect_to clock_change_requests_path, status: :see_other, notice: "撤回を申請しました。承認をお待ちください。"
+  rescue AASM::InvalidTransition, Approvals::NotRequester
+    redirect_to clock_change_requests_path, status: :see_other, alert: "この申請は撤回できません。"
+  rescue Approvals::RouteError
+    redirect_to clock_change_requests_path, status: :see_other, alert: "承認経路を解決できません。管理者にご連絡ください。"
+  rescue ArgumentError, ActiveRecord::RecordInvalid => e
+    redirect_to clock_change_requests_path, status: :see_other, alert: e.message
+  end
+
   private
 
   def set_clock_change_request
@@ -63,4 +76,6 @@ class ClockChangeRequestsController < ApplicationController
 
     ActiveSupport::TimeZone[current_user.organization.time_zone].parse(value)
   end
+
+  def withdrawal_params = params.require(:clock_change_request).permit(:withdrawal_reason)
 end

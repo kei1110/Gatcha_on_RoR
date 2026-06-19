@@ -8,7 +8,7 @@ class LeaveRequest < ApplicationRecord
   belongs_to :requester, class_name: "User"
   belongs_to :leave_type
 
-  include Approvable   # approval_status の AASM + has_many :approval_assignments（2-1）
+  include Withdrawable # approval_status の AASM + 撤回フロー（2-5）
 
   MAX_SPAN_DAYS = 366  # 1 年度相当の上限（不定・DoS 抑止）
 
@@ -29,6 +29,11 @@ class LeaveRequest < ApplicationRecord
   # 承認確定時の副作用（§6.2・§13.6）。Approve エンジンの with_lock 内・同一 tx で呼ばれる。
   def apply_approval_effects!(acting_user:)
     LeaveRequests::ApplyApproval.call(leave_request: self, acting_user:)
+  end
+
+  # 撤回承認確定時の逆副作用（§7.6・§13.6・2-5）。Approve エンジンの with_lock 内・同一 tx で呼ばれる。
+  def apply_withdrawal_effects!(acting_user:)
+    LeaveRequests::Withdraw.call(leave_request: self, acting_user:)
   end
 
   private

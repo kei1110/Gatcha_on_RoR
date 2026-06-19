@@ -23,8 +23,9 @@ class ApprovalAssignmentsController < ApplicationController
     redirect_to approval_assignments_path, status: :see_other,
                 alert: "残高不足で承認できません（人事へ残高の付与をご依頼ください）"
   rescue Approvals::ConflictError
-    redirect_to approval_assignments_path, status: :see_other,
-                alert: "変更前時刻が現在の記録と一致しません（申請者へ再申請をご依頼ください）"
+    msg = @assignment.purpose_withdrawal? ? "対象記録が変更されているため撤回できません" :
+                                            "変更前時刻が現在の記録と一致しません（申請者へ再申請をご依頼ください）"
+    redirect_to approval_assignments_path, status: :see_other, alert: msg
   rescue ActiveRecord::RecordInvalid
     redirect_to approval_assignments_path, status: :see_other,
                 alert: "承認できませんでした（記録の整合性エラー）"

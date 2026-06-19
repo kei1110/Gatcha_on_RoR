@@ -133,4 +133,26 @@ RSpec.describe ApprovalAssignment do
         .to raise_error(ActiveRecord::RecordNotUnique)
     end
   end
+
+  describe "purpose 世代分離（2-5）" do
+    let(:org) { create(:organization) }
+    around { |ex| ActsAsTenant.with_tenant(org) { ex.run } }
+    let(:host) { ApprovalTestRecord.create!(requester: create(:user, organization: org)) }
+    let(:approver) { create(:user, :manager_role, organization: org) }
+
+    it "同一 approvable に approval/withdrawal 世代で同 position を共存できる" do
+      a = host.approval_assignments.create!(organization: org, approver:, position: 1, purpose: :approval, decision: :pending)
+      b = host.approval_assignments.build(organization: org, approver:, position: 1, purpose: :withdrawal, decision: :pending)
+      expect(b).to be_valid
+      expect { b.save! }.not_to raise_error
+      expect(a.purpose_approval?).to be true
+    end
+
+    it "同一 purpose 内では position 重複を拒否（モデル検証）" do
+      host.approval_assignments.create!(organization: org, approver:, position: 1, purpose: :withdrawal, decision: :pending)
+      dup = host.approval_assignments.build(organization: org, approver:, position: 1, purpose: :withdrawal, decision: :pending)
+      expect(dup).not_to be_valid
+      expect(dup.errors[:position]).to be_present
+    end
+  end
 end

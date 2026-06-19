@@ -8,9 +8,10 @@ class ApprovalAssignment < ApplicationRecord
   belongs_to :approver, class_name: "User"
 
   enum :decision, { pending: 0, approved: 1, rejected: 2 }, validate: true
+  enum :purpose, { approval: 0, withdrawal: 1 }, validate: true, prefix: :purpose
 
   validates :position, inclusion: { in: [ 1, 2 ] }
-  validates :position, uniqueness: { scope: [ :organization_id, :approvable_type, :approvable_id ] }
+  validates :position, uniqueness: { scope: [ :organization_id, :approvable_type, :approvable_id, :purpose ] }
   validate :approver_must_belong_to_same_organization
   validate :approvable_must_belong_to_same_organization
   validate :acted_at_consistency_with_decision

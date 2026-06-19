@@ -23,9 +23,23 @@ RSpec.describe Approvable do
   end
 
   describe "enum 整数マッピング（凍結）" do
-    it "0–3 完全一致（4/5 は未定義＝2-5 予約）" do
-      expect(ApprovalTestRecord.approval_statuses)
-        .to eq("applying" => 0, "approved" => 1, "rejected" => 2, "canceled" => 3)
+    it "0–5 完全一致（4/5 は 2-5 撤回・予約を宣言）" do
+      expect(ApprovalTestRecord.approval_statuses).to eq(
+        "applying" => 0, "approved" => 1, "rejected" => 2, "canceled" => 3,
+        "withdrawal_requested" => 4, "withdrawn" => 5
+      )
+    end
+  end
+
+  describe "active_purpose / awaiting_decision?（2-5）" do
+    it "applying は approval 世代・awaiting_decision? true" do
+      expect(host.active_purpose).to eq(:approval)
+      expect(host.awaiting_decision?).to be true
+    end
+
+    it "current_approval_position は active_purpose（approval）でスコープ" do
+      host.approval_assignments.create!(organization: org, approver: approver1, position: 1, purpose: :approval, decision: :pending)
+      expect(host.current_approval_position).to eq(1)
     end
   end
 

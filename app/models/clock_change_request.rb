@@ -8,7 +8,7 @@ class ClockChangeRequest < ApplicationRecord
   belongs_to :requester, class_name: "User"
   belongs_to :attendance_record, optional: true   # new_entry は null（本スライスは非 null）
 
-  include Approvable   # approval_status の AASM + has_many :approval_assignments
+  include Withdrawable # approval_status の AASM + 撤回フロー（2-5）
 
   # prefix: :change — 述語 change_clock_in? / change_clock_out? / change_both? / change_new_entry?
   enum :change_type, { clock_in: 0, clock_out: 1, both: 2, new_entry: 3 },
@@ -32,6 +32,11 @@ class ClockChangeRequest < ApplicationRecord
   # 承認確定時の副作用（§6.3・§13.6）。Approve エンジンの with_lock 内・同一 tx で呼ばれる。
   def apply_approval_effects!(acting_user:)
     ClockChangeRequests::ApplyApproval.call(clock_change_request: self, acting_user:)
+  end
+
+  # 撤回確定時の逆操作（§7.6・§13.6）。Approve エンジンの with_lock 内・同一 tx で呼ばれる。
+  def apply_withdrawal_effects!(acting_user:)
+    ClockChangeRequests::Withdraw.call(clock_change_request: self, acting_user:)
   end
 
   private

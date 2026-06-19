@@ -1,5 +1,10 @@
 <div class="border rounded p-4 mb-3" data-approval-row>
-  <div class="font-medium"><%= @ccr.requester.name %> ／ 打刻変更（<%= change_type_label %>）</div>
+  <div class="font-medium">
+    <%= @ccr.requester.name %> ／ 打刻変更（<%= change_type_label %>）
+    <% if @assignment.purpose_withdrawal? %>
+      <span class="rounded bg-orange-100 text-orange-700 px-1 text-xs">撤回承認</span>
+    <% end %>
+  </div>
   <div class="text-sm text-gray-600">
     対象 <%= @ccr.attendance_record.work_date %>：
     出勤 <%= fmt(@ccr.original_clock_in) %> → <%= fmt(@ccr.new_clock_in) || "（変更なし）" %>
