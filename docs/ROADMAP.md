@@ -108,6 +108,7 @@
 - [ ] **Phase 3-1 の 35% 母数**: `holiday_work_hours`（35%）の母数は `is_holiday_work` 単独でなく **`is_holiday_work AND day_type==legal_holiday`** で確定（所定休日労働は対象外・§8.1）。legal_holiday 登録漏れの未登録日曜が resolver フォールバックで `:sunday` 降格し漏れる点は §4.7「要確認」と整合（2-4 R4/Codex C5・既存「legal_holiday カバレッジ失効」と同根）
 - [ ] **代休 LeaveBalance の繰越除外**: `balance_tracked?` 拡張で代休も used_days/over-balance 対象になるが、年度繰越ジョブ（Phase 4-4・§4.10）のフィルタを `paid_annual?` に限定し代休を含めない（代休に carry_over は不適切・2-4 R8）
 - [ ] **holiday-work の AttendanceHistory イベント / 遡及付与の証跡**: 事後申請で打刻済 AR に遡及で is_holiday_work=true を立てる経路は AttendanceHistory に残らず、証跡は HWR.approval_status + ApprovalAssignment に依存。労基法 109 条の証跡要件を満たすか社労士確認・§4.14 taxonomy 末尾に `holiday_work_approved` 追加を Phase 3/4 で再判断（2-4 D5・LABOR_LAW_REVIEW_NOTES #17 追記案）
+- [ ] **承認インボックスの ConflictError flash を型別に**: `ApprovalAssignmentsController` の `rescue Approvals::ConflictError` は CCR 由来の「変更前時刻が現在の記録と一致しません」固定文言。HWR の D4 平日化 ConflictError でこの打刻時刻向け文言が出て意味がずれる（rollback は正・fail-closed・cosmetic）。汎用文言化（「申請の前提条件が変わりました」）or approvable_type 別分岐へ。2-4 設計が flash 流用を明示受容ゆえ後送り（2-4 最終レビュー M1・未テスト path ゆえ request spec も同時に）
 
 ## 横断ルール（順序の根拠）
 
