@@ -224,6 +224,48 @@ RSpec.describe User, type: :model do
     end
   end
 
+  describe "#holiday_work_reserved_on?" do
+    let(:org) { create(:organization) }
+    around { |ex| ActsAsTenant.with_tenant(org) { ex.run } }
+    let(:user) { create(:user, organization: org) }
+    let(:date) { Date.new(2026, 6, 7) }
+
+    it "承認済 HWR が同日にあれば true" do
+      create(:holiday_work_request, organization: org, requester: user,
+                                    work_date: date, approval_status: :approved)
+      expect(user.holiday_work_reserved_on?(date)).to be(true)
+    end
+
+    it "applying（未承認）は false" do
+      create(:holiday_work_request, organization: org, requester: user,
+                                    work_date: date, approval_status: :applying)
+      expect(user.holiday_work_reserved_on?(date)).to be(false)
+    end
+
+    it "別日の承認済は false" do
+      create(:holiday_work_request, organization: org, requester: user,
+                                    work_date: Date.new(2026, 6, 14), approval_status: :approved)
+      expect(user.holiday_work_reserved_on?(date)).to be(false)
+    end
+
+    it "別 user の承認済は false" do
+      other = create(:user, organization: org)
+      create(:holiday_work_request, organization: org, requester: other,
+                                    work_date: date, approval_status: :approved)
+      expect(user.holiday_work_reserved_on?(date)).to be(false)
+    end
+
+    it "他テナントの承認済は false" do
+      other_org = create(:organization)
+      ActsAsTenant.with_tenant(other_org) do
+        other_user = create(:user, organization: other_org)
+        create(:holiday_work_request, organization: other_org, requester: other_user,
+                                      work_date: date, approval_status: :approved)
+      end
+      expect(user.holiday_work_reserved_on?(date)).to be(false)
+    end
+  end
+
   describe "招待用の内部パスワード（0b-1 設計 §2-1）" do
     it "パスワード未指定の作成は不可知ランダムパスワードで通る" do
       user = User.new(name: "招待 花子", email: "invited@example.com", employee_code: "E900")

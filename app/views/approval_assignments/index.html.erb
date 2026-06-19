@@ -11,6 +11,8 @@
         <%= render Approvals::LeaveRequestRowComponent.new(assignment:) %>
       <% when ClockChangeRequest %>
         <%= render Approvals::ClockChangeRequestRowComponent.new(assignment:) %>
+      <% when HolidayWorkRequest %>
+        <%= render Approvals::HolidayWorkRequestRowComponent.new(assignment:) %>
       <% end %>
     <% end %>
   <% end %>
