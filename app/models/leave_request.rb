@@ -31,6 +31,11 @@ class LeaveRequest < ApplicationRecord
     LeaveRequests::ApplyApproval.call(leave_request: self, acting_user:)
   end
 
+  # 撤回承認確定時の逆副作用（§7.6・§13.6・2-5）。Approve エンジンの with_lock 内・同一 tx で呼ばれる。
+  def apply_withdrawal_effects!(acting_user:)
+    LeaveRequests::Withdraw.call(leave_request: self, acting_user:)
+  end
+
   private
 
   def end_date_not_before_start_date
