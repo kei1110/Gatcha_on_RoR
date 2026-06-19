@@ -34,6 +34,23 @@ RSpec.describe "HolidayWorkRequests", type: :request do
       expect(response).to have_http_status(:unprocessable_entity)
     end
 
+    it "無効化済みの代休種別は 422（停止した種別の再利用を防ぐ）" do
+      inactive = ActsAsTenant.with_tenant(org) do
+        create(:leave_type, system_type: :compensatory_leave, active: false, organization: org)
+      end
+      expect {
+        post holiday_work_requests_url(host: tenant_host(org)),
+             params: valid_params(compensation_leave_type_id: inactive.id)
+      }.not_to(change { ActsAsTenant.with_tenant(org) { HolidayWorkRequest.count } })
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
+    it "代休種別 未選択（blank）は 404 でなく 422" do
+      post holiday_work_requests_url(host: tenant_host(org)),
+           params: valid_params(compensation_leave_type_id: "")
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
     it "manager 未設定なら alert で一覧へ" do
       ActsAsTenant.with_tenant(org) { user.update!(manager: nil) }
       post holiday_work_requests_url(host: tenant_host(org)), params: valid_params

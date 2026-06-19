@@ -12,7 +12,7 @@ class HolidayWorkRequestsController < ApplicationController
   def new
     authorize HolidayWorkRequest
     @holiday_work_request = HolidayWorkRequest.new
-    @compensation_leave_types = LeaveType.where(system_type: :compensatory_leave)
+    @compensation_leave_types = compensation_leave_types
   end
 
   def create
@@ -20,7 +20,9 @@ class HolidayWorkRequestsController < ApplicationController
     @holiday_work_request = HolidayWorkRequests::Create.call(
       requester: current_user,
       work_date: create_params[:work_date],
-      compensation_leave_type: LeaveType.find(create_params[:compensation_leave_type_id]),
+      # active な代休種別に限定して引く。blank/不正/停止済/非代休 ID は nil となり
+      # belongs_to の presence 検証で RecordInvalid → 422 再表示（404 にしない）
+      compensation_leave_type: compensation_leave_types.find_by(id: create_params[:compensation_leave_type_id]),
       reason: create_params[:reason]
     )
     redirect_to holiday_work_requests_path, status: :see_other, notice: "休日出勤を申請しました"
@@ -29,7 +31,7 @@ class HolidayWorkRequestsController < ApplicationController
                 alert: "申請できません。直属上長が未設定です（管理者にご連絡ください）"
   rescue ActiveRecord::RecordInvalid => e
     @holiday_work_request = e.record
-    @compensation_leave_types = LeaveType.where(system_type: :compensatory_leave)
+    @compensation_leave_types = compensation_leave_types
     render :new, status: :unprocessable_entity
   end
 
@@ -50,5 +52,10 @@ class HolidayWorkRequestsController < ApplicationController
   # requester_id/approval_status は受けない（サーバ権威）
   def create_params
     params.require(:holiday_work_request).permit(:work_date, :compensation_leave_type_id, :reason)
+  end
+
+  # 表示・保存ともに active な代休種別に限定（既存 LeaveRequest の active 絞りと整合）
+  def compensation_leave_types
+    LeaveType.where(system_type: :compensatory_leave, active: true)
   end
 end
