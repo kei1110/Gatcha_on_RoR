@@ -66,11 +66,11 @@ Rails.application.routes.draw do
 
   resources :leave_requests, only: %i[index new create] do
     collection { get :preview }   # ← Task 14 で使用（ここで定義しておく）
-    member { patch :cancel }
+    member { patch :cancel; patch :request_withdrawal }
   end
 
   resources :clock_change_requests, only: %i[index new create] do
-    member { patch :cancel }
+    member { patch :cancel; patch :request_withdrawal }
   end
 
   resources :holiday_work_requests, only: %i[index new create] do
