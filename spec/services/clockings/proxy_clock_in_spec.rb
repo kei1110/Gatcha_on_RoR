@@ -5,8 +5,9 @@ require "rails_helper"
 RSpec.describe Clockings::ProxyClockIn do
   let(:org) { create(:organization) }
   around { |ex| ActsAsTenant.with_tenant(org) { ex.run } }
-  let(:operator) { create(:user, :manager_role, organization: org) }
-  let(:target)   { create(:user, organization: org, manager: operator) }
+  let(:operator)     { create(:user, :manager_role, organization: org) }
+  let(:target)       { create(:user, organization: org, manager: operator) }
+  let(:target_user)  { target }
 
   def call(reason: "system_failure", op: operator, tg: target)
     described_class.call(operator: op, target_user: tg, reason:)
@@ -68,5 +69,27 @@ RSpec.describe Clockings::ProxyClockIn do
     result = call
     expect(result.error).to eq :proxy_clock_failed
     expect(AttendanceRecord.count).to eq 0
+  end
+
+  describe "is_holiday_work 連動（2-4）" do
+    it "target_user に承認済 HWR があれば is_holiday_work=true" do
+      # HolidayWorkRequest の work_date バリデーション（平日以外のみ）を満たすため
+      # org.today を legal_holiday として登録してから HWR を作成する
+      create(:company_calendar, organization: org, date: org.today,
+             day_type: :legal_holiday, name: "テスト休日")
+      create(:holiday_work_request, organization: org, requester: target_user,
+             work_date: org.today, approval_status: :approved)
+      result = described_class.call(operator:, target_user:, reason: "system_failure")
+      expect(result.record.is_holiday_work).to be(true)
+    end
+
+    it "operator が HWR を持ち target が持たない場合は false（target を見る・operator ではない）" do
+      create(:company_calendar, organization: org, date: org.today,
+             day_type: :legal_holiday, name: "テスト休日")
+      create(:holiday_work_request, organization: org, requester: operator,
+             work_date: org.today, approval_status: :approved)
+      result = described_class.call(operator:, target_user:, reason: "system_failure")
+      expect(result.record.is_holiday_work).to be(false)
+    end
   end
 end

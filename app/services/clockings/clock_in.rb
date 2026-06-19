@@ -27,7 +27,8 @@ module Clockings
           # 影響しない（不遡及）。未割当は NULL = 1-2 計算スキップ（SPEC §5.4）。
           # active 割当の重複は exclusion constraint（0b-4）で排除済みゆえ高々 1 件
           work_pattern_id: Clockings.snapshot_pattern_id(@user, today),
-          status: :working
+          status: :working,
+          is_holiday_work: @user.holiday_work_reserved_on?(today)   # 承認済 HWR があれば true（2-4 D1）
         )
         Result.new(success: true, record:, error: nil)
       end

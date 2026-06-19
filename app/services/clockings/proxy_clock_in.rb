@@ -37,7 +37,8 @@ module Clockings
             work_pattern_id: Clockings.snapshot_pattern_id(@target_user, today),
             status: :working,
             proxy_clock_reason: @reason,
-            note: fragment
+            note: fragment,
+            is_holiday_work: @target_user.holiday_work_reserved_on?(today)   # target を見る（2-4 D1）
           )
           Clockings.record_history(
             event_type: :proxy_clock, organization: @organization,
