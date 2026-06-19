@@ -45,4 +45,21 @@ RSpec.describe Approvals::Start do
     }.to raise_error(Approvals::RouteError)
     expect(ApprovalTestRecord.count).to eq(0)
   end
+
+  describe "purpose: :withdrawal（2-5）" do
+    let(:host) { ApprovalTestRecord.create!(requester: emp) }
+
+    it "withdrawal 世代の assignment を生成（approval 世代と共存）" do
+      described_class.call(host)                                 # approval 世代
+      described_class.call(host, purpose: :withdrawal)           # 撤回世代
+      expect(host.approval_assignments.where(purpose: :approval)).to be_present
+      expect(host.approval_assignments.where(purpose: :withdrawal)).to be_present
+    end
+
+    it "撤回世代が既存なら冪等（再生成しない）" do
+      described_class.call(host, purpose: :withdrawal)
+      expect { described_class.call(host, purpose: :withdrawal) }
+        .not_to change { host.approval_assignments.where(purpose: :withdrawal).count }
+    end
+  end
 end

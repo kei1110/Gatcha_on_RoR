@@ -48,4 +48,16 @@ RSpec.describe Approvals::Reject do
   it "代理 pin: acting_user != approver は ProxyNotSupported" do
     expect { reject(approver: boss, acting_user: dept) }.to raise_error(Approvals::ProxyNotSupported)
   end
+
+  describe "撤回却下の撃ち分け（2-5・副作用なし）" do
+    let(:requester) { emp }
+    let(:approver1) { boss }
+    let(:wh) { WithdrawalTestRecord.create!(requester:, approval_status: :withdrawal_requested, withdrawal_reason: "誤申請") }
+
+    it "撤回世代を reject すると approved へ復帰（reject_withdrawal）" do
+      wh.approval_assignments.create!(organization: org, approver: approver1, position: 1, purpose: :withdrawal, decision: :pending)
+      described_class.call(approvable: wh, approver: approver1, comment: "却下理由")
+      expect(wh.reload).to be_approved
+    end
+  end
 end

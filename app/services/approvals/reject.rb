@@ -2,6 +2,7 @@
 
 module Approvals
   # 却下（SPEC §7.3）。どの段階でも全体却下。terminal/pin/自己承認/段階順序を gate。
+  # 2-5: withdrawal_requested 状態では reject_withdrawal! を撃ち分け（approved へ復帰・副作用なし）。
   class Reject
     def self.call(approvable:, approver:, comment:, acting_user: approver)
       new(approvable:, approver:, acting_user:, comment:).call
@@ -21,7 +22,7 @@ module Approvals
         guard!
         assignment = current_assignment!
         assignment.update!(decision: :rejected, acted_at: Time.current, comment: @comment)
-        @approvable.reject!
+        @approvable.withdrawal_requested? ? @approvable.reject_withdrawal! : @approvable.reject!
       end
       @approvable
     end
@@ -29,7 +30,7 @@ module Approvals
     private
 
     def guard!
-      raise AASM::InvalidTransition.new(@approvable, :reject, :default) unless @approvable.applying?
+      raise AASM::InvalidTransition.new(@approvable, :reject, :default) unless @approvable.awaiting_decision?
       raise ProxyNotSupported unless @acting_user.id == @approver.id
 
       return unless SelfApproval.violated?(
@@ -43,7 +44,9 @@ module Approvals
 
     def current_assignment!
       position = @approvable.current_approval_position
-      assignment = @approvable.approval_assignments.find_by(position:, decision: :pending)
+      assignment = @approvable.approval_assignments.find_by(
+        purpose: @approvable.active_purpose, position:, decision: :pending
+      )
       raise NotCurrentApprover unless assignment && assignment.approver_id == @approver.id
 
       assignment
