@@ -46,7 +46,7 @@
 - [x] **2-2a LeaveRequest + LeaveBalance（申請側）**: 申請 UI（LeaveDaysCalculator §5.5・Estimate 単一ソース・残高 2 段階表示・サーバ往復 preview）・hr_admin 残高 CRUD・取消（`Approvals::Cancel`）・決算月ガード格上げ（残高ありで `fiscal_year_end_month` 変更禁止・社労士確認 #13）（PR [#6](https://github.com/kei1110/Gatcha_on_RoR/pull/6)）
 - [x] **2-2b 承認 + 副作用**: 承認インボックス UI・`ApprovalAssignmentPolicy::Scope`・`approve` 副作用サービス（`LeaveRequests::ApplyApproval`＝残高 `lock!`加算/over-balance ハード拒否・AR upsert on_leave/半休・`LateEarly` 再計算・`AttendanceHistory(leave_approved)`）・月跨ぎ per-day 計上・年度跨ぎ start_date 統一・`AttendanceRecord.status` enum 拡張（PR [#7](https://github.com/kei1110/Gatcha_on_RoR/pull/7)）
 - [x] **2-3 ClockChangeRequest**: 打刻変更申請（clock_in/clock_out/both）・`ClockChangeRequests::Create`（original_* snapshot）・`ApplyApproval`（§7.4 競合チェック→時刻更新→§5 再計算→前後値 `AttendanceHistory(clock_change_approved)`）・インボックス CCR 行（型別描画）・組織 TZ 入力 parse。**new_entry は absent 依存ゆえ 4-2 へ後置**（PR [#8](https://github.com/kei1110/Gatcha_on_RoR/pull/8)）
-- [x] **2-4 HolidayWorkRequest**: 4 値ステータス・代休残高 +1（`LeaveType#balance_tracked?` で付与=消費を対称化）・is_holiday_work 双方向連動（承認=予約＋既存AR付与 / ClockIn・ProxyClockIn=事前付与）・承認時 work_date 平日性再検証（`ConflictError`）・代休限定（振替後置）（§6.11。35% は Phase 3 / 未打刻検出は Phase 4-2）（PR #XX）
+- [x] **2-4 HolidayWorkRequest**: 4 値ステータス・代休残高 +1（`LeaveType#balance_tracked?` で付与=消費を対称化）・is_holiday_work 双方向連動（承認=予約＋既存AR付与 / ClockIn・ProxyClockIn=事前付与）・承認時 work_date 平日性再検証（`ConflictError`）・代休限定（振替後置）（§6.11。35% は Phase 3 / 未打刻検出は Phase 4-2）（PR [#9](https://github.com/kei1110/Gatcha_on_RoR/pull/9)）
 - [ ] **2-5 撤回フロー**: withdrawal_requested（承認イベント未定義）・履歴参照復元・イベント単位副作用（§7.6・§13.6）
 
 ### Phase 3 — 月次締め
