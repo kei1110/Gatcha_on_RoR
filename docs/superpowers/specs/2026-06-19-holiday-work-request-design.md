@@ -35,7 +35,7 @@ HWR は 2-3 CCR の骨格（model + `Approvable` hook + Create + ApplyApproval +
 - **承認/却下の通知送信** → **Phase 4-1**（通知基盤確立まで・ROADMAP 横断ルール）。本スライスは flash で代替
 - **ReasonTemplate chips（休日出勤）** → v1 は reason 手入力のみ（chips 落とし・§3.3 R7）。`reason_templates.applies_to` enum への holiday_work 追加は後続
 
-> **リリースゲート（労務レビュー反映 R5・§6.11 L851）**: 本スライスは承認で代休 +1 を付与するが、「承認済・未打刻・代休 +1 のまま月次確定」を防ぐ未打刻検出は Phase 4-2。代休 +1 と割増未記録の不整合が**顕在化するのは月次確定（finalize）と 35% 計算が入る Phase 3 以降**。**未打刻検出（Phase 4-2）または finalize 前の整合チェックのいずれかが入る前に、finalize を本番投入しない**こと。2-4 単独出荷は安全（不整合が顕在化する経路がまだ存在しない）。
+> **リリースゲート（労務レビュー R5・Codex C1/C4・§6.11 L851）**: 本スライスは承認で代休 +1 を付与するが、不整合が**顕在化するのは月次確定（finalize）と 35% 計算が入る Phase 3 以降**。**finalize を本番投入する前に Phase 4-2（または finalize 前整合チェック）が以下 3 点を解消すること**: ①「承認済・未打刻・代休 +1」（§6.11 未打刻検出）／②「approved HWR ⨯ 当日 AR あり ⨯ is_holiday_work=false」（承認↔打刻 write-skew の補正・Codex C1）／③「代休を実勤務前/未打刻で消費済 → 取消で負残高」（事前消費ハザード・Codex C4）。2-4 単独出荷は安全（①②③ が顕在化する finalize/35% 経路がまだ存在しない）。
 
 ### 多視点レビュー反映（2026-06-19・6 視点）
 
@@ -50,6 +50,14 @@ HWR は 2-3 CCR の骨格（model + `Approvable` hook + Create + ApplyApproval +
 - **R7（mid・原則/実用）**: 連動述語を `User#holiday_work_reserved_on?(date)` モデル述語へ（`Clockings` 直下の宙吊り module 関数を回避・`inverse_of` 付与）。§2.3
 - **R8（労務）**: 代休 LeaveBalance を年度繰越ジョブ（Phase 4-4・SPEC §4.10）の対象に含めない（代休に carry_over は不適切）。§2.5 注記＋§5 handoff
 - **R9（テスト網羅・high×4）**: prose で圧縮された負例を独立 example へ展開（孤児 AR 非作成・並行二重付与の stub 技法・代休 over-balance 境界・no-recalc を計算済 AR で・FK 二層・ProxyClockIn 主体取り違え）。§4
+
+加えて **Codex（GPT-5.x 系）の非対話・敵対的レビュー**（別モデルの独立視点）で 6 視点が見落とした穴を反映:
+
+- **C1/C2（high・新規）**: 承認 tx（未コミット）↔ ClockIn tx の write-skew で `is_holiday_work` が false 確定し得る（balance ロックは承認同士のみ直列化＝旧「直列化ゆえ競合なし」根拠は誤り）。flag を finalize まで advisory 扱いとし Phase 4-2 整合バッチで補正。§2.2③・§0 ゲート・§5
+- **C3（mid・新規）**: `paid_leave=true` の振替種別は述語列挙に関わらず `balance_tracked?` が true（既存 paid_leave? 経路）。§1.3 に優越注記＋§4.2 に該当 example を追加
+- **C4（high・新規鋭化）**: 代休を実勤務前/未打刻で消費 → 取消で負残高ハザード。§0 ゲート③・§5 handoff・社労士確認へ
+- **C5（mid）**: 35% 母数を `day_type==legal_holiday` に絞ると未登録日曜フォールバックが漏れる（既存 backlog と同根）。§5 で §4.7 と相互参照
+- **C6（low・既出）**: 遡及 flag の AttendanceHistory 不在は NOTES #17 案で記載済（追加対応なし）
 
 ---
 
@@ -123,10 +131,12 @@ add_column :attendance_records, :is_holiday_work, :boolean, null: false, default
 ```ruby
 # 残高で管理する種別の述語。付与（HWR 承認）・消費（LeaveRequest 承認）の両方がこれで分岐。
 # paid_leave は admin 設定の boolean 列（有給消化系）、compensatory_leave は system_type enum（代償休暇）。
-# v1 は振替（substitute_holiday）を含めない＝HWR が代休限定で真を返す経路が無いデッド項を作らない。
+# v1 は振替（substitute_holiday）を述語に列挙しない＝HWR が代休限定で真を返す経路が無いデッド項を作らない。
 # 振替実装スライスで substitute_holiday? を追加（その際の残高乗せ可否は振替設計で再判断）。
 def balance_tracked? = paid_leave? || compensatory_leave?
 ```
+
+> **`paid_leave=true` の優越に注意（Codex C3）**: 述語は `paid_leave?` 単独でも true ゆえ、admin が `system_type=substitute_holiday` の種別に `paid_leave=true` を立てれば**列挙の有無に関わらず balance_tracked? は true** になる（既存 `paid_leave?` 経路と同一・D2 で挙動は変えていない）。「v1 で振替を残高管理から外す」保証は述語ではなく **admin が振替種別に paid_leave を立てない運用**＋HWR が振替を選べない（`compensation_type_is_compensatory`）ことに依存する。振替の残高扱いを厳密に閉じるなら `system_type=substitute_holiday && paid_leave=true` を禁じる LeaveType バリデーションを振替実装スライスで追加（v1 は YAGNI で見送り・本注記で受容を明示）。
 
 - 既存 `paid_leave?` 単独ガードに `compensatory_leave?` を足す最小拡張。`paid_leave=true` 種別の挙動は不変（回帰なし）。**新たに有効化されるのは `paid_leave=false` の代休種別の残高追従**（=設計意図）
 - 付与（HWR.compensation_leave_type）と消費（LeaveRequest.leave_type）は**同一 `leave_type_id` の LeaveBalance 行**を指して初めて対称になる（社員が付与された代休と同じ種別で取得）。組織が複数の compensatory_leave 種別を持つ場合の取り違えは UX/運用注意（2-4 ブロッカーではない）
@@ -202,7 +212,8 @@ end
 ```
 
 - `granted_on` は `LeaveBalance` の既存バリデーション（`presence: true, if: :paid_annual?`）に委ねる。代休は `paid_annual?`（paid_leave? && annual?）が false ゆえ **granted_on 不要**（spec で要否を再説明せず model を SSOT に・原則レビュー）
-- ③ の「既存 AR のみ」: 予約フェーズで AR を新規作成すると clock_in 無し・status:working 検証に抵触する不完全行ができるため作らない（事後申請＝既に打刻済の AR にのみ flag を立てる）。**AR を `lock` せず `find_by` で引くのは CCR（`lock.find(id)`）と非対称だが意図的** — HWR は per work_date 単位で partial unique・balance の行ロックで承認が直列化されるため AR の競合更新は起きない（コメントで CCR との非対称理由を残す）
+- ③ の「既存 AR のみ」: 予約フェーズで AR を新規作成すると clock_in 無し・status:working 検証に抵触する不完全行ができるため作らない（事後申請＝既に打刻済の AR にのみ flag を立てる）。**AR を `lock` せず `find_by` で引く**（CCR の `lock.find(id)` と非対称・理由は次項）
+- **承認↔打刻の write-skew（Codex 敵対レビュー C1/C2・既知の受容リスク）**: 承認 tx（未コミット）と ClockIn tx が同時実行されると、ClockIn は未コミットの approved を見られず `is_holiday_work=false` の AR を作り、承認側 §2.2③ も未コミット AR を見られず flag 付与をスキップし得る。**balance の行ロックは「承認同士」を直列化するが ClockIn は balance を lock しないため承認↔打刻は直列化されない**（旧コメントの「直列化ゆえ競合なし」は誤り・C2）。結果 approved HWR + clocked AR が揃うのに flag=false で確定し得る。**2-4 ではこの flag を finalize までの advisory として扱い、Phase 4-2 の整合バッチで「approved HWR ⨯ 当日 AR あり ⨯ is_holiday_work=false」を検出・補正**する（未打刻検出と同じ走査に相乗り・§5 handoff・R5 ゲート）。日次の発生確率は低く（同日・狭窓）、消費点（finalize/35%）は Phase 3 ゆえ 2-4 単独出荷は安全
 
 ### 2.3 `User#holiday_work_reserved_on?`（D1・事前付与の述語・R7）
 
@@ -303,7 +314,7 @@ end
 
 ### 4.2 model `LeaveType#balance_tracked?`
 
-- paid_leave(列 true) → true／compensatory_leave → true（**paid_leave=false でも true**＝D2 の新挙動）／**substitute_holiday → false**（v1 デッド項除外を pin）／annual(paid_leave 無) ・child_care・other → false。**全 system_type を列挙**し、将来 enum 追加が誤って true 化しない default-false を保証
+- paid_leave(列 true) → true（**system_type 不問**＝既存挙動）／compensatory_leave かつ paid_leave=false → true（D2 新挙動）／**substitute_holiday かつ paid_leave=false → false**（v1 デッド項除外を pin）／annual(paid_leave 無)・child_care・other(paid_leave 無) → false。**全 system_type を `paid_leave=false` で列挙**し default-false を保証。加えて **`substitute_holiday` かつ `paid_leave=true` → true** を 1 example で pin（Codex C3・「振替は paid_leave 列で乗り得る／述語列挙では閉じない」ことを明示）
 
 ### 4.3 service `HolidayWorkRequests::Create`
 
@@ -355,8 +366,9 @@ end
 ## 5. ハンドオフ / バックログ追記
 
 - **振替休日（substitute_holiday）の実装**: 振替元休日・振替先労働日・承認日時の事前特定モデリング（HWR にカラム追加 or 別テーブル）＋ 35% 抑制の根拠完備。`balance_tracked?` に `substitute_holiday?` を乗せるか（振替は日付 swap で割増免除＝残高に乗らない可能性）はこの設計で再判断。本スライスは代休限定（D3・§6.11 事前特定ノート）
-- **HWR 未打刻検出**: 承認済 × work_date 過去 × 当日 AR 無し → 代休取消①／代理打刻②／保留③（§6.11 後段）。Phase 4-2（通知基盤 4-1 依存）。**リリースゲート（§0・R5）: finalize（Phase 3）投入前に必須**
-- **Phase 3-1 の 35% 母数（R4・労務）**: `holiday_work_hours`（35%）の母数は `is_holiday_work` 単独でなく **`is_holiday_work AND day_type==legal_holiday`** で確定（所定休日労働は 35% 対象外・SPEC §8.1）。`is_holiday_work` index もこの実クエリ形状で Phase 3-1 が張る（R3）
+- **HWR 未打刻検出 + 承認↔打刻整合（§6.11 後段・Codex C1）**: Phase 4-2（通知基盤 4-1 依存）の整合バッチは ①承認済 × work_date 過去 × 当日 AR 無し → 代休取消①／代理打刻②／保留③、に加え ②**approved HWR × 当日 AR あり × is_holiday_work=false → flag 補正**（承認↔打刻 write-skew の収束・同じ走査に相乗り）を行う。**リリースゲート（§0）: finalize（Phase 3）投入前に必須**
+- **代休の事前消費ハザード（Codex C4・労務 NOTES 追記）**: HWR 承認で代休 +1 → 社員が**実勤務前/未打刻のまま** LeaveRequest で代休を消費でき、その後未打刻なら Phase 4-2 の代休取消（granted −1）で **granted 0・used 1 = remaining 負**になり得る。over-balance チェックは「付与超の消費」は防ぐが「勤務前消費」は防がない。**Phase 4-2 の取消フローは『消費済代休を取り消す場合の負残高/差戻し』を扱う**こと＋**社労士確認**（実労働なき代償休暇付与・先取り消費の運用可否）。リリースゲート（§0）に含む
+- **Phase 3-1 の 35% 母数（R4・労務・Codex C5）**: `holiday_work_hours`（35%）の母数は `is_holiday_work` 単独でなく **`is_holiday_work AND day_type==legal_holiday`** で確定（所定休日労働は 35% 対象外・SPEC §8.1）。ただし **legal_holiday 登録漏れの組織では未登録日曜が resolver フォールバックで `:sunday` に降格し 35% から漏れる**（Codex C5・SPEC §4.7「要確認」状態・ROADMAP backlog「legal_holiday カバレッジ失効」と同根）。Phase 3-1 は §4.7 の「要確認」フォールバック扱いと整合させること。`is_holiday_work` index もこの実クエリ形状で Phase 3-1 が張る（R3）
 - **代休 LeaveBalance の繰越除外（R8・労務）**: 年度繰越ジョブ（Phase 4-4・SPEC §4.10）のフィルタを `paid_annual?` に限定し代休を含めない（代休に carry_over は不適切）
 - **holiday-work の AttendanceHistory イベント / 遡及付与の証跡（D5・労務 NOTES #17 追記案）**: 事後申請で打刻済 AR に遡及で is_holiday_work=true を立てる経路は AttendanceHistory に残らず、証跡は HWR.approval_status + ApprovalAssignment（承認者・日時）に依存。労基法 109 条の保存・証跡要件をこの設計で満たすか社労士確認（§4.14 taxonomy 末尾に `holiday_work_approved` を追加するかを Phase 3/4 で再判断）
 
