@@ -51,4 +51,37 @@ RSpec.describe LeaveType, type: :model do
       end
     end
   end
+
+  describe "#balance_tracked?" do
+    let(:org) { create(:organization) }
+
+    def lt(system_type:, paid_leave:)
+      build(:leave_type, organization: org, system_type:, paid_leave:)
+    end
+
+    around { |ex| ActsAsTenant.with_tenant(org) { ex.run } }
+
+    it "paid_leave=true は system_type 不問で true" do
+      expect(lt(system_type: :annual, paid_leave: true)).to be_balance_tracked
+      expect(lt(system_type: :other,  paid_leave: true)).to be_balance_tracked
+    end
+
+    it "compensatory_leave は paid_leave=false でも true（D2 新挙動）" do
+      expect(lt(system_type: :compensatory_leave, paid_leave: false)).to be_balance_tracked
+    end
+
+    it "substitute_holiday かつ paid_leave=false は false（v1 デッド項除外）" do
+      expect(lt(system_type: :substitute_holiday, paid_leave: false)).not_to be_balance_tracked
+    end
+
+    it "substitute_holiday かつ paid_leave=true は true（Codex C3・述語列挙では閉じない）" do
+      expect(lt(system_type: :substitute_holiday, paid_leave: true)).to be_balance_tracked
+    end
+
+    it "annual/child_care/paternity_leave/other は paid_leave=false なら false" do
+      %i[annual child_care paternity_leave other].each do |st|
+        expect(lt(system_type: st, paid_leave: false)).not_to be_balance_tracked
+      end
+    end
+  end
 end

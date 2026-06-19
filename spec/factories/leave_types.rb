@@ -5,5 +5,6 @@ FactoryBot.define do
     organization { ActsAsTenant.current_tenant || ActsAsTenant.test_tenant || association(:organization) }
     sequence(:name) { |n| "休暇種別#{n}" }
     system_type { :other }
+    paid_leave { false }
   end
 end
