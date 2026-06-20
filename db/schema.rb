@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_19_133628) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_20_035841) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -200,6 +200,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_19_133628) do
     t.index ["organization_id"], name: "index_leave_types_on_organization_id"
   end
 
+  create_table "monthly_attendance_summaries", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "early_leave_days", default: 0, null: false
+    t.decimal "holiday_work_hours", precision: 7, scale: 2, default: "0.0", null: false
+    t.integer "late_days", default: 0, null: false
+    t.bigint "organization_id", null: false
+    t.decimal "overtime_hours_over_60", precision: 7, scale: 2, default: "0.0", null: false
+    t.integer "scheduled_work_days", default: 0, null: false
+    t.decimal "total_deep_night_hours", precision: 7, scale: 2, default: "0.0", null: false
+    t.decimal "total_overtime_hours", precision: 7, scale: 2, default: "0.0", null: false
+    t.decimal "total_work_hours", precision: 7, scale: 2, default: "0.0", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.integer "work_days", default: 0, null: false
+    t.string "year_month", null: false
+    t.index ["organization_id", "id"], name: "index_monthly_summaries_org_id", unique: true
+    t.index ["organization_id", "user_id", "year_month"], name: "index_monthly_summaries_unique", unique: true
+    t.index ["organization_id", "user_id"], name: "index_monthly_summaries_org_user"
+    t.index ["organization_id"], name: "index_monthly_attendance_summaries_on_organization_id"
+  end
+
   create_table "organization_settings", force: :cascade do |t|
     t.integer "closing_day", default: 31, null: false
     t.datetime "created_at", null: false
@@ -282,6 +303,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_19_133628) do
     t.index ["unlock_token"], name: "index_users_on_unlock_token", unique: true
   end
 
+  create_table "withdrawal_test_records", force: :cascade do |t|
+    t.integer "approval_status", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.bigint "organization_id", null: false
+    t.bigint "requester_id", null: false
+    t.datetime "updated_at", null: false
+    t.text "withdrawal_reason"
+    t.index ["organization_id"], name: "index_withdrawal_test_records_on_organization_id"
+    t.index ["requester_id"], name: "index_withdrawal_test_records_on_requester_id"
+  end
+
   create_table "work_patterns", force: :cascade do |t|
     t.boolean "active", default: true, null: false
     t.integer "afternoon_half_break_minutes"
@@ -325,6 +357,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_19_133628) do
   add_foreign_key "leave_requests", "organizations"
   add_foreign_key "leave_requests", "users", column: ["organization_id", "requester_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "leave_types", "organizations"
+  add_foreign_key "monthly_attendance_summaries", "organizations"
+  add_foreign_key "monthly_attendance_summaries", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "organization_settings", "organizations"
   add_foreign_key "reason_templates", "organizations"
   add_foreign_key "user_work_patterns", "organizations"
