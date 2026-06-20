@@ -191,4 +191,16 @@ RSpec.describe MonthlySummaries::Aggregate do
       expect(updated.total_work_hours).to eq(8 + 5) # 古い値が残らずフル上書き
     end
   end
+
+  describe "期初週が前期 tail を週次母数に含む（F2 前方カップリングの seam・closing_day=25）" do
+    it "前期 tail 日を含む週で週40h超を当期へ計上（range 外日も週の母数に効く）" do
+      org.setting.update!(closing_day: 25)
+      # period "2026-03" = 2/26..3/25。第1週 2/22(日)..2/28(土)、土曜 2/28 ∈ range ゆえ当期へ帰属。
+      # 2/22..2/25 は前期 tail（range 外）、2/26..2/28 は range 内。全 7 日 × 6h = 42h → 週次 extra 2h。
+      (22..28).each { |d| worked(Date.new(2026, 2, d), actual: 6, legal_ot: 0) }
+      summary = described_class.call(user:, period: period("2026-03"))
+      expect(summary.work_days).to eq(3)            # range 内（2/26-28）のみ
+      expect(summary.total_overtime_hours).to eq(2) # 週次は前期 tail 込みの 42h で算出（range だけなら 18h<40 で 0）
+    end
+  end
 end
