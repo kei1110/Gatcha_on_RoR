@@ -70,4 +70,8 @@ module Approvable
 
   # 撤回副作用 hook（既定 no-op・Withdrawable host が override）
   def apply_withdrawal_effects!(acting_user:) = nil
+
+  # 締め再チェック hook（既定 false＝テスト専用 approvable / 非日付 host は安全 no-op）。
+  # ClosingRestricted を include する host（LR/CCR/HWR）が override（3-2 設計 §2.4・D3）。
+  def closing_locked? = false
 end
