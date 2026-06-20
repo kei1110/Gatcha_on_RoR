@@ -57,6 +57,31 @@ RSpec.describe MonthlySummaries::Aggregate do
     end
   end
 
+  describe "未計算行の除外（計算 8 列 NULL の出勤行を母数に乗せない・P2 回帰）" do
+    it "未退勤の working 行は work_days/total_work_hours に乗らない" do
+      org.setting.update!(closing_day: 31)
+      # 未退勤 working = 計算 8 列 NULL（Recalculate は working に呼ばない・recalculate.rb:9）。
+      # 母数に乗ると「出勤日 +1・労働時間 0」の水増しが永久サマリへ焼き付く。
+      create(:attendance_record, user:, work_date: Date.new(2026, 3, 2), status: :working,
+             clock_in: Time.utc(2026, 3, 2, 0)) # 計算列なし
+      worked(Date.new(2026, 3, 3), actual: 8) # 正常な計算済み出勤日
+      summary = described_class.call(user:, period: period("2026-03"))
+      expect(summary.work_days).to eq(1)
+      expect(summary.total_work_hours).to eq(8)
+    end
+
+    it "打刻前の半休 morning_half（休暇承認の副作用・8 列 NULL）も母数に乗らない" do
+      org.setting.update!(closing_day: 31)
+      # 半休承認だけで打刻が無い → leave_status ゆえ clock_in nil 可・計算列 NULL（2-2b）。
+      create(:attendance_record, user:, work_date: Date.new(2026, 3, 2), status: :morning_half,
+             clock_in: nil)
+      worked(Date.new(2026, 3, 3), actual: 8)
+      summary = described_class.call(user:, period: period("2026-03"))
+      expect(summary.work_days).to eq(1)
+      expect(summary.total_work_hours).to eq(8)
+    end
+  end
+
   describe "scheduled_work_days（暦由来・AR 非依存）" do
     it "period.range 内の weekday 日数（出勤実態と独立）" do
       org.setting.update!(closing_day: 31)

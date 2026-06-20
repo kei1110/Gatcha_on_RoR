@@ -62,10 +62,13 @@ module MonthlySummaries
       WeeklyOvertimeCalculator.call(period_range: @period.range, days:)
     end
 
-    # 出勤系 status の AR を窓（week_window）で取得（D10・flextime 判定の N+1 回避）
+    # 出勤系 status かつ計算済みの AR を窓（week_window）で取得（D10・flextime 判定の N+1 回避）。
+    # .calculated（8 列非 NULL）必須: 未退勤 working（recalculate.rb:9 で常に未計算）や打刻前半休が
+    # 母数に乗ると「出勤日 +1・時間 0」の水増しが永久サマリへ焼き付く。未計算の除外はこのスコープ経由が不変条件。
     def worked_records
       @worked_records ||= AttendanceRecord
         .where(user: @user, work_date: @period.week_window, status: WORKED_STATUSES)
+        .calculated
         .includes(:work_pattern).to_a
     end
 

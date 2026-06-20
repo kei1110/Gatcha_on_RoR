@@ -62,9 +62,18 @@ RSpec.describe AttendancePeriod do
     end
   end
 
-  describe "不正 year_month" do
+  describe "不正 year_month（厳格 YYYY-MM・MonthlyAttendanceSummary 検証と同一・P3 回帰）" do
     it "月が範囲外なら ArgumentError" do
       expect { period("2026-13") }.to raise_error(ArgumentError)
+      expect { period("2026-00") }.to raise_error(ArgumentError)
+    end
+
+    it "1 桁月は ArgumentError（strptime は '2026-3' を黙認するため値オブジェクトで弾く）" do
+      expect { period("2026-3") }.to raise_error(ArgumentError)
+    end
+
+    it "末尾ゴミ付きは ArgumentError（strptime は '2026-03foo' を 03-01 と解釈するため弾く）" do
+      expect { period("2026-03foo") }.to raise_error(ArgumentError)
     end
   end
 end

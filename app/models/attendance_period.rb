@@ -4,11 +4,17 @@
 # (organization, year_month) から締め期間の全属性を導出し、3-1/3-2/3-3/4-x が共有する背骨。
 # 週は暦週（日〜土・労基法）のまま歪めず、本オブジェクトは「どの週・どの日が当期か」の帰属だけを担う。
 class AttendancePeriod
+  # 厳格 YYYY-MM（MonthlyAttendanceSummary の format バリデーションと同一）。
+  # strptime は "2026-3"（1 桁月）や "2026-03foo"（末尾ゴミ）を 03-01 と黙認するため、値オブジェクト側で先に弾く。
+  YEAR_MONTH_FORMAT = /\A\d{4}-(0[1-9]|1[0-2])\z/
+
   # year_month = 締め日が属する暦月のラベル "YYYY-MM"。不正値は ArgumentError で早期に弾く。
   def initialize(organization:, year_month:)
+    raise ArgumentError, "invalid year_month: #{year_month.inspect}" unless YEAR_MONTH_FORMAT.match?(year_month)
+
     @organization = organization
     @year_month   = year_month
-    @label_first  = Date.strptime(year_month, "%Y-%m") # "2026-13" 等は ArgumentError
+    @label_first  = Date.strptime(year_month, "%Y-%m") # 厳格検証済み（"2026-13" は regex で弾かれる）
   end
 
   attr_reader :year_month
