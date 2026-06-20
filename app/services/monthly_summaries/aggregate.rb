@@ -43,10 +43,23 @@ module MonthlySummaries
       }
     end
 
-    # 日次 legal OT 寄与（period.range 内・法定休日労働日を除く）。週次は Task 5 で加算する。
+    # 日次 legal OT 寄与（period.range 内・法定休日除く）＋ 週次 extra（週末土曜が period.range 内）。
+    # 日次=各日の属する締め期間／週次=土曜の属する締め期間（二重の帰属軸・設計 §3.3）。
     def total_overtime_hours
       @total_overtime_hours ||=
-        sum_hours(in_period.reject { holiday_work?(_1) }, :legal_overtime_hours)
+        sum_hours(in_period.reject { holiday_work?(_1) }, :legal_overtime_hours) + weekly_overtime_hours
+    end
+
+    # service は worked_records を calculator が食える値配列へ写すだけ。分配は WeeklyOvertimeCalculator（D8）。
+    def weekly_overtime_hours
+      days = worked_records.map do |r|
+        { date: r.work_date,
+          actual_hours: r.actual_work_hours || 0,
+          daily_legal_overtime_hours: r.legal_overtime_hours || 0,
+          legal_holiday_work: holiday_work?(r),
+          flextime: r.work_pattern&.flextime? || false } # D7・未割当は false
+      end
+      WeeklyOvertimeCalculator.call(period_range: @period.range, days:)
     end
 
     # 出勤系 status の AR を窓（week_window）で取得（D10・flextime 判定の N+1 回避）

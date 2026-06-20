@@ -101,4 +101,94 @@ RSpec.describe MonthlySummaries::Aggregate do
       end
     end
   end
+
+  describe "2 系統分離（本スライスの存在意義・#108）" do
+    it "法定休日労働は holiday_work へ・total_overtime に寄与しない（日次/週次 2 経路の除外）" do
+      org.setting.update!(closing_day: 31)
+      d = Date.new(2026, 3, 1) # 日曜
+      create(:company_calendar, date: d, day_type: :legal_holiday)
+      worked(d, actual: 10, legal_ot: 2, holiday_work: true)
+      summary = described_class.call(user:, period: period("2026-03"))
+      expect(summary.holiday_work_hours).to eq(10)
+      expect(summary.total_overtime_hours).to eq(0)
+    end
+
+    it "holiday_work 負例: is_holiday_work でも day_type≠legal_holiday（sunday フォールバック）は holiday_work=0" do
+      org.setting.update!(closing_day: 31)
+      d = Date.new(2026, 3, 1) # 日曜・CompanyCalendar 未登録 → resolver は :sunday
+      worked(d, actual: 8, holiday_work: true)
+      summary = described_class.call(user:, period: period("2026-03"))
+      expect(summary.holiday_work_hours).to eq(0)
+    end
+
+    it "所定休日土曜の出勤は holiday_work に入らない" do
+      org.setting.update!(closing_day: 31)
+      worked(Date.new(2026, 3, 7), actual: 8, holiday_work: false) # 土曜
+      summary = described_class.call(user:, period: period("2026-03"))
+      expect(summary.holiday_work_hours).to eq(0)
+    end
+  end
+
+  describe "週 40h 統合" do
+    it "所定 7h×6 日(月〜土)=42h・日次 OT 0 → total_overtime 2h（週次のみ）" do
+      org.setting.update!(closing_day: 31)
+      (2..7).each { |d| worked(Date.new(2026, 3, d), actual: 7, legal_ot: 0) } # Mon..Sat
+      summary = described_class.call(user:, period: period("2026-03"))
+      expect(summary.total_overtime_hours).to eq(2)
+    end
+
+    it "末尾週が翌期へ（月末≠土曜）: その週の週次 OT は当期に乗らない" do
+      org.setting.update!(closing_day: 31)
+      # 2026-03-31 は火曜。週 3/29(日)〜4/4(土) は土曜 4/4 が 4 月 → 当期(3月)に計上しない。
+      # 3/29(日)・3/30・3/31 を各 14h（週 42h）。誤って当期へ計上されれば extra=2h になる強い負例。
+      (29..31).each { |d| worked(Date.new(2026, 3, d), actual: 14, legal_ot: 0) }
+      summary = described_class.call(user:, period: period("2026-03"))
+      expect(summary.total_overtime_hours).to eq(0)
+    end
+  end
+
+  describe "60h 境界 3 点" do
+    it "total_overtime 59.99/60.00/60.01 → over_60 0/0/0.01" do
+      org.setting.update!(closing_day: 31)
+      # 日次 legal OT のみで total_overtime を作る（平日 1 日に集約・週 40h は跨がない値）
+      { "59.99" => "0", "60.00" => "0", "60.01" => "0.01" }.each do |total, expected_over|
+        MonthlyAttendanceSummary.delete_all
+        AttendanceRecord.where(user:).delete_all
+        worked(Date.new(2026, 3, 3), actual: BigDecimal("8") + BigDecimal(total), legal_ot: BigDecimal(total))
+        summary = described_class.call(user:, period: period("2026-03"))
+        expect(summary.total_overtime_hours).to eq(BigDecimal(total))
+        expect(summary.overtime_hours_over_60).to eq(BigDecimal(expected_over))
+      end
+    end
+  end
+
+  describe "管理監督者(exempt)×深夜（ゼロ化バグを殺す）" do
+    it "exempt でも深夜・残業を生値で保存（D5・§8.3）" do
+      org.setting.update!(closing_day: 31)
+      exempt = create(:user, organization: org, exempt_from_overtime: true)
+      create(:attendance_record, user: exempt, work_date: Date.new(2026, 3, 3), status: :clocked_out,
+             clock_in: Time.utc(2026, 3, 3, 0), clock_out: Time.utc(2026, 3, 3, 12),
+             is_holiday_work: false, actual_work_hours: 10, legal_overtime_hours: 2, scheduled_overtime_hours: 0,
+             deep_night_hours: 1.5, is_late: false, late_minutes: 0, is_early_leave: false, early_leave_minutes: 0)
+      summary = described_class.call(user: exempt, period: period("2026-03"))
+      expect(summary.total_deep_night_hours).to eq(1.5)
+      expect(summary.total_overtime_hours).to eq(2)
+    end
+  end
+
+  describe "冪等性（行数不変 + 追従）" do
+    it "2 回 call で count 不変・id 不変、AR 追加で値が追従" do
+      org.setting.update!(closing_day: 31)
+      worked(Date.new(2026, 3, 3), actual: 8)
+      first = described_class.call(user:, period: period("2026-03"))
+      expect { described_class.call(user:, period: period("2026-03")) }
+        .not_to change { MonthlyAttendanceSummary.count }
+      again = described_class.call(user:, period: period("2026-03"))
+      expect(again.id).to eq(first.id)
+
+      worked(Date.new(2026, 3, 4), actual: 5)
+      updated = described_class.call(user:, period: period("2026-03"))
+      expect(updated.total_work_hours).to eq(8 + 5) # 古い値が残らずフル上書き
+    end
+  end
 end
