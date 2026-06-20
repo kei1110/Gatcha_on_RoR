@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
-# 月次（締め期間）サマリ（SPEC §4.13・3-1 設計 §1.1）。永久保持・長期参照の基点。
-# 本スライスは AR 由来の集計列のみ。status/AASM・休暇由来列・コンプラフラグは消費 Phase が同梱追加（D4）。
+# 月次（締め期間）サマリ（SPEC §4.13・3-1 設計 §1.1・3-2 設計 §1.2）。永久保持・長期参照の基点。
+# 締め状態機械（AASM・§13.4）を 3-2 で追加。status/deferral_reason はサーバ権威（AASM event 経由のみ・
+# strong params 不受領・update_column/all 禁止）。
 class MonthlyAttendanceSummary < ApplicationRecord
   acts_as_tenant(:organization)
 
@@ -12,10 +13,32 @@ class MonthlyAttendanceSummary < ApplicationRecord
     overtime_hours_over_60 holiday_work_hours total_deep_night_hours late_days early_leave_days
   ].freeze
 
+  # enum を aasm より先に宣言（class ロード時マッピング解決・Approvable と同型）
+  enum :status, { aggregating: 0, submitted: 1, finalized: 2, deferred: 3 }
+
   validates :year_month, presence: true, format: { with: /\A\d{4}-(0[1-9]|1[0-2])\z/ }
   validates_uniqueness_to_tenant :year_month, scope: :user_id
   validates(*AGGREGATE_COLUMNS, numericality: { greater_than_or_equal_to: 0 })
+  validates :deferral_reason, presence: true, if: :deferred?
   validate :user_must_belong_to_same_organization
+
+  include AASM
+  aasm column: :status, enum: true, whiny_persistence: true do # bang の save 失敗を例外化
+    state :aggregating, initial: true
+    state :submitted
+    state :finalized
+    state :deferred
+
+    event :submit do # 提出 / 再提出（副作用＝MonthlySummaries::Submit 側・3-2 設計 D2）
+      transitions from: %i[aggregating deferred], to: :submitted
+    end
+    event :finalize do
+      transitions from: :submitted, to: :finalized
+    end
+    event :defer do # 差戻し（deferral_reason 必須・whiny_persistence で空は例外）
+      transitions from: %i[submitted finalized], to: :deferred
+    end
+  end
 
   private
 
