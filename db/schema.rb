@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_20_035841) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_20_233446) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -202,12 +202,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_035841) do
 
   create_table "monthly_attendance_summaries", force: :cascade do |t|
     t.datetime "created_at", null: false
+    t.text "deferral_reason"
     t.integer "early_leave_days", default: 0, null: false
     t.decimal "holiday_work_hours", precision: 7, scale: 2, default: "0.0", null: false
     t.integer "late_days", default: 0, null: false
     t.bigint "organization_id", null: false
     t.decimal "overtime_hours_over_60", precision: 7, scale: 2, default: "0.0", null: false
     t.integer "scheduled_work_days", default: 0, null: false
+    t.integer "status", default: 0, null: false
     t.decimal "total_deep_night_hours", precision: 7, scale: 2, default: "0.0", null: false
     t.decimal "total_overtime_hours", precision: 7, scale: 2, default: "0.0", null: false
     t.decimal "total_work_hours", precision: 7, scale: 2, default: "0.0", null: false
