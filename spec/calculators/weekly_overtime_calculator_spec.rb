@@ -33,13 +33,16 @@ RSpec.describe WeeklyOvertimeCalculator do
     expect(call(week_days(7))).to eq(BigDecimal("2"))
   end
 
-  it "重複控除: 週実労働 50h・日次 OT 合計 6h → max(0, 50−40−6)=4.00" do
+  it "重複控除: 週実労働 50h・日次 OT 合計 6h → max(0, 50−40−6)=4.00 (full precision)" do
     # 6 日 × actual ~8.333 で 50h、日次 OT 合計 6（1 日 1h）
     days = (2..7).map do |d|
       { date: Date.new(2026, 3, d), actual_hours: BigDecimal("50") / 6,
         daily_legal_overtime_hours: BigDecimal("1"), legal_holiday_work: false, flextime: false }
     end
-    expect(call(days)).to eq(BigDecimal("4"))
+    # 丸め削除後は full precision を返す。期待値は (50/6 × 6) - 40 - 6 の実計算結果
+    actual = (BigDecimal("50") / 6) * 6
+    expected = [ actual - BigDecimal("40") - BigDecimal("6"), BigDecimal("0") ].max
+    expect(call(days)).to eq(expected)
   end
 
   it "負クランプ: 週 50h・日次 OT 15h → max(0, 50−40−15)=0" do

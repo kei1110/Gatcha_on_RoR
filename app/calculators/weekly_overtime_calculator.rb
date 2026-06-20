@@ -19,8 +19,7 @@ class WeeklyOvertimeCalculator
       countable = week_days.reject { |d| d[:legal_holiday_work] || d[:flextime] }
       actual = countable.sum(BigDecimal("0")) { |d| d[:actual_hours] }
       daily  = countable.sum(BigDecimal("0")) { |d| d[:daily_legal_overtime_hours] }
-      result = [ actual - WEEKLY_LEGAL_HOURS - daily, BigDecimal("0") ].max
-      result.round(2)
+      [ actual - WEEKLY_LEGAL_HOURS - daily, BigDecimal("0") ].max
     end
   end
 end
