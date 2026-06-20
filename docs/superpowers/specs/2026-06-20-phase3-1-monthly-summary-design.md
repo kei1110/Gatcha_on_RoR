@@ -77,7 +77,7 @@ Phase 1 で「日次・1 レコード単位」の計算（`Clockings::Recalculat
 - `acts_as_tenant(:organization)` / `belongs_to :user`
 - **`status` / AASM は持たない**（3-2 が追加）。本スライスのモデルは集計値＋識別子のみ
 - 検証:
-  - `year_month` presence + `format: { with: /\A\d{4}-\d{2}\z/ }`
+  - `year_month` presence + `format: { with: /\A\d{4}-(0[1-9]|1[0-2])\z/ }`（月 01–12 のみ＝"2026-13"/"2026-00" を弾く・実装で厳格化）
   - `validates_uniqueness_to_tenant :year_month, scope: :user_id` — **UX 用の二次防衛**。並行 upsert は TOCTOU で勝てず、一次防衛は DB unique index `[organization_id, user_id, year_month]`（3-2 ジョブ化時に `RecordNotUnique` rescue / 冪等再試行を補う・§5 限界 6）
   - 集計列 `numericality: { greater_than_or_equal_to: 0 }`（NOT NULL + default 0 ゆえ `allow_nil` は不要＝付けない）
   - **`validate :user_must_belong_to_same_organization`（Critical・テナント分離レビュー）** — 本リポの全 user 帰属モデル（`LeaveBalance`/`AttendanceHistory`/`LeaveRequest`/`ClockChangeRequest`/`HolidayWorkRequest`）が例外なく持つ ID 基点 fail-closed 検証。`find_or_initialize_by(user:, year_month:)` で `organization_id`(tenant 由来) と `user_id`(引数由来) が**別経路で決まる**ため、両者の不一致を model 層で能動検証する。実装は `LeaveBalance#user_must_belong_to_same_organization`（`app/models/leave_balance.rb:27`）と同型（`return if user_id.nil?` / `return if user&.organization_id == organization_id` / 不一致で `errors.add`）
