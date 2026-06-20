@@ -225,7 +225,7 @@ RSpec.describe WeeklyOvertimeCalculator do
 
   def call(days, period_range: march) = described_class.call(period_range:, days:)
 
-  it "40h 境界 3 点（日次 OT 0）: 6.665h/6.6667h/6.67h×6 ≒ 39.99/40.00/40.01 → 0/0/0.01" do
+  it "40h 境界 3 点（日次 OT 0）: 週実労働 39.99/40.00/40.01 → 0/0/0.01" do
     expect(call([{ date: Date.new(2026, 3, 7), actual_hours: BigDecimal("39.99"),
                    daily_legal_overtime_hours: BigDecimal("0"), legal_holiday_work: false, flextime: false }]))
       .to eq(BigDecimal("0"))

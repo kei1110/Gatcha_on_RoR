@@ -303,17 +303,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_035841) do
     t.index ["unlock_token"], name: "index_users_on_unlock_token", unique: true
   end
 
-  create_table "withdrawal_test_records", force: :cascade do |t|
-    t.integer "approval_status", default: 0, null: false
-    t.datetime "created_at", null: false
-    t.bigint "organization_id", null: false
-    t.bigint "requester_id", null: false
-    t.datetime "updated_at", null: false
-    t.text "withdrawal_reason"
-    t.index ["organization_id"], name: "index_withdrawal_test_records_on_organization_id"
-    t.index ["requester_id"], name: "index_withdrawal_test_records_on_requester_id"
-  end
-
   create_table "work_patterns", force: :cascade do |t|
     t.boolean "active", default: true, null: false
     t.integer "afternoon_half_break_minutes"
