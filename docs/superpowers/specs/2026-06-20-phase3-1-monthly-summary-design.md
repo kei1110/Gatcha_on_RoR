@@ -98,7 +98,9 @@ AttendancePeriod.new(organization:, year_month:)   # year_month = 締め日が�
   week_window  # 週次 OT 用 fetch 窓 = range.first.beginning_of_week(:sunday) .. range.last
   prev / next  # 前後の AttendancePeriod（ラベル月の prev_month/next_month）
                #   F2: 当期の tail を編集 → next の週次 OT が変わる（締め差戻しの再集計カスケード単位）
-  fiscal_year  # organization.fiscal_year_for(range.last)（締め日基準で一意・暦月跨ぎの曖昧さを排除）
+  fiscal_year  # organization.fiscal_year_for(range.last)＝締め日(期末)の暦年度ラベル。
+               #   period→FY を一意化するが、年度境界をまたぐ期は期内の前年度日も closing FY へ寄る近似。
+               #   36協定の法定 grain(協定対象期間起算)での厳密化は 4-3 + 社労士確認 #13（§5 限界12）
   label        # "YYYY-MM"（= year_month）
 ```
 
@@ -325,6 +327,7 @@ D8 で週次ロジックを calculator へ集約したため、**境界 off-by-o
 9. **並行 upsert:** `find_or_initialize_by + update!` は read-modify-write。v1 は per-user・並行前提なしで妥当だが、3-2 でジョブ loop 化時に同一 (user, year_month) 並行起動が model 検証をすり抜け得る。DB unique index が一次防衛・`RecordNotUnique` rescue / 冪等再試行を 3-2 で補う（`AttendanceRecord` の index+rescue 思想と同型）。
 10. **フレックスの週 40h（D7・社労士確認 案①）:** flextime は清算期間ベースゆえ v1 は週 40h 計算から除外。日次 legal OT は Phase 1 の既存挙動を踏襲（flextime 日も `legal_overtime_hours` を持ち得る＝Phase 1 の既知の割り切り）。flextime/変形の清算期間 OT 適正化は v2。
 11. **`fiscal_year` 列の後置（D4）:** `AttendancePeriod#fiscal_year`（締め期間末日基準で一意）で導出可能。36 協定の年度集計を行う **4-3 が列を同梱追加**して埋める。3-1 は period 経由で導出可能にするのみ。
+12. **年度跨ぎ期の FY 帰属近似（社労士確認 #13）:** 締め期間が年度境界をまたぐ場合（例 `closing_day=25`・`fiscal_year_end_month=3` → `"2026-04"` 期 = 3/26〜4/25）、`fiscal_year_for(range.last)` は期内の前年度日（3/26-31＝暦上 FY2025）まで closing FY（FY2026）へ寄せる。**3-1 は fiscal_year を持たない（列なし）ため本スライスは無関係**だが、36 協定の「一年／一箇月」は協定対象期間起算（締め期間 grain でない）ゆえ、**4-3 が「締め期間 grain の近似運用で足りるか／AR から法定月 grain で再集計するか」を判断**（既存 NOTES #13 と同根・週次 OT も土曜の属する期＝同近似）。
 
 > **社労士確認 案①②③** を `docs/LABOR_LAW_REVIEW_NOTES.md` へ追記（labor-law レビュー反映・writing-plans 前）: ①フレックスへの週 40h 適用可否 ②締め期間をまたぐ週の賃金期帰属（賃金計算期間ズレ・労基法 37 条）③時間 2dp 丸めの週 40h 比較精度（割増 1 分単位原則・端数処理通達 昭和 63.3.14 基発 150 号系は未照合）。**いずれも 3-1 はブロッカーでなく、既知の限界として隔離済み**（原典照合で Critical ゼロ）。
 
