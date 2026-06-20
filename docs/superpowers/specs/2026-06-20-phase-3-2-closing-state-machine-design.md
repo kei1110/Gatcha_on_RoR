@@ -5,6 +5,7 @@
 - 典拠: SPEC §6.6（勤怠締めフロー・月次サマリ状態機械）・§6.7（締めステータスによる申請制限・横断ルール）・§13.4（`MonthlyAttendanceSummary.status` AASM）・§13.6（イベント × `after` 副作用）・§7.6（撤回の締め制限・L910）・§4.13（MonthlyAttendanceSummary）・§3.3（一括は scope で固定・IDOR）・§3.6（テナント分離・ジョブの `with_tenant`）・§16.2（一括確定の非同期化）
 - 前提エンジン: Phase 2-1〜2-5（`Approvable`/`Withdrawable`/`Approvals::Approve`・固定 2 段・撤回フロー）+ Phase 3-1（`MonthlyAttendanceSummary`・`AttendancePeriod`・`MonthlySummaries::Aggregate`）はすべて据付・merge 済（main = 3-1 完了）
 - **本設計のブレスト確定事項（2026-06-20・`superpowers:brainstorming`）**: スコープ＝コアのみ（D1）／提出前チェック＝SPEC 通り厳密（D6）／承認再チェック＝Approach A（D3）をユーザー承認済み。設計全体（§1〜§4）もユーザー承認済み
+- **多視点レビュー反映（2026-06-21・`/multi-perspective-review` 5 視点: 原則整合/実用主義/YAGNI/セキュリティ/テスト網羅）**: 視点横断で一致した重大指摘 2 件（①`status`/`deferral_reason` の mass-assignment 締め出し未記載＝fail-open → §1.1、②一括確定の同一 org 内 IDOR＝policy_scope 交差漏れ → §3.2）を含む採用指摘を本文へ反映。各反映箇所に「（多視点レビュー: <視点> <重要度>）」で出所を明記。不採用 2 件（`closing_locked?` のドメイン中立名／空 dates の locked 扱い）も判断理由を本文に記録
 
 ## 0. スコープと前提
 
@@ -49,6 +50,8 @@ Phase 3-1 が「`(user, year_month)` の締め期間 AR 群を横断集計して
 | `status` | integer | NOT NULL, default 0 | aggregating(0)/submitted(1)/finalized(2)/deferred(3) |
 | `deferral_reason` | text | NULL | 差戻し理由（deferred 時必須・§6.6） |
 
+> **サーバ権威（mass-assignment 締め出し・多視点レビュー: セキュリティ High）**: `status` / `deferral_reason` は §7.3 の `approval_status` と同型に扱う＝**AASM イベント（submit/finalize/defer）経由のみ**で更新し、`update_column` / `update_all` / mass-assignment を禁止。controller の strong params は両カラムを**一切 permit しない**。`deferral_reason` は `MonthlySummaries::Defer` サービス権威でのみ代入。これを怠ると employee が `status=deferred` を POST して自分の finalized 月を unlock し §6.7 の申請制限を全回避できる（Approach A の承認再チェックを入口で無効化する fail-open）。
+
 - 既存テーブルへのカラム追加（複合 FK `[organization_id, id]`・unique index は 3-1 で設置済）。`/create-migration` 規約に沿うが本 migration は**新テーブル/FK でなくカラム追加**ゆえ複合 FK の新設はない
 - **補助 index**（任意・計測で要否判断）: 管理者ダッシュボードの「submitted 抽出」用に `(organization_id, status)` partial（`WHERE status = 1`）を検討。v1 規模（§16.1）では full scan でも許容の可能性 → plan で判断、デフォルトは**入れない**（YAGNI）
 
@@ -91,7 +94,8 @@ end
 | `MonthlySummaries::Defer` | 差戻し | `summary.deferral_reason = reason; summary.defer!` |
 
 - いずれも `with_lock`（または `transaction`）で直列化。Submit は再集計と遷移を同一 tx に閉じ込め、in-flight 承認との read-skew を最小化（ハード backstop は承認側 re-check）
-- 一括確定は §3.2 のジョブが `Finalize` 相当を loop（ジョブ内で直接 `finalize!`）
+- **Submit の副作用順序は §13.6「遷移 → after 副作用」の唯一の例外（多視点レビュー: 原則整合 Med）**: `Approvals::Approve#finalize!`（`approve!` → `apply_approval_effects!`）と逆に、Submit は「②`Aggregate.call`（副作用）→ ③`submit!`（遷移）」と副作用を遷移より**前**に置く。D7（locked 行は再集計しない＝aggregating/deferred のうちに集計する）から必然。`/spec-check`・reviewer が逸脱と誤認しないよう本注記を残す。`summary.submit!` の receiver は **`Aggregate.call` の返り値そのもの**（`find_or_initialize_by` で別 load した stale インスタンスへ撃たない）
+- **確定の唯一経路を `Finalize` サービスへ一本化（多視点レビュー: 実用主義/YAGNI Med）**: 一括確定（§3.2 ジョブ）も `summary.finalize!` を直叩きせず **`MonthlySummaries::Finalize.call` を loop** する（rescue 隔離は job 側で維持）。4-1 で `Finalize` に通知副作用を足したとき一括経路だけ漏れる divergence を防ぐ
 
 ---
 
@@ -110,7 +114,10 @@ end
 
 > 正当性: 期 M の range = `(closing_date(M-1)+1 .. closing_date(M))`。任意の日 d は自暦月内ゆえ `range.first <= 月初 <= d` が常に成り立つ（下限は必ず満たす）。上限 `closing_date(M)` を超える日のみ翌期へ送られる → `candidate` か `candidate.next` の二択で `.prev` は不要。`closing_day` 任意値（月末 31 含む）で正しい。
 
-**`MonthlySummaries::ClosingLock`**（PORO 述語・D4）:
+**`MonthlySummaries::ClosingLock`**（**query object**（読み取り述語）・D4）:
+
+> 呼称注記（多視点レビュー: 原則整合 Low）: `ClosingLock` は `MonthlyAttendanceSummary.where(...).exists?` で DB を引くため §2.2-1 の「計算 PORO（AR 非依存・DB なしで網羅テスト）」には**当たらない**。副作用も無いため §2.2-2 の Service でもなく、実体は **query object**。「PORO」呼称は §2.2-1 の予約語と紛れるため避ける。
+> テナント前提（多視点レビュー: セキュリティ Low）: `with_tenant(@user.organization)` は ambient request tenant でなく**データ由来**の org を信頼する。これは `@user`（= requester・summary.user）が同一テナント FK 不変条件（§3.6・各申請モデルの `*_must_belong_to_same_organization`）を満たすことに依存する。崩れた場合に別 org で判定する fail-open を避けるため、呼び出し側はこの不変条件への依存を認識する（防御 assert の要否は plan で判断）。
 
 ```ruby
 module MonthlySummaries
@@ -169,6 +176,9 @@ module ClosingRestricted
   end
   def closing_unlocked? = !closing_locked?
 
+  # 注: 既定名 `closing_locked?` は `apply_*_effects!` フックとの対称性を優先し維持
+  # （ドメイン中立名 `approval_blocked?` 案は不採用・多視点レビュー: 原則整合 Med）。
+
   private
 
   def target_dates_not_in_closed_period
@@ -180,7 +190,9 @@ end
 
 - LR / CCR / HWR が `include ClosingRestricted` し `closing_target_dates` を実装
 - `requester` は 3 型とも `belongs_to :requester`（`Approvable` 契約）で共通
-- **月跨ぎ LR**: range 内に 1 日でも locked 期があれば作成を弾く（申請レコードは atomic ゆえ部分作成不可・§6.7「その月の日付のみブロックし差戻しを促す」は「他月とまとめて出し直すなら差戻し依頼」の運用導線で、レコード単位は all-or-nothing）
+- **空 dates の扱い（多視点レビュー: セキュリティ Med）**: `closing_target_dates` が空配列なら `dates.present?` 短絡で `closing_locked? = false`（unlocked 確定）。CCR の `[attendance_record&.work_date].compact` は、**現スコープでは `attendance_record` が non-null**（`new_entry`＝null は 4-2 後置・`clock_change_request.rb` の `change_type` exclusion で受け付けない）ゆえ空にならない。この前提が崩れる 4-2 で空 dates を「判定不能＝locked 扱い」へ格上げするか再判断（v1 は空＝unlocked で過剰防御を避ける）
+- **対象日の不変性（多視点レビュー: セキュリティ Med）**: 制限は `on: :create` のみ。これは 3 型とも**対象日カラムが作成後 immutable**（LR=start/end・CCR=attendance_record・HWR=work_date に update アクションが無く、writer は Create サービス権威）であることに依存する。締め後に対象日を移動して制限を回避する経路が無いことを前提とし、可変化する将来変更時は `on: :update` も張る（plan で各モデルの update 経路の不在を確認）
+- **月跨ぎ LR は all-or-nothing**: range 内に 1 日でも locked 期があれば作成を弾く（申請レコードは start..end の 1 行で atomic ゆえ部分作成不可）。**citation 正確化（多視点レビュー: YAGNI）**: SPEC §6.2 L748「締め済み月の日付が含まれる場合はその月の日付のみブロックし差戻しを促す」は休暇承認・集計（per-day 計上）の文脈で、L750 が「締め済み月への申請は **§6.7** の制限に従う」と申請作成制限（レコード単位）へ委譲する。よって作成は §6.7 準拠で all-or-nothing に弾き、エラーメッセージで「該当月は締め済み・他月のみで出し直すか管理者へ差戻し依頼を」と促す（L748 の「その月のみ」案内を UX で満たす）。per-day 部分受理＝申請レコード分割は v1 では作らない
 
 ### 2.3 撤回制限（§6.7・§7.6 L910）— `Withdrawable` の event guard
 
@@ -205,7 +217,9 @@ raise Approvals::ConflictError if @approvable.closing_locked?
 ```
 
 - `ClosingRestricted` を include する LR/CCR/HWR は §2.2 の `closing_locked?` で override 済 → guard! が自動的に全 3 型を fail-closed で弾く
-- **既定 false の silent-gap 対策**: 「`Approvable` を include する申請モデルは `ClosingRestricted` も include する」を**ガード spec** で機械的に検証（将来型の漏れを CI で塞ぐ）
+- **include 順依存（多視点レビュー: 実用主義 Med）**: `ClosingRestricted` の `closing_locked?` が `Approvable` の既定 `false` に勝つには、ancestor 順で `ClosingRestricted` が `Approvable`（→`Withdrawable` 経由含む）より**後**に評価される必要がある。host 側で `include ClosingRestricted` を `Approvable`/`Withdrawable` の後に置き、`withdrawable.rb` の「included 評価順」注記と同型のコメントで固定する
+- **既定 false の silent-gap 対策（多視点レビュー: セキュリティ Med・テスト網羅 High）**: ガード spec を強化する（§4.3）。「include の有無」だけでは include 順・`closing_target_dates` の正当性・eager_load 漏れを取りこぼし trivial green になるため、(a) `Rails.application.eager_load!` 後に `Approvable` を include する**本番 app/models のみ**を列挙（テスト double は allowlist 除外）、(b) 列挙集合が**非空**であること自体を assert（空集合＝偽 green の検出）、(c) 各々が `ClosingRestricted` も include し `closing_locked?` の実体が `ClosingRestricted` 由来（実挙動 or ancestors 順）であること、(d) 各 host の `closing_target_dates` が非空・正当な日付を返すこと、を検証
+- **ConflictError の締め由来文言（多視点レビュー: セキュリティ/原則整合 Low）**: 既存 `ApprovalAssignmentsController#approve` の `rescue Approvals::ConflictError` は CCR/HWR 競合専用の固定文言（「変更前時刻が…」「平日化…」）。締めロック由来の ConflictError でこの文言が出ると原因が誤表示される（fail-closed 自体は維持・cosmetic）。**専用例外 `Approvals::ClosingLockedError < ConflictError` を設け**（既存 rescue は親 ConflictError で拾い続ける）controller で締め由来を判別し「該当月は締め済みのため承認できません（管理者へ差戻し依頼を）」と分岐表示。未テスト path ゆえ request spec も同時に（ROADMAP backlog「ConflictError flash を型別に」と同根・本スライスで一手回収）
 - 弾かれた承認は `applying` のまま。解決は「管理者が summary を differ（submitted/finalized→deferred）→ 期がほどける → 再承認」の通常フロー
 
 ---
@@ -222,9 +236,10 @@ raise Approvals::ConflictError if @approvable.closing_locked?
 #   not_started = 全 assignment pending（「申請中・未起動」→ キャンセル可）
 ```
 
-- `Submit` サービスが冒頭で呼び、in-flight が 1 件でもあれば `Approvals::ConflictError`（fail-closed）
-- UI は started/not_started に分けて一覧表示し、started があれば提出ボタン非活性・not_started はキャンセル導線（§6.6 忠実）
-- ※ overlap 判定はテナントスコープ下で各型を別クエリ（polymorphic 結合は避ける・2-2b の汎用インボックス N+1 教訓と同方針）
+- **ゲートと分類を分離（多視点レビュー: 実用主義/YAGNI Med）**: `Submit` のゲートは correctness の床ゆえ軽い **`PendingRequests.any?(user:, period:)`（`exists?` 相当・boolean）** で足り、in-flight が 1 件でもあれば `Approvals::ConflictError`（fail-closed・再集計の**前**に弾く）。started/not_started の**二分は UI レンダリング時のみ**実行する重い経路で、Submit ゲートには載せない
+- UI は started/not_started に分けて一覧表示し、started があれば提出ボタン非活性・not_started はキャンセル導線（§6.6 忠実・D6）
+- **N+1 回避**: 分類は型ごとに in-flight レコードを 1 クエリで引き、assignment は `where(approvable: records)` の 1 クエリ + group で起動済み判定（per-record の assignment ロードを避ける）。overlap 判定はテナントスコープ下で各型を別クエリ（polymorphic 結合は避ける・2-2b の汎用インボックス N+1 教訓と同方針）
+- 4.2 の最小 UI は started/not_started を**両方レンダリングし not_started のキャンセル導線まで本 PR で作る**（§6.6 忠実・D6）。作らない判断なら分類を `any?` に縮小して導線実装時へ後置——本スライスは前者を採る
 
 ### 3.2 一括確定ジョブ（初の SolidQueue・D8）
 
@@ -234,7 +249,7 @@ class MonthlySummaries::BulkFinalizeJob < ApplicationJob
     org = Organization.find(organization_id)
     ActsAsTenant.with_tenant(org) do        # §3.6 必須（リクエスト文脈なし）
       MonthlyAttendanceSummary.where(id: summary_ids).find_each do |s|
-        s.finalize! if s.submitted?          # 冪等・非 submitted は skip
+        MonthlySummaries::Finalize.call(summary: s) if s.submitted?  # 唯一経路に一本化・冪等
       rescue AASM::InvalidTransition, ActiveRecord::RecordInvalid => e
         # 1 件の失敗を隔離（他社員を巻き込まない）。4-1 で通知接続
         Rails.logger.warn("[BulkFinalize] skip ##{s.id}: #{e.class}")
@@ -244,8 +259,9 @@ class MonthlySummaries::BulkFinalizeJob < ApplicationJob
 end
 ```
 
-- controller（管理者）が `policy_scope(MonthlyAttendanceSummary)` で対象を解決（IDOR 防御・§3.3「一括は scope で固定」）→ id 群 + organization_id を渡す
-- `find_each` で 1 件ずつ確定。`with_tenant` ラップは `check-job-tenant-wrap` フックの対象（§3.6）
+- **認可境界 = enqueue 時の policy_scope 交差（多視点レビュー: セキュリティ High・IDOR）**: controller（管理者）は client 提出の `params[:summary_ids]` を**そのまま渡さず**、`policy_scope(MonthlyAttendanceSummary).where(id: params[:summary_ids]).pluck(:id)` で**交差**してから enqueue する（§3.3「一括は scope で固定」）。`with_tenant(org)` はクロステナントは構造的に遮断するが**同一 org 内の上長権限境界（自分の部下か否か）は遮断しない**ため、policy_scope 交差が cross-subordinate finalize を防ぐ唯一の壁。ジョブ内には**再認可が無い**（in-job re-authorize なし）＝enqueue 経路の policy_scope が認可の単一境界である旨を明記し、将来 console/recurring 等が policy_scope を経ず enqueue する危険を警告
+- **`organization_id` は server 由来に固定（多視点レビュー: セキュリティ Med）**: `ActsAsTenant.current_tenant.id` を渡す（client 由来の org 指定を禁止＝victim org 指定を封じる）
+- `find_each` で 1 件ずつ `Finalize.call` で確定（divergence 防止・§1.3）。`with_tenant` ラップは `check-job-tenant-wrap` フックの対象（§3.6）
 - **dev/test 設定（D9・OPEN）**: dev で実際に enqueue→処理が回るよう `:solid_queue`（DB 配線は plan 確認）、test は `:test` で `assert_enqueued_with` / `perform_enqueued_jobs`
 
 ---
@@ -256,9 +272,15 @@ end
 
 | アクション | 許可 |
 |---|---|
+| `index?` / `show?` | 本人 or 対象者の上長 or hr_admin（多視点レビュー: 原則整合/セキュリティ — 締めページ/一覧の閲覧 action を明示・全 action authorize） |
 | `submit?` | record.user == user（本人）or hr_admin |
-| `finalize?` / `defer?` / `bulk_finalize?` | record.user の manager（上長）or hr_admin |
+| `finalize?` / `defer?` | record.user の**上長（階層述語）** or hr_admin |
+| `bulk_finalize?` | **class-level の role 判定**（manager or hr_admin 可否）。per-record の権限は §3.2 の `policy_scope` 交差で担保 |
 | `Scope` | 自分 + 部下（§3.3・manager 階層）。一括・一覧の対象集合をここで固定 |
+
+- **権限境界の整合（多視点レビュー: セキュリティ Med）**: `finalize?`/`defer?` の「上長」述語は `Scope`（manager 階層）と**同一の階層述語**（例 `subordinate_of?`）に統一する。直属のみと階層で食い違うと「scope で選べるのに単一操作で拒否」or「権限超過」が生じる
+- **`bulk_finalize?` は record 非依存（多視点レビュー: セキュリティ Med）**: 一括は class-level authorize ゆえ `record.user` を参照すると `NoMethodError`。role 可否のみ判定し、対象の絞り込みは policy_scope 交差に委ねる
+- **単一操作の record 取得（多視点レビュー: セキュリティ Med・IDOR）**: controller の `set_summary` は `policy_scope(MonthlyAttendanceSummary).find(params[:id])`（scope 外は 404）で行う（既存 `set_leave_request`/`set_assignment` と同型）。`MonthlyAttendanceSummary.find` 直叩きは scope 外 record に authorize が走り IDOR 余地を残す
 
 ### 4.2 UI（最小・§12.1 トーン）
 
@@ -269,10 +291,18 @@ end
 
 ### 4.3 テスト（雛形 `/gen-spec`）
 
-- **model**: AASM 5 遷移（正常 + terminal/不正遷移の `InvalidTransition`）・`deferral_reason` 必須・`ClosingRestricted` の on:create 検証（locked/unlocked・月跨ぎ）・`Withdrawable` の `closing_unlocked?` guard・`AttendancePeriod.containing`（closing_day=31/20 の境界）・`ClosingLock`（行なし=unlocked・複数期 walk）
-- **service**: `Submit`（提出前チェック→集計→遷移の順序・in-flight で `ConflictError`）・`Finalize`/`Defer`・`BulkFinalizeJob`（`with_tenant` ラップ・冪等・1 件失敗の隔離）
-- **request**: policy（本人/上長/hr_admin）・IDOR（scope 外 404）・承認 re-check の `ConflictError` path（作成後に締めた → approve がエラー）
-- **ガード spec**: `Approvable` を include する申請モデルが `ClosingRestricted` も include する（D3 silent-gap 塞ぎ）
+> **負例を正例と対にする（多視点レビュー: テスト網羅・偽テスト防止）**: 各述語（`closing_locked?`・`PendingRequests`・各 guard）は **unlocked/空/非該当の負例**を必ず対にする。正例のみだと「常に true を返す実装」でも green になる。下記 ★ は本レビューで追加した観点。
+
+- **model（AASM）**: ★ `aggregating` で `defer!`/`finalize!` は `InvalidTransition`／`finalized`→`submit` 直行は無効（deferred 経由必須）／**`finalized`→`defer!` は正常**（finalized は terminal でない positive 回帰・「terminal」表現は誤り）／差戻しは aggregating へ戻らない／`deferral_reason` は deferred 時必須・★ resubmit（deferred→submit）後も保持され submitted で valid（監査痕）
+- **model（境界・`AttendancePeriod.containing`）**: ★ closing_day=20 で `containing(期末日)` は当期・`containing(期末日+1)` は翌期（closing/closing+1 ペア）／★ 年跨ぎ（12/25 → 翌年 1 月期・`.next` の年越し）／closing_day=31 は月末日でも常に同暦月期（「下限は常に満たす」証明＝`.prev` 不要）
+- **model（`ClosingLock`）**: ★ submitted/finalized **各々**で `locked? true`（両 locked status pin）／★ deferred は `false`／行なし＝`false`／★ 同一 org の**別 user** が同 period submitted でも `@user` は false（`where(user:)` 実証）／★ 他テナント summary を引かない（`with_tenant` 実証）／複数期に跨り 1 期だけ locked → true・全期 unlocked → false／★ 3 入力形（Date/Range/Array）で同一判定・★ `period_labels` walk が 12→翌 1 月でラベル正増分
+- **model（`ClosingRestricted`/`Withdrawable` guard）**: on:create 検証（locked で弾く・unlocked で通る・月跨ぎ）／★ CCR の `attendance_record` 不在で `closing_target_dates` 空 → `closing_locked? false`（偽陽性ロック防止）／撤回 guard は locked で `request_withdrawal!` が `InvalidTransition`・★ unlocked で成功・★ `no_prior_withdrawal_round?` を満たす状態でも closing-lock 単独で弾ける（新 guard 効果の隔離）
+- **service**: `Submit`（in-flight で `ConflictError`・★ その時 `expect(Aggregate).not_to receive(:call)`＝再集計前に fail-closed・★ summary 行ゼロ (user,period) への初回提出 lazy 生成）・`Finalize`/`Defer`・★ **D7 回帰**: `Finalize`/`Defer` 実行中 `expect(Aggregate).not_to receive(:call)`・finalize 後に集計列が不変／`Submit` は `Aggregate.call` をちょうど 1 回・`submit!` の**前**に撃つ（順序 pin）
+- **job（`spec/jobs/` 新設・gen-spec の job 雛形）**: `with_tenant` ラップ・冪等（非 submitted skip）・1 件失敗の隔離・★ **他テナント混入防止**: `perform(organization_id: orgA.id, summary_ids: [orgA_id, orgB_id])` で orgB 行は finalized にならない（`with_tenant(orgA)` scope が落とす）・★ job が `Finalize.call` を通る（直 `finalize!` でない）
+- **request**: policy（本人/上長/hr_admin・★ index?/show?）・IDOR（scope 外 404）・★ **一括 enqueue IDOR**: scope 外 id を含む要求 → `have_enqueued_job(BulkFinalizeJob)` の引数に scope 外 id が**含まれない**（policy_scope 交差）・承認 re-check の `ConflictError` path を ★ **LR/CCR/HWR 各型**で（作成後に締め→approve がエラー）・★ unlocked では approve 正常進行（guard が常時 raise でない）・★ 締め由来 `ClosingLockedError` の専用文言表示
+- **ガード spec（強化・§2.4）**: ★ `eager_load!` 後の本番 app/models のみ列挙（テスト double allowlist 除外）・★ 列挙集合が非空・各々が `ClosingRestricted` を include し `closing_locked?` が `ClosingRestricted` 由来・各 host の `closing_target_dates` が非空/正当
+- **read-skew（§5・テスト網羅の材料）**: 真の並行 interleave は flaky ゆえ**自動テスト対象外**と明記し、安全性の根拠は決定的に検証できる**構造 backstop**（「作成→締め→approve が `ConflictError`」の re-check path）に置く（§5 に方針を一文で残す）
+- **migration**: ★ 3-1 で作成済みの既存 summary 行が `status=0`（aggregating）として読める（NOT NULL default backfill 確認）or「data migration テストは範囲外」と明記
 
 ### 4.4 レビュー / 検証
 
@@ -283,9 +313,19 @@ end
 
 ---
 
-## 5. 既知の限界 / handoff
+## 5. 既知の限界 / handoff / コミット境界
 
-- **submit と approve の read-skew**: `Submit` の tx（再集計 + 遷移）と `Approve` の `with_lock` tx が並走した場合、提出が先にコミットすれば approve の re-check（§2.4）が submitted を見て `ConflictError`。approve が先なら submit の再集計が反映を取り込む。ハード backstop は §2.4 ゆえ「締め済み月の AR が裏で書き換わる」事故は構造的に防がれる（提出前チェック §3.1 は UX 上の事前ガード）
+### コミット境界（多視点レビュー: 実用主義 High — PR 分量）
+本スライスは前フェーズ（2-3〜2-5 は申請 1 型ずつ）比で分量が突出し、とりわけ**初の SolidQueue を dev/test/本番で実際に回す配線（D9）は単独で 1 スライス相当の不確実性**を持つ。ROADMAP が 3-2 で「初の SolidQueue 利用」を明記するため**別 PR への分割はしない**が、**コミット境界を切って部分 revert 可能**にする:
+1. migration + AASM 状態機械 + 締めサービス（Submit/Finalize/Defer・同期）
+2. 横断制限（`AttendancePeriod.containing`・`ClosingLock`・`ClosingRestricted`・`Withdrawable` guard・`Approve#guard!` 注入・`ClosingLockedError`）
+3. 提出前チェック（`PendingRequests`）+ Policy + UI
+4. **SolidQueue 配線（dev/test adapter・DB 配線）+ `BulkFinalizeJob`**（最も不確実・独立 revert 可能に）
+
+plan 段で各コミットの spec を緑にしてから次へ進む（最低でも 1〜3 は SolidQueue 不在でも動く）。
+
+### 既知の限界
+- **submit と approve の read-skew**: `Submit` の tx（再集計 + 遷移）と `Approve` の `with_lock` tx が並走した場合、提出が先にコミットすれば approve の re-check（§2.4）が submitted を見て `ConflictError`。approve が先なら submit の再集計が反映を取り込む。ハード backstop は §2.4 ゆえ「締め済み月の AR が裏で書き換わる」事故は構造的に防がれる（提出前チェック §3.1 は UX 上の事前ガード）。**真の並行 interleave の自動テストは flaky ゆえ対象外**とし、安全性の根拠は §4.3 の構造 backstop テスト（作成→締め→approve `ConflictError`）に置く
 - **§13.4「月初 or 初回打刻で自動作成」**: 3-2 は submit 経路の lazy 生成（`Aggregate` の `find_or_initialize`）で足りる。日次バッチによる自動作成は 4-2
 - **通知**: defer/finalize/未提出者の通知は 4-1（in-app バナーのみで出荷）
 - **dev queue 配線（D9）**: SolidQueue を dev で動かす DB 配線（primary 取り込み vs dev 専用 queue DB）は plan 段で `database.yml`/`queue.yml`/`db/queue_schema.rb` と実機照合して確定
