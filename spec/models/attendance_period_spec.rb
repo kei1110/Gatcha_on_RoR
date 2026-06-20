@@ -62,6 +62,43 @@ RSpec.describe AttendancePeriod do
     end
   end
 
+  describe ".containing（逆写像・3-2 設計 §2.1）" do
+    let(:org) { create(:organization) }
+
+    context "closing_day = 31（月末締め）" do
+      before { org.setting.update!(closing_day: 31) }
+
+      it "月内の任意日は同暦月期を返す（下限は常に満たす）" do
+        period = described_class.containing(organization: org, date: Date.new(2026, 3, 31))
+        expect(period.label).to eq("2026-03")
+      end
+
+      it "月初日も同暦月期" do
+        period = described_class.containing(organization: org, date: Date.new(2026, 3, 1))
+        expect(period.label).to eq("2026-03")
+      end
+    end
+
+    context "closing_day = 20" do
+      before { org.setting.update!(closing_day: 20) }
+
+      it "期末日（3/20）は当期（2026-03）" do
+        period = described_class.containing(organization: org, date: Date.new(2026, 3, 20))
+        expect(period.label).to eq("2026-03")
+      end
+
+      it "期末日+1（3/21）は翌期（2026-04）" do
+        period = described_class.containing(organization: org, date: Date.new(2026, 3, 21))
+        expect(period.label).to eq("2026-04")
+      end
+
+      it "年跨ぎ（12/25 → 翌年 1 月期）" do
+        period = described_class.containing(organization: org, date: Date.new(2026, 12, 25))
+        expect(period.label).to eq("2027-01")
+      end
+    end
+  end
+
   describe "不正 year_month（厳格 YYYY-MM・MonthlyAttendanceSummary 検証と同一・P3 回帰）" do
     it "月が範囲外なら ArgumentError" do
       expect { period("2026-13") }.to raise_error(ArgumentError)

@@ -8,6 +8,13 @@ class AttendancePeriod
   # strptime は "2026-3"（1 桁月）や "2026-03foo"（末尾ゴミ）を 03-01 と黙認するため、値オブジェクト側で先に弾く。
   YEAR_MONTH_FORMAT = /\A\d{4}-(0[1-9]|1[0-2])\z/
 
+  # date を含む締め期間を返す（逆写像・3-2 設計 §2.1・D4）。
+  # 候補＝date の暦月期。range.cover? なら当期、外れたら翌期（下限は月初を必ず含むので .prev 不要）。
+  def self.containing(organization:, date:)
+    candidate = new(organization:, year_month: date.strftime("%Y-%m"))
+    candidate.range.cover?(date) ? candidate : candidate.next
+  end
+
   # year_month = 締め日が属する暦月のラベル "YYYY-MM"。不正値は ArgumentError で早期に弾く。
   def initialize(organization:, year_month:)
     raise ArgumentError, "invalid year_month: #{year_month.inspect}" unless YEAR_MONTH_FORMAT.match?(year_month)
