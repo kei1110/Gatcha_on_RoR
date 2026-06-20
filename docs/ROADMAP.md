@@ -53,7 +53,7 @@
 
 > 完了条件: 提出 → 確定 → 差戻しが状態機械で回り、給与システムへ渡せる CSV が出る
 
-- [ ] **3-1 MonthlyAttendanceSummary + 集計**: MonthlySummaryService（提出時全件再集計・週 40h 超の法定時間外 §5.2・2 系統集計の保存 §8.2）
+- [x] **3-1 MonthlyAttendanceSummary + 集計**: 締め期間（`closing_day` 基準）単位の集計エンジン — `AttendancePeriod` 値オブジェクト（D9・暦月ハードコード排・厳格 YYYY-MM 検証）＋ `WeeklyOvertimeCalculator`（週 40h 超を法定時間外へ §5.2・重複控除/法定休日/flextime 除外・per-week 丸め排で累積誤差回避）＋ `MonthlySummaries::Aggregate`（日次 legal OT ＋週次 extra の 2 系統集計の保存 §8.2・60h 超分離・出勤系 status ゲートで #104 stale 除外・`.calculated` で未計算行除外・冪等 upsert・防御テナントラップ・`day_types` 注入）。素材保存のみで判定はしない（コンプラは 4-x）。**提出時全件再集計のトリガ（状態機械・提出 UI）は 3-2 へ後置**（PR [#12](https://github.com/kei1110/Gatcha_on_RoR/pull/12)）
 - [ ] **3-2 締め状態機械 + 申請制限**: AASM（§13.4）・§6.7 の横断バリデーション・承認時の締め再チェック・一括確定ジョブ（初の SolidQueue 利用 → dev 用 Active Job 設定もここで）
 - [ ] **3-3 CSV 2 種**: 月次サマリ・日別明細（UTF-8 BOM・割増区分網羅・§6.4）
 

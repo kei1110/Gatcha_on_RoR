@@ -66,6 +66,13 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **HOW**: `prefix: <名前>`（例 `prefix: :half_day`）で生成メソッドを `half_day_none?` 等へ逃がす。**enum の値シンボル（`:none` 等）は不変**ゆえ DB 値・factory・代入は変わらず、述語/スコープ名だけ変わる（モデル内の `none?` 参照は `half_day_none?` へ）。`validate: true` と併用可
 - verified: Rails 8.1.3 / 2026-06-16（Phase 2-2a `LeaveRequest.half_day_type` で実踏）
 
+### `Date.strptime(str, "%Y-%m")` は厳格一致でない（1 桁月・末尾ゴミを黙認）
+
+- **WHAT**: `Date.strptime("2026-3", "%Y-%m")` も `Date.strptime("2026-03foo", "%Y-%m")` も `ArgumentError` を投げず `2026-03-01` を返す（`%m` は 1〜2 桁を食い、末尾の残余文字は無視される）。`"2026-13"` 等の範囲外だけは `Date::Error`（`ArgumentError` 子孫）になるので「不正は弾ける」と誤解しやすい
+- **WHY**: strptime はフォーマット一致後の trailing を検査せず、`%m` の桁数も緩い。`Date.parse` 同様、ラベルの厳格検証には使えない
+- **HOW**: パース前に regex で形を固定する。本リポジトリの "YYYY-MM" は `AttendancePeriod::YEAR_MONTH_FORMAT`（`/\A\d{4}-(0[1-9]|1[0-2])\z/`・`MonthlyAttendanceSummary` の format バリデーションと同一）で `match?` してから `strptime` する
+- verified: Ruby 4.0.2 / 2026-06-20（3-1 値オブジェクトのレビュー P3 で実踏）
+
 ### ShowExceptions ミドルウェア経由の例外応答は session が commit されない
 
 - **WHAT**: 例外を middleware の 404/500 描画に任せると、そのリクエストでの `reset_session` や Warden ログインが**クライアントに届かない**（連続リクエストのテストで 2 回目が 302 になる等）
