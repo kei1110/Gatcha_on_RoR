@@ -1,0 +1,13 @@
+<h1>月次締め</h1>
+<table>
+  <thead><tr><th>対象月</th><th>状態</th><th></th></tr></thead>
+  <tbody>
+    <% @summaries.each do |s| %>
+      <tr>
+        <td><%= s.year_month %></td>
+        <td><%= t("activerecord.attributes.monthly_attendance_summary.statuses.#{s.status}", default: s.status) %></td>
+        <td><%= link_to "詳細", monthly_attendance_summary_path(s) %></td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>

@@ -1,0 +1,37 @@
+<h1><%= @summary.year_month %> の締め</h1>
+<p>状態: <%= @summary.status %></p>
+
+<% if @summary.deferred? && @summary.deferral_reason.present? %>
+  <div class="banner banner-alert">差戻し理由: <%= @summary.deferral_reason %></div>
+<% end %>
+
+<dl>
+  <dt>実出勤日数</dt><dd><%= @summary.work_days %></dd>
+  <dt>総労働時間</dt><dd><%= @summary.total_work_hours %></dd>
+  <dt>総残業</dt><dd><%= @summary.total_overtime_hours %></dd>
+  <dt>深夜</dt><dd><%= @summary.total_deep_night_hours %></dd>
+</dl>
+
+<% if policy(@summary).submit? && (@summary.aggregating? || @summary.deferred?) %>
+  <% if @pending.any? %>
+    <p>承認手続き中・申請中の申請があるため提出できません:</p>
+    <ul>
+      <% @pending.started.each do |r| %><li>承認進行中: <%= r.class.model_name.human %> #<%= r.id %></li><% end %>
+      <% @pending.not_started.each do |r| %><li>申請中（キャンセルで提出可）: <%= r.class.model_name.human %> #<%= r.id %></li><% end %>
+    </ul>
+    <%= button_to "提出", submit_monthly_attendance_summary_path(@summary), method: :patch, disabled: true %>
+  <% else %>
+    <%= button_to (@summary.deferred? ? "再提出" : "提出"), submit_monthly_attendance_summary_path(@summary), method: :patch %>
+  <% end %>
+<% end %>
+
+<% if policy(@summary).finalize? && @summary.submitted? %>
+  <%= button_to "確定", finalize_monthly_attendance_summary_path(@summary), method: :patch %>
+<% end %>
+
+<% if policy(@summary).defer? && (@summary.submitted? || @summary.finalized?) %>
+  <%= form_with url: defer_monthly_attendance_summary_path(@summary), method: :patch do |f| %>
+    <%= f.text_field :deferral_reason, placeholder: "差戻し理由" %>
+    <%= f.submit "差戻し" %>
+  <% end %>
+<% end %>
