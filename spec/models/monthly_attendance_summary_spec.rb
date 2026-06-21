@@ -51,4 +51,79 @@ RSpec.describe MonthlyAttendanceSummary do
       end
     end
   end
+
+  describe "締め状態機械（AASM・§13.4）" do
+    let(:summary) { create(:monthly_attendance_summary) }
+
+    it "初期状態は aggregating" do
+      expect(summary).to be_aggregating
+    end
+
+    it "submit で aggregating → submitted" do
+      summary.submit!
+      expect(summary).to be_submitted
+    end
+
+    it "submit で deferred → submitted（再提出）" do
+      summary.update!(status: :deferred, deferral_reason: "修正依頼")
+      summary.submit!
+      expect(summary).to be_submitted
+    end
+
+    it "finalize で submitted → finalized" do
+      summary.submit!
+      summary.finalize!
+      expect(summary).to be_finalized
+    end
+
+    it "defer で submitted → deferred（reason 必須）" do
+      summary.submit!
+      summary.deferral_reason = "打刻漏れ"
+      summary.defer!
+      expect(summary).to be_deferred
+    end
+
+    it "defer で finalized → deferred（finalized は terminal でない）" do
+      summary.submit!
+      summary.finalize!
+      summary.deferral_reason = "確定後の修正"
+      summary.defer!
+      expect(summary).to be_deferred
+    end
+
+    # 負例（fail-closed・偽テスト防止）
+    it "aggregating から finalize! は InvalidTransition" do
+      expect { summary.finalize! }.to raise_error(AASM::InvalidTransition)
+    end
+
+    it "aggregating から defer! は InvalidTransition" do
+      expect { summary.defer! }.to raise_error(AASM::InvalidTransition)
+    end
+
+    it "finalized から submit! 直行は InvalidTransition（deferred 経由必須）" do
+      summary.submit!
+      summary.finalize!
+      expect { summary.submit! }.to raise_error(AASM::InvalidTransition)
+    end
+
+    it "差戻しは aggregating へ戻さない（defer の遷移先は deferred のみ）" do
+      summary.submit!
+      summary.deferral_reason = "x"
+      summary.defer!
+      expect(summary).not_to be_aggregating
+    end
+
+    it "deferred で deferral_reason 空なら invalid（whiny_persistence で defer! 例外）" do
+      summary.submit!
+      summary.deferral_reason = nil
+      expect { summary.defer! }.to raise_error(ActiveRecord::RecordInvalid)
+    end
+
+    it "resubmit 後も deferral_reason を保持する（監査痕）" do
+      summary.update!(status: :deferred, deferral_reason: "修正依頼")
+      summary.submit!
+      expect(summary.deferral_reason).to eq("修正依頼")
+      expect(summary).to be_valid
+    end
+  end
 end

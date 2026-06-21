@@ -1,0 +1,19 @@
+<h1>月次締め</h1>
+<%= form_with url: bulk_finalize_monthly_attendance_summaries_path, method: :patch do |f| %>
+  <table>
+    <thead><tr><th></th><th>対象月</th><th>状態</th><th></th></tr></thead>
+    <tbody>
+      <% @summaries.each do |s| %>
+        <tr>
+          <td><%= check_box_tag "summary_ids[]", s.id if s.submitted? %></td>
+          <td><%= s.year_month %></td>
+          <td><%= t("activerecord.attributes.monthly_attendance_summary.statuses.#{s.status}", default: s.status) %></td>
+          <td><%= link_to "詳細", monthly_attendance_summary_path(s) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+  <% if policy(MonthlyAttendanceSummary).bulk_finalize? %>
+    <%= f.submit "選択を一括確定" %>
+  <% end %>
+<% end %>

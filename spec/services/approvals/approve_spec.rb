@@ -101,6 +101,75 @@ RSpec.describe Approvals::Approve do
     end
   end
 
+  describe "締め再チェック（§6.6・Approach A・3-2）" do
+    let(:approver) { create(:user, :manager_role, organization: org) } # トップ（manager 無し→単段ルート）
+    let(:requester) { create(:user, organization: org, manager: approver) }
+
+    context "LeaveRequest（LR）" do
+      let(:lt) { create(:leave_type, organization: org) } # paid_leave: false → balance 追跡なし
+      let(:lr) do
+        LeaveRequests::Create.call(
+          requester:, leave_type: lt,
+          start_date: Date.new(2026, 5, 1), end_date: Date.new(2026, 5, 1),
+          half_day_type: :none, reason: "締め再チェック検証"
+        )
+      end
+
+      it "対象月が submitted なら ClosingLockedError（ConflictError サブクラス）" do
+        lr # LR 作成（ロック前）
+        create(:monthly_attendance_summary, user: requester, year_month: "2026-05", status: :submitted)
+        expect {
+          Approvals::Approve.call(approvable: lr, approver:)
+        }.to raise_error(Approvals::ClosingLockedError)
+        expect(Approvals::ClosingLockedError.ancestors).to include(Approvals::ConflictError)
+      end
+
+      it "unlocked なら approve は正常進行（guard が常時 raise でない）" do
+        expect { Approvals::Approve.call(approvable: lr, approver:) }.not_to raise_error
+      end
+    end
+
+    context "ClockChangeRequest（CCR）" do
+      let(:ar) do
+        create(:attendance_record, :done, user: requester, organization: org,
+               work_date: Date.new(2026, 5, 1),
+               clock_in: Time.utc(2026, 5, 1, 0), clock_out: Time.utc(2026, 5, 1, 9))
+      end
+      let(:ccr) do
+        ClockChangeRequests::Create.call(
+          requester:, attendance_record: ar, change_type: :clock_in,
+          new_clock_in: Time.utc(2026, 5, 1, 0, 30), new_clock_out: nil, reason: "修正"
+        )
+      end
+
+      it "対象月が submitted なら ClosingLockedError" do
+        ccr # CCR 作成（ロック前）
+        create(:monthly_attendance_summary, user: requester, year_month: "2026-05", status: :submitted)
+        expect {
+          Approvals::Approve.call(approvable: ccr, approver:)
+        }.to raise_error(Approvals::ClosingLockedError)
+      end
+    end
+
+    context "HolidayWorkRequest（HWR）" do
+      let(:comp_lt) { create(:leave_type, organization: org, system_type: :compensatory_leave) }
+      let(:hwr) do
+        HolidayWorkRequests::Create.call(
+          requester:, work_date: Date.new(2026, 5, 3), # 日曜
+          compensation_leave_type: comp_lt, reason: "休日対応"
+        )
+      end
+
+      it "対象月が submitted なら ClosingLockedError" do
+        hwr # HWR 作成（ロック前）
+        create(:monthly_attendance_summary, user: requester, year_month: "2026-05", status: :submitted)
+        expect {
+          Approvals::Approve.call(approvable: hwr, approver:)
+        }.to raise_error(Approvals::ClosingLockedError)
+      end
+    end
+  end
+
   describe "撤回承認の撃ち分け（2-5）" do
     let(:requester) { emp }
     let(:approver1) { boss }

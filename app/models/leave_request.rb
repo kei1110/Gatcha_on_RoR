@@ -9,6 +9,7 @@ class LeaveRequest < ApplicationRecord
   belongs_to :leave_type
 
   include Withdrawable # approval_status の AASM + 撤回フロー（2-5）
+  include ClosingRestricted # §6.7 締め制限（Withdrawable より後＝ancestor 順で closing_locked? が勝つ）
 
   MAX_SPAN_DAYS = 366  # 1 年度相当の上限（不定・DoS 抑止）
 
@@ -25,6 +26,10 @@ class LeaveRequest < ApplicationRecord
   validate :half_day_requires_half_day_enabled_type
   validate :requester_must_belong_to_same_organization
   validate :leave_type_must_belong_to_same_organization
+
+  # 締め判定の対象日（§6.7・3-2）。start_date..end_date の全日。
+  # end < start（不正入力）は空を返して締め制限をバイパス（存在検証は end_date_not_before_start_date に委ねる）。
+  def closing_target_dates = (start_date && end_date && end_date >= start_date) ? (start_date..end_date) : []
 
   # 承認確定時の副作用（§6.2・§13.6）。Approve エンジンの with_lock 内・同一 tx で呼ばれる。
   def apply_approval_effects!(acting_user:)

@@ -149,4 +149,23 @@ RSpec.describe ClockChangeRequest do
       c.apply_approval_effects!(acting_user: actor)
     end
   end
+
+  describe "締めステータスによる作成制限（§6.7・3-2）" do
+    let(:requester) { create(:user) }
+
+    it "対象 AR の work_date が submitted 月なら invalid" do
+      ar = create(:attendance_record, :done, user: requester, work_date: Date.new(2026, 5, 1))
+      create(:monthly_attendance_summary, user: requester, year_month: "2026-05", status: :submitted)
+      ccr = build(:clock_change_request, requester:, attendance_record: ar)
+      expect(ccr).not_to be_valid
+      expect(ccr.errors[:base]).to include(a_string_including("締め済み"))
+    end
+
+    it "attendance_record 不在なら closing_target_dates 空 → 締め制限を通す（偽陽性ロック防止）" do
+      ccr = build(:clock_change_request, requester:, attendance_record: nil)
+      # 他検証で invalid になるが base の締めエラーは出ない
+      ccr.valid?
+      expect(ccr.errors[:base]).not_to include(a_string_including("締め済み"))
+    end
+  end
 end

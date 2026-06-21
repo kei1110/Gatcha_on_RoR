@@ -139,4 +139,15 @@ RSpec.describe HolidayWorkRequest do
       expect(hwr).to be_canceled
     end
   end
+
+  describe "締めステータスによる作成制限（§6.7・3-2）" do
+    let(:requester) { create(:user) }
+
+    it "work_date が submitted 月なら invalid" do
+      create(:monthly_attendance_summary, user: requester, year_month: "2026-06", status: :submitted)
+      hwr = build(:holiday_work_request, requester:, work_date: Date.new(2026, 6, 7))
+      expect(hwr).not_to be_valid
+      expect(hwr.errors[:base]).to include(a_string_including("締め済み"))
+    end
+  end
 end

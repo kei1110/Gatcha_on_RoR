@@ -79,6 +79,12 @@ ja:
         work_date: 出勤予定日
         compensation_leave_type: 代償休暇種別
         reason: 出勤理由
+      monthly_attendance_summary:
+        statuses:
+          aggregating: 集計中
+          submitted: 提出済
+          finalized: 確定
+          deferred: 差戻し
   leave_types:
     system_types:
       annual: 有給休暇

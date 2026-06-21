@@ -9,6 +9,7 @@ class HolidayWorkRequest < ApplicationRecord
   belongs_to :compensation_leave_type, class_name: "LeaveType"
 
   include Approvable   # approval_status の AASM + has_many :approval_assignments
+  include ClosingRestricted # §6.7 締め制限（Approvable より後）
 
   validates :work_date, presence: true
   validates :reason, presence: true
@@ -17,6 +18,9 @@ class HolidayWorkRequest < ApplicationRecord
   validate :no_duplicate_active_request
   validate :requester_must_belong_to_same_organization
   validate :compensation_leave_type_must_belong_to_same_organization
+
+  # 締め判定の対象日（§6.7・3-2）。
+  def closing_target_dates = [ work_date ].compact
 
   # 承認確定時の副作用（§6.11・§13.6）。Approve エンジンの with_lock 内・同一 tx で呼ばれる。
   # 実装は Task 4。

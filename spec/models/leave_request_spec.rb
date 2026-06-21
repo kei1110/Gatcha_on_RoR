@@ -126,4 +126,26 @@ RSpec.describe LeaveRequest do
       }.to raise_error(ActiveRecord::InvalidForeignKey)
     end
   end
+
+  describe "締めステータスによる作成制限（§6.7・3-2）" do
+    let(:requester) { create(:user) }
+
+    it "対象日が submitted 月なら作成 invalid" do
+      create(:monthly_attendance_summary, user: requester, year_month: "2026-05", status: :submitted)
+      lr = build(:leave_request, requester:, start_date: Date.new(2026, 5, 1), end_date: Date.new(2026, 5, 1))
+      expect(lr).not_to be_valid
+      expect(lr.errors[:base]).to include(a_string_including("締め済み"))
+    end
+
+    it "対象日が aggregating 月なら作成 valid" do
+      lr = build(:leave_request, requester:, start_date: Date.new(2026, 5, 1), end_date: Date.new(2026, 5, 1), days_requested: 1)
+      expect(lr).to be_valid
+    end
+
+    it "月跨ぎで一部が締め済みなら all-or-nothing で弾く" do
+      create(:monthly_attendance_summary, user: requester, year_month: "2026-05", status: :finalized)
+      lr = build(:leave_request, requester:, start_date: Date.new(2026, 4, 28), end_date: Date.new(2026, 5, 2), days_requested: 5)
+      expect(lr).not_to be_valid
+    end
+  end
 end

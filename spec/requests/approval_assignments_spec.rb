@@ -165,6 +165,18 @@ RSpec.describe "ApprovalAssignments", type: :request do
     end
   end
 
+  describe "PATCH approve（締め由来 ClosingLockedError 分岐・3-2）" do
+    it "締め済み月の承認は締め由来の flash を出す（ClosingLockedError）" do
+      ActsAsTenant.with_tenant(org) do
+        create(:monthly_attendance_summary, user: emp, year_month: "2026-05", status: :submitted)
+      end
+      sign_in boss
+      patch approve_approval_assignment_url(assignment_for(1), host: tenant_host(org))
+      follow_redirect!
+      expect(response.body).to include("締め済み")
+    end
+  end
+
   describe "HolidayWorkRequest の承認（2-4）" do
     let(:org) { create(:organization) }
     let(:manager) { ActsAsTenant.with_tenant(org) { create(:user, :manager_role, organization: org) } }

@@ -9,6 +9,7 @@ class ClockChangeRequest < ApplicationRecord
   belongs_to :attendance_record, optional: true   # new_entry は null（本スライスは非 null）
 
   include Withdrawable # approval_status の AASM + 撤回フロー（2-5）
+  include ClosingRestricted # §6.7 締め制限
 
   # prefix: :change — 述語 change_clock_in? / change_clock_out? / change_both? / change_new_entry?
   enum :change_type, { clock_in: 0, clock_out: 1, both: 2, new_entry: 3 },
@@ -28,6 +29,9 @@ class ClockChangeRequest < ApplicationRecord
   # フォームは出退勤の両欄を常時表示するため、change_type の対象外に入力された値を捨てる。
   # 残すと承認行で「退勤 X → Y」と表示されるのに apply_times! は触らず、表示と反映が乖離する（Codex review）。
   before_validation :clear_non_target_new_times
+
+  # 締め判定の対象日（§6.7・3-2）。対象 AR の work_date。AR 不在なら空（偽陽性ロック防止・設計 §2.2）。
+  def closing_target_dates = [ attendance_record&.work_date ].compact
 
   # 承認確定時の副作用（§6.3・§13.6）。Approve エンジンの with_lock 内・同一 tx で呼ばれる。
   def apply_approval_effects!(acting_user:)

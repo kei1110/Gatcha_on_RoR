@@ -84,5 +84,14 @@ Rails.application.routes.draw do
     end
   end
 
+  resources :monthly_attendance_summaries, only: %i[index show] do
+    collection { patch :bulk_finalize }
+    member do
+      patch :submit
+      patch :finalize
+      patch :defer
+    end
+  end
+
   root "home#show"
 end
