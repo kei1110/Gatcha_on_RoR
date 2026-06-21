@@ -54,7 +54,7 @@
 > 完了条件: 提出 → 確定 → 差戻しが状態機械で回り、給与システムへ渡せる CSV が出る
 
 - [x] **3-1 MonthlyAttendanceSummary + 集計**: 締め期間（`closing_day` 基準）単位の集計エンジン — `AttendancePeriod` 値オブジェクト（D9・暦月ハードコード排・厳格 YYYY-MM 検証）＋ `WeeklyOvertimeCalculator`（週 40h 超を法定時間外へ §5.2・重複控除/法定休日/flextime 除外・per-week 丸め排で累積誤差回避）＋ `MonthlySummaries::Aggregate`（日次 legal OT ＋週次 extra の 2 系統集計の保存 §8.2・60h 超分離・出勤系 status ゲートで #104 stale 除外・`.calculated` で未計算行除外・冪等 upsert・防御テナントラップ・`day_types` 注入）。素材保存のみで判定はしない（コンプラは 4-x）。**提出時全件再集計のトリガ（状態機械・提出 UI）は 3-2 へ後置**（PR [#12](https://github.com/kei1110/Gatcha_on_RoR/pull/12)）
-- [ ] **3-2 締め状態機械 + 申請制限**: AASM（§13.4）・§6.7 の横断バリデーション・承認時の締め再チェック・一括確定ジョブ（初の SolidQueue 利用 → dev 用 Active Job 設定もここで）
+- [x] **3-2 締め状態機械 + 申請制限**: `MonthlyAttendanceSummary` AASM（§13.4・submit/finalize/defer の 3 event で 5 遷移・whiny_persistence・deferral_reason 必須）＋ 横断制限（`AttendancePeriod.containing` 逆写像 ＋ `MonthlySummaries::ClosingLock` 述語 ＋ `ClosingRestricted` concern で LR/CCR/HWR の新規作成を締め月で fail-closed・`Withdrawable` guard で LR/CCR 撤回を締め月で制限・§6.7）＋ 承認時の締め再チェック（`Approve#guard!` へ `ClosingLockedError < ConflictError` を単一チョークポイント注入＝全 3 型 fail-closed by construction・ガード spec で silent-gap 動的検出・§6.6）＋ 提出フロー（`Submit`＝提出前チェック`PendingRequests`→全件再集計→submit! の 1 tx・`Finalize`/`Defer`・D7 で確定後の再集計を構造排除）＋ Policy（本人/hr_admin=提出・直属 manager/hr_admin=確定/差戻し・Scope）＋ 最小 UI ＋ 一括確定（**初の SolidQueue**＝`BulkFinalizeJob`・dev 専用 queue DB / test=:test 配線・with_tenant ラップ・冪等・per-record `finalize?` 交差で IDOR/self-finalize 防御）。**mass-assignment 締め出し・同一 org 内 IDOR は多視点レビュー(5視点)で検出し是正**（PR #XX）
 - [ ] **3-3 CSV 2 種**: 月次サマリ・日別明細（UTF-8 BOM・割増区分網羅・§6.4）
 
 ### Phase 4 — コンプライアンス・通知
@@ -108,7 +108,8 @@
 - [ ] **Phase 3-1 の 35% 母数**: `holiday_work_hours`（35%）の母数は `is_holiday_work` 単独でなく **`is_holiday_work AND day_type==legal_holiday`** で確定（所定休日労働は対象外・§8.1）。legal_holiday 登録漏れの未登録日曜が resolver フォールバックで `:sunday` 降格し漏れる点は §4.7「要確認」と整合（2-4 R4/Codex C5・既存「legal_holiday カバレッジ失効」と同根）
 - [ ] **代休 LeaveBalance の繰越除外**: `balance_tracked?` 拡張で代休も used_days/over-balance 対象になるが、年度繰越ジョブ（Phase 4-4・§4.10）のフィルタを `paid_annual?` に限定し代休を含めない（代休に carry_over は不適切・2-4 R8）
 - [ ] **holiday-work の AttendanceHistory イベント / 遡及付与の証跡**: 事後申請で打刻済 AR に遡及で is_holiday_work=true を立てる経路は AttendanceHistory に残らず、証跡は HWR.approval_status + ApprovalAssignment に依存。労基法 109 条の証跡要件を満たすか社労士確認・§4.14 taxonomy 末尾に `holiday_work_approved` 追加を Phase 3/4 で再判断（2-4 D5・LABOR_LAW_REVIEW_NOTES #17 追記案）
-- [ ] **承認インボックスの ConflictError flash を型別に**: `ApprovalAssignmentsController` の `rescue Approvals::ConflictError` は CCR 由来の「変更前時刻が現在の記録と一致しません」固定文言。HWR の D4 平日化 ConflictError でこの打刻時刻向け文言が出て意味がずれる（rollback は正・fail-closed・cosmetic）。汎用文言化（「申請の前提条件が変わりました」）or approvable_type 別分岐へ。2-4 設計が flash 流用を明示受容ゆえ後送り（2-4 最終レビュー M1・未テスト path ゆえ request spec も同時に）
+- [ ] **承認インボックスの ConflictError flash を型別に**: `ApprovalAssignmentsController` の `rescue Approvals::ConflictError` は CCR 由来の「変更前時刻が現在の記録と一致しません」固定文言。HWR の D4 平日化 ConflictError でこの打刻時刻向け文言が出て意味がずれる（rollback は正・fail-closed・cosmetic）。汎用文言化（「申請の前提条件が変わりました」）or approvable_type 別分岐へ。2-4 設計が flash 流用を明示受容ゆえ後送り（2-4 最終レビュー M1・未テスト path ゆえ request spec も同時に）。**3-2 で締め由来 `ClosingLockedError < ConflictError` の専用文言分岐は追加済**（残るは CCR↔HWR の文言区別）
+- [ ] **締め提出（Submit）の TOCTOU 窓**: `MonthlySummaries::Submit` は `PendingRequests` チェックと `submit!` の間を `ActiveRecord::Base.transaction`（行ロックなし・READ COMMITTED）で囲むため、チェック後・コミット前に新規 LR/CCR/HWR が `aggregating` 状態の MAS を見て `on:create` 制限を通過し残留し得る。残留申請は承認時 `Approve#guard!`（`closing_locked?`）で fail-closed にブロックされる＝**「締め済み AR が裏で書き換わる」安全不変条件は保持**。実害は申請者/承認者が stuck（管理者の `defer` で解消）に留まる。完全封鎖は summary 行の `with_lock`（`find_or_create` で先作り）化＝設計変更ゆえ後続で判断（単一ユーザ操作の同時性ゆえ実害リスク低・3-2 approval-engine レビュー W1）
 
 ## 横断ルール（順序の根拠）
 
