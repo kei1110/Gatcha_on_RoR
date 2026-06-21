@@ -29,6 +29,7 @@ module Approvals
     private
 
     def guard!
+      raise ClosingLockedError if @approvable.closing_locked? # 締め再チェック（§6.6・3-2・入口で fail-closed）
       raise AASM::InvalidTransition.new(@approvable, :approve, :default) unless @approvable.awaiting_decision?
       raise ProxyNotSupported unless @acting_user.id == @approver.id # 2-1 pin（代理は §7.5）
 

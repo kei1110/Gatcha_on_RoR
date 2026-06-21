@@ -21,5 +21,6 @@ module Approvals
   class ProxyNotSupported < Error; end   # 2-1 は acting_user==approver を pin（代理は §7.5）
   class OverBalanceError < Error; end     # 承認時の残高不足（D1 ハード拒否・2-2b）
   class ConflictError < Error; end        # 打刻変更承認時の競合（§7.4・2-3）
+  class ClosingLockedError < ConflictError; end # 締め済み月への承認（§6.6・3-2）。既存 rescue ConflictError が親で拾う
   class NotRequester < Error; end         # 撤回申請者が元 requester でない（§7.6）
 end
