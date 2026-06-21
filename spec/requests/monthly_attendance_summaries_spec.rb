@@ -57,6 +57,27 @@ RSpec.describe "MonthlyAttendanceSummaries", type: :request do
         .with(organization_id: org.id, summary_ids: [ mine.id ]) # foreign は scope 交差で除外
     end
 
+    it "manager は自分の submitted summary を params に含めても enqueue 引数から除外される（self-finalize 不可）" do
+      own_summary = ActsAsTenant.with_tenant(org) { create(:monthly_attendance_summary, user: manager, status: :submitted) }
+      sub_summary = ActsAsTenant.with_tenant(org) { create(:monthly_attendance_summary, user: sub, status: :submitted) }
+      expect {
+        patch bulk_finalize_monthly_attendance_summaries_path,
+              params: { summary_ids: [ own_summary.id, sub_summary.id ] }, headers: host_headers
+      }.to have_enqueued_job(MonthlySummaries::BulkFinalizeJob)
+        .with(organization_id: org.id, summary_ids: [ sub_summary.id ]) # 自分の id は finalize? false で除外
+    end
+
+    it "hr_admin は自分の submitted summary を params に含めると enqueue 引数に含まれる" do
+      hr = ActsAsTenant.with_tenant(org) { create(:user, :hr_admin) }
+      own_summary = ActsAsTenant.with_tenant(org) { create(:monthly_attendance_summary, user: hr, status: :submitted) }
+      sign_in hr
+      expect {
+        patch bulk_finalize_monthly_attendance_summaries_path,
+              params: { summary_ids: [ own_summary.id ] }, headers: host_headers
+      }.to have_enqueued_job(MonthlySummaries::BulkFinalizeJob)
+        .with(organization_id: org.id, summary_ids: [ own_summary.id ]) # hr_admin は自己確定可（finalize? true）
+    end
+
     it "employee は一括確定できない（403）" do
       sign_in user # 一般社員
       patch bulk_finalize_monthly_attendance_summaries_path,

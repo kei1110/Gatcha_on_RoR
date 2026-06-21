@@ -47,7 +47,12 @@ class MonthlyAttendanceSummariesController < ApplicationController
 
   def bulk_finalize
     authorize MonthlyAttendanceSummary, :bulk_finalize?
-    ids = policy_scope(MonthlyAttendanceSummary).where(id: params[:summary_ids]).pluck(:id) # IDOR 交差（§3.3）
+    # 一括対象は per-record の finalize? で絞る（単一確定と同じ認可境界＝
+    # manager の自己確定を除外・hr_admin の自己確定は許可・横断 divergence を構造的に消す）
+    ids = policy_scope(MonthlyAttendanceSummary)
+            .where(id: params[:summary_ids])
+            .select { |s| policy(s).finalize? }
+            .map(&:id)
     MonthlySummaries::BulkFinalizeJob.perform_later(organization_id: current_tenant.id, summary_ids: ids)
     redirect_to monthly_attendance_summaries_path, status: :see_other, notice: "#{ids.size} 件の確定を受け付けました"
   end

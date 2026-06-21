@@ -31,6 +31,17 @@ RSpec.describe MonthlySummaries::PendingRequests, type: :model do
              end_date: Date.new(2026, 7, 1), days_requested: 1)
       expect(described_class.new(user:, period:).any?).to be(false)
     end
+
+    it "applying の CCR が期間内（attendance_record.work_date が period 内）にあれば true" do
+      ar = create(:attendance_record, :done, user:, work_date: Date.new(2026, 5, 15))
+      create(:clock_change_request, requester: user, attendance_record: ar)
+      expect(described_class.new(user:, period:).any?).to be(true)
+    end
+
+    it "applying の HWR が期間内（work_date が period 内）にあれば true" do
+      create(:holiday_work_request, requester: user, work_date: Date.new(2026, 5, 3)) # 2026-05-03 は日曜
+      expect(described_class.new(user:, period:).any?).to be(true)
+    end
   end
 
   describe "#started / #not_started" do

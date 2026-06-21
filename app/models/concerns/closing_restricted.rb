@@ -21,7 +21,8 @@ module ClosingRestricted
     dates.present? && MonthlySummaries::ClosingLock.locked?(user: requester, dates:)
   end
 
-  def closing_unlocked? = !closing_locked?
+  # closing_unlocked? は Approvable#closing_unlocked? から解決（MRO: ClosingRestricted < Approvable）
+  # = !ClosingRestricted#closing_locked? となり挙動不変。重複定義は削除。
 
   private
 

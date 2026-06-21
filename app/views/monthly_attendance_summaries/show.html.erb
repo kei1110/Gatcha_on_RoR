@@ -1,5 +1,5 @@
 <h1><%= @summary.year_month %> の締め</h1>
-<p>状態: <%= @summary.status %></p>
+<p>状態: <%= t("activerecord.attributes.monthly_attendance_summary.statuses.#{@summary.status}", default: @summary.status) %></p>
 
 <% if @summary.deferred? && @summary.deferral_reason.present? %>
   <div class="banner banner-alert">差戻し理由: <%= @summary.deferral_reason %></div>

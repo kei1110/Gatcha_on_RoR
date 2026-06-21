@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # 締めの認可（SPEC §6.6・§3.4・3-2 設計 §4.1）。
-# 本人=提出、直属 manager/hr_admin=確定/差戻し。
+# 提出=本人 or hr_admin（代理・§4.1）／確定・差戻し=直属 manager or hr_admin。
 # 注: SPEC §4.1 の「階層述語（例 subordinate_of?）」は未実装ゆえ ProxyClockingPolicy 同型の
 # 直属 manager で action 述語と Scope を一致させる（多段は Phase 5 ダッシュボードまで YAGNI）。
 class MonthlyAttendanceSummaryPolicy < ApplicationPolicy
