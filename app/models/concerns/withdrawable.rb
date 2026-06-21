@@ -16,7 +16,8 @@ module Withdrawable
       state :withdrawn
 
       event :request_withdrawal do
-        transitions from: :approved, to: :withdrawal_requested, guard: :no_prior_withdrawal_round?
+        transitions from: :approved, to: :withdrawal_requested,
+                    guard: %i[no_prior_withdrawal_round? closing_unlocked?] # §6.7 締め制限（3-2）
       end
       event :approve_withdrawal do
         transitions from: :withdrawal_requested, to: :withdrawn, guard: :all_stages_approved?

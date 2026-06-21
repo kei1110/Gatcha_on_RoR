@@ -68,6 +68,38 @@ RSpec.describe Withdrawable do
     end
   end
 
+  describe "撤回の締め制限（§6.7・§7.6 L910・3-2）" do
+    let(:requester) { create(:user, organization: org) }
+
+    def approved_lr(start_date:)
+      lr = create(:leave_request, requester:, start_date:, end_date: start_date, days_requested: 1)
+      lr.update!(approval_status: :approved) # AASM 直叩きでなく approval_status 直接（撤回 guard のみ検証する単体）
+      lr
+    end
+
+    it "対象日が submitted 月なら request_withdrawal! は InvalidTransition" do
+      lr = approved_lr(start_date: Date.new(2026, 5, 1))
+      create(:monthly_attendance_summary, user: requester, year_month: "2026-05", status: :submitted)
+      lr.withdrawal_reason = "撤回したい"
+      expect { lr.request_withdrawal! }.to raise_error(AASM::InvalidTransition)
+    end
+
+    it "対象日が unlocked 月なら request_withdrawal! は成功" do
+      lr = approved_lr(start_date: Date.new(2026, 5, 1))
+      lr.withdrawal_reason = "撤回したい"
+      expect { lr.request_withdrawal! }.not_to raise_error
+      expect(lr).to be_withdrawal_requested
+    end
+
+    it "撤回世代が無くても closing-lock 単独で弾ける（新 guard 効果の隔離）" do
+      lr = approved_lr(start_date: Date.new(2026, 5, 1))
+      create(:monthly_attendance_summary, user: requester, year_month: "2026-05", status: :finalized)
+      lr.withdrawal_reason = "x"
+      # no_prior_withdrawal_round? は true（撤回 assignment 皆無）。closing_unlocked? が false で弾く
+      expect { lr.request_withdrawal! }.to raise_error(AASM::InvalidTransition)
+    end
+  end
+
   describe "HWR 隔離（D7・R 回帰）" do
     it "HolidayWorkRequest は撤回イベントを獲得しない（respond_to? false）" do
       expect(HolidayWorkRequest.new.respond_to?(:request_withdrawal)).to be false

@@ -74,4 +74,5 @@ module Approvable
   # 締め再チェック hook（既定 false＝テスト専用 approvable / 非日付 host は安全 no-op）。
   # ClosingRestricted を include する host（LR/CCR/HWR）が override（3-2 設計 §2.4・D3）。
   def closing_locked? = false
+  def closing_unlocked? = !closing_locked?
 end
