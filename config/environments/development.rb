@@ -63,6 +63,12 @@ Rails.application.configure do
   # Highlight code that enqueued background job in logs.
   config.active_job.verbose_enqueue_logs = true
 
+  # Phase 3-2 以降: dev でも実際に enqueue→perform が回るよう本番同型 solid_queue を設定。
+  # queue テーブルは gatcha_development_queue（専用 DB）に分離し primary を汚さない。
+  # ワーカー起動: bin/jobs。テーブル初期化: bin/rails db:prepare
+  config.active_job.queue_adapter = :solid_queue
+  config.solid_queue.connects_to = { database: { writing: :queue } }
+
   # Highlight code that triggered redirect in logs.
   config.action_dispatch.verbose_redirect_logs = true
 

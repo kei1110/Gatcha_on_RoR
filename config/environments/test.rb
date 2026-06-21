@@ -42,6 +42,10 @@ Rails.application.configure do
   # ActionMailer::Base.deliveries array.
   config.action_mailer.delivery_method = :test
 
+  # Rails 既定は :test だが、dev を solid_queue に変えた後も
+  # テスト環境を assert_enqueued_with / perform_enqueued_jobs で安定させるために明示する。
+  config.active_job.queue_adapter = :test
+
   # Set host to be used by links generated in mailer templates.
   config.action_mailer.default_url_options = { host: "example.com" }
 

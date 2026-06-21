@@ -236,6 +236,22 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 
 ---
 
+## SolidQueue
+
+### SolidQueue を dev で動かすには queue 用 DB 配線が要る（本番のみ既定設定）
+
+- **WHAT**: Phase 3-2 まで queue adapter は本番のみ `:solid_queue` + 専用 queue DB。dev/test 未設定で、dev で job を enqueue しても処理されない。`connects_to` 不整合で `DatabaseNotSupported` や接続エラーが起き得る
+- **WHY**: `config/environments/development.rb` に adapter 設定が無く、`database.yml` の dev が単一 DB（queue 接続先なし）だったため
+- **HOW**:
+  - `test.rb` に `config.active_job.queue_adapter = :test`（Rails 既定だが明示・assert_enqueued の安定化）
+  - `development.rb` に `config.active_job.queue_adapter = :solid_queue` + `config.solid_queue.connects_to = { database: { writing: :queue } }`
+  - `database.yml` の `development:` を primary/queue の multi-db 形へ変換（test: は単一のまま変えない）。queue に `database: gatcha_development_queue` + `migrations_paths: db/queue_migrate`
+  - `db/queue_migrate/` ディレクトリ（空・.keep 付き）を作成（無いと db:migrate が dir-not-found で落ちる）
+  - `bin/rails db:prepare RAILS_ENV=development` で `gatcha_development_queue` が自動作成され、Rails が `db/queue_schema.rb`（接続名 `queue` に対応するスキーマファイル）を auto-discover してロード → 11 テーブルが生成される
+  - ワーカー起動: `bin/jobs`
+- **fallback**: `connects_to` を外し SolidQueue テーブルを primary DB に置く方式も可（ENV 毎の接続分離は不要）
+- verified: Rails 8.1 / SolidQueue / Ruby 4.0.2 / 2026-06-21（3-2 Task 15 で実踏。`db:prepare` が `db/queue_schema.rb` を自動ロード・rspec 975/0 確認）
+
 ## Ruby / ツールチェーン
 
 ### Ruby 4.0 アップグレード: vips は環境要因・cgi は予防追加・bundler は明示 bump・frozen は hard-freeze 化
