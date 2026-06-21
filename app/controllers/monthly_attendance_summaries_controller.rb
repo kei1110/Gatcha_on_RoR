@@ -45,6 +45,13 @@ class MonthlyAttendanceSummariesController < ApplicationController
     redirect_to monthly_attendance_summary_path(@summary), status: :see_other, alert: "この締めは差戻しできません"
   end
 
+  def bulk_finalize
+    authorize MonthlyAttendanceSummary, :bulk_finalize?
+    ids = policy_scope(MonthlyAttendanceSummary).where(id: params[:summary_ids]).pluck(:id) # IDOR 交差（§3.3）
+    MonthlySummaries::BulkFinalizeJob.perform_later(organization_id: current_tenant.id, summary_ids: ids)
+    redirect_to monthly_attendance_summaries_path, status: :see_other, notice: "#{ids.size} 件の確定を受け付けました"
+  end
+
   private
 
   def current_tenant = ActsAsTenant.current_tenant

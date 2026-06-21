@@ -40,4 +40,28 @@ RSpec.describe "MonthlyAttendanceSummaries", type: :request do
     patch defer_monthly_attendance_summary_path(summary), params: { deferral_reason: "" }, headers: host_headers
     expect(summary.reload).to be_submitted # 遷移していない
   end
+
+  describe "一括確定" do
+    let(:manager) { ActsAsTenant.with_tenant(org) { create(:user, :manager_role) } }
+    let(:sub) { ActsAsTenant.with_tenant(org) { create(:user, manager:) } }
+
+    before { sign_in manager }
+
+    it "scope 内 id のみで BulkFinalizeJob を enqueue する" do
+      mine = ActsAsTenant.with_tenant(org) { create(:monthly_attendance_summary, user: sub, status: :submitted) }
+      foreign = ActsAsTenant.with_tenant(org) { create(:monthly_attendance_summary, user: create(:user), status: :submitted) }
+      expect {
+        patch bulk_finalize_monthly_attendance_summaries_path,
+              params: { summary_ids: [ mine.id, foreign.id ] }, headers: host_headers
+      }.to have_enqueued_job(MonthlySummaries::BulkFinalizeJob)
+        .with(organization_id: org.id, summary_ids: [ mine.id ]) # foreign は scope 交差で除外
+    end
+
+    it "employee は一括確定できない（403）" do
+      sign_in user # 一般社員
+      patch bulk_finalize_monthly_attendance_summaries_path,
+            params: { summary_ids: [] }, headers: host_headers
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
 end
