@@ -21,7 +21,7 @@ module MonthlySummaries
 
       def cell(value, time_zone = nil)
         case value
-        when nil                                then nil
+        when nil                                then ""
         when String                             then sanitize(value)
         when ActiveSupport::TimeWithZone, Time  then value.in_time_zone(time_zone).strftime("%H:%M")
         when Date                               then value.strftime("%Y-%m-%d")

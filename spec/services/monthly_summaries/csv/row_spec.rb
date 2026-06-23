@@ -12,8 +12,8 @@ RSpec.describe MonthlySummaries::Csv::Row do
       expect(described_class.line([ "a,b", 'q"x' ])).to eq(%("a,b","q""x"\r\n))
     end
 
-    it "nil は空セル" do
-      expect(described_class.line([ nil, "x" ])).to eq(",x\r\n")
+    it "nil は空セル（cell は \"\" を返し CSV が quoted empty field にする）" do
+      expect(described_class.line([ nil, "x" ])).to eq("\"\",x\r\n")
     end
 
     it "BigDecimal はドット小数（科学記法にしない）" do
