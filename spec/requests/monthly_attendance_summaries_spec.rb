@@ -141,5 +141,20 @@ RSpec.describe "MonthlyAttendanceSummaries", type: :request do
         expect(response).to have_http_status(:not_found)
       end
     end
+
+    describe "UI 導線" do
+      def host_headers = { "HOST" => tenant_host(org) }
+
+      it "index に月次サマリ CSV の DL リンクが出る" do
+        get monthly_attendance_summaries_path, headers: host_headers
+        expect(response.body).to include(summary_csv_monthly_attendance_summaries_path)
+      end
+
+      it "show に日別明細 CSV の DL リンクが出る" do
+        summary = ActsAsTenant.with_tenant(org) { create(:monthly_attendance_summary, user:, year_month: "2026-03") }
+        get monthly_attendance_summary_path(summary), headers: host_headers
+        expect(response.body).to include(detail_csv_monthly_attendance_summary_path(summary))
+      end
+    end
   end
 end
