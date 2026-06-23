@@ -1,7 +1,7 @@
 <h1>月次締め</h1>
 <section>
   <h2>月次サマリ CSV</h2>
-  <%= form_with url: summary_csv_monthly_attendance_summaries_path, method: :get do |f| %>
+  <%= form_with url: summary_csv_monthly_attendance_summaries_path, method: :get, data: { turbo: false } do |f| %>
     <%= f.label :year_month, "対象月（YYYY-MM）" %>
     <%= f.text_field :year_month, value: @summaries.first&.year_month, placeholder: "2026-03" %>
     <%= f.submit "サマリ CSV をダウンロード" %>
