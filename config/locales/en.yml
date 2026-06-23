@@ -29,6 +29,15 @@
 
 en:
   hello: "Hello world"
+  activerecord:
+    attributes:
+      attendance_record:
+        statuses:
+          working: Working
+          clocked_out: Clocked out
+          morning_half: Morning half-day
+          afternoon_half: Afternoon half-day
+          on_leave: On leave
   monthly_summaries:
     csv:
       summary_headers: [employee_code, name, scheduled_days, work_days, total_work_hours, total_overtime, overtime_over_60, holiday_work, deep_night, exempt, paid_leave_days, late_count, early_leave_count, total_leave_hours]

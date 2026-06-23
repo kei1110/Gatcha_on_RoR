@@ -70,6 +70,12 @@ ja:
         clock_in: 出勤時刻
         clock_out: 退勤時刻
         status: 状態
+        statuses:
+          working: 出勤中
+          clocked_out: 退勤済
+          morning_half: 午前半休
+          afternoon_half: 午後半休
+          on_leave: 全休
         proxy_clock_reasons:
           system_failure: システム障害
           unreachable: 連絡不能
