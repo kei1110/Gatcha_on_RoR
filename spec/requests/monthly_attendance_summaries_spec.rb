@@ -85,4 +85,76 @@ RSpec.describe "MonthlyAttendanceSummaries", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
   end
+
+  describe "CSV エクスポート（3-3b）" do
+    def host_headers = { "HOST" => tenant_host(org) }
+
+    describe "summary_csv（collection・scope）" do
+      it "manager は自分 + 部下のみ・他は除外（IDOR）" do
+        manager = ActsAsTenant.with_tenant(org) { create(:user, :manager_role) }
+        sub = ActsAsTenant.with_tenant(org) { create(:user, manager:, employee_code: "E777") }
+        outsider = ActsAsTenant.with_tenant(org) { create(:user, employee_code: "E999") }
+        ActsAsTenant.with_tenant(org) do
+          create(:monthly_attendance_summary, user: sub, year_month: "2026-03")
+          create(:monthly_attendance_summary, user: outsider, year_month: "2026-03")
+        end
+        sign_in manager
+        get summary_csv_monthly_attendance_summaries_path, params: { year_month: "2026-03" }, headers: host_headers
+        expect(response).to have_http_status(:ok)
+        expect(response.media_type).to eq("text/csv")
+        expect(response.body).to start_with("﻿")
+        expect(response.body).to include("E777")
+        expect(response.body).not_to include("E999")
+      end
+
+      it "hr_admin は全社員" do
+        admin = ActsAsTenant.with_tenant(org) { create(:user, :hr_admin) }
+        ActsAsTenant.with_tenant(org) do
+          create(:monthly_attendance_summary, user: create(:user, employee_code: "E001"), year_month: "2026-03")
+          create(:monthly_attendance_summary, user: create(:user, employee_code: "E002"), year_month: "2026-03")
+        end
+        sign_in admin
+        get summary_csv_monthly_attendance_summaries_path, params: { year_month: "2026-03" }, headers: host_headers
+        expect(response.body).to include("E001").and include("E002")
+      end
+
+      it "不正 year_month は 400" do
+        get summary_csv_monthly_attendance_summaries_path, params: { year_month: "2026-13" }, headers: host_headers
+        expect(response).to have_http_status(:bad_request)
+      end
+    end
+
+    describe "detail_csv（member）" do
+      it "本人が自分の明細を DL（1 行=1 AR）" do
+        period_day = Date.new(2026, 3, 5)
+        summary = ActsAsTenant.with_tenant(org) { create(:monthly_attendance_summary, user:, year_month: "2026-03") }
+        ActsAsTenant.with_tenant(org) { create(:attendance_record, :done, user:, work_date: period_day) }
+        get detail_csv_monthly_attendance_summary_path(summary), headers: host_headers
+        expect(response).to have_http_status(:ok)
+        expect(response.media_type).to eq("text/csv")
+        expect(response.body).to include("2026-03-05")
+      end
+
+      it "scope 外 summary は 404（IDOR）" do
+        other = ActsAsTenant.with_tenant(org) { create(:monthly_attendance_summary, user: create(:user), year_month: "2026-03") }
+        get detail_csv_monthly_attendance_summary_path(other), headers: host_headers
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    describe "UI 導線" do
+      def host_headers = { "HOST" => tenant_host(org) }
+
+      it "index に月次サマリ CSV の DL リンクが出る" do
+        get monthly_attendance_summaries_path, headers: host_headers
+        expect(response.body).to include(summary_csv_monthly_attendance_summaries_path)
+      end
+
+      it "show に日別明細 CSV の DL リンクが出る" do
+        summary = ActsAsTenant.with_tenant(org) { create(:monthly_attendance_summary, user:, year_month: "2026-03") }
+        get monthly_attendance_summary_path(summary), headers: host_headers
+        expect(response.body).to include(detail_csv_monthly_attendance_summary_path(summary))
+      end
+    end
+  end
 end

@@ -12,6 +12,8 @@
   <dt>深夜</dt><dd><%= @summary.total_deep_night_hours %></dd>
 </dl>
 
+<p><%= link_to "日別明細 CSV をダウンロード", detail_csv_monthly_attendance_summary_path(@summary), data: { turbo: false } %></p>
+
 <% if policy(@summary).submit? && (@summary.aggregating? || @summary.deferred?) %>
   <% if @pending.any? %>
     <p>承認手続き中・申請中の申請があるため提出できません:</p>

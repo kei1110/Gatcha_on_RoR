@@ -11,6 +11,8 @@ class MonthlyAttendanceSummaryPolicy < ApplicationPolicy
   def finalize? = manages? || user.hr_admin?
   def defer? = finalize?
   def bulk_finalize? = user.manager? || user.hr_admin? # class-level（対象は Scope 交差で固定）
+  def summary_csv? = index?
+  def detail_csv? = show?
 
   private
 
