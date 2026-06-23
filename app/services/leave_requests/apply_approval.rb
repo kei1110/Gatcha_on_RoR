@@ -52,6 +52,7 @@ module LeaveRequests
           user_id: @leave_request.requester_id, work_date: date
         )
         record.status = leave_status
+        record.leave_type_id = @leave_request.leave_type_id
         record.save!
         recalculate(record)
       end
