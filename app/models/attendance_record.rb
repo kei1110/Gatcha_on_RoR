@@ -9,6 +9,7 @@ class AttendanceRecord < ApplicationRecord
   # 直接代入経路（1-3 代理打刻・2-3 変更承認）を作る場合は UserWorkPattern 同型の
   # fail-closed 検証を追加すること — 複合 FK は最終防衛（1-1 設計 §1）
   belongs_to :work_pattern, optional: true
+  belongs_to :leave_type, optional: true
 
   # §4.8 列挙順の予約整数。absent: 5 は 4-2 で追加。
   # plain enum は意図的逸脱: AASM 化は 2-2b 完了後に再判断 = D3 で据置確定（SPEC §13 実装注記）。
@@ -44,10 +45,17 @@ class AttendanceRecord < ApplicationRecord
   # 同日 uniqueness のモデル検証は意図的に置かない — TOCTOU で race に勝てないため
   # unique index [user_id, work_date] + RecordNotUnique rescue（Clockings::ClockIn）が一次防衛
   validate :clock_out_not_before_clock_in
+  validate :leave_type_only_on_leave_status
 
   private
 
   def leave_status? = LEAVE_STATUSES.include?(status)
+
+  def leave_type_only_on_leave_status
+    return if leave_type_id.nil? || leave_status?
+
+    errors.add(:leave_type, "は休暇ステータスの記録にのみ設定できます")
+  end
 
   def clock_out_not_before_clock_in
     return if clock_out.blank? || clock_in.blank? || clock_out >= clock_in

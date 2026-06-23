@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_20_233446) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_23_021715) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -84,6 +84,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_233446) do
     t.boolean "is_holiday_work", default: false, null: false
     t.boolean "is_late"
     t.integer "late_minutes"
+    t.bigint "leave_type_id"
     t.decimal "legal_overtime_hours", precision: 6, scale: 2
     t.text "note"
     t.bigint "organization_id", null: false
@@ -97,6 +98,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_233446) do
     t.index ["organization_id", "id"], name: "index_attendance_records_on_organization_id_and_id", unique: true
     t.index ["organization_id"], name: "index_attendance_records_on_organization_id"
     t.index ["user_id", "work_date"], name: "index_attendance_records_on_user_id_and_work_date", unique: true
+    t.check_constraint "leave_type_id IS NULL OR (status = ANY (ARRAY[2, 3, 4]))", name: "attendance_records_leave_type_only_on_leave_status"
   end
 
   create_table "clock_change_requests", force: :cascade do |t|
@@ -331,6 +333,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_233446) do
   add_foreign_key "attendance_histories", "organizations"
   add_foreign_key "attendance_histories", "users", column: ["organization_id", "actor_id"], primary_key: ["organization_id", "id"], name: "ah_actor_same_tenant"
   add_foreign_key "attendance_histories", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"], name: "ah_user_same_tenant"
+  add_foreign_key "attendance_records", "leave_types", column: ["organization_id", "leave_type_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "attendance_records", "organizations"
   add_foreign_key "attendance_records", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "attendance_records", "work_patterns", column: ["organization_id", "work_pattern_id"], primary_key: ["organization_id", "id"]

@@ -130,6 +130,34 @@ RSpec.describe AttendanceRecord, type: :model do
     end
   end
 
+  describe "leave_type 整合（3-3a）" do
+    let(:leave_type) { create(:leave_type) }
+
+    it "worked status（clocked_out）に leave_type を付けると invalid" do
+      rec = build(:attendance_record, :done, leave_type:)
+      expect(rec).to be_invalid
+      expect(rec.errors[:leave_type]).to be_present
+    end
+
+    it "on_leave status なら leave_type を付けて valid" do
+      rec = build(:attendance_record, status: :on_leave, clock_in: nil, leave_type:)
+      expect(rec).to be_valid
+    end
+
+    it "leave_type なしの worked は valid（回帰）" do
+      expect(build(:attendance_record, :done)).to be_valid
+    end
+
+    it "CHECK 制約: worked 行へ leave_type_id を update_column で差しても DB が弾く" do
+      rec = create(:attendance_record, :done)
+      expect do
+        ActiveRecord::Base.transaction(requires_new: true) do
+          rec.update_column(:leave_type_id, leave_type.id) # validation バイパス
+        end
+      end.to raise_error(ActiveRecord::StatementInvalid, /leave_type_only_on_leave_status|check constraint/i)
+    end
+  end
+
   describe "計算 8 列（1-2 設計 §1）" do
     let(:org) { create(:organization) }
     let(:user) { ActsAsTenant.with_tenant(org) { create(:user) } }
