@@ -137,7 +137,7 @@ module MonthlySummaries
 
       def cell(value, time_zone = nil)
         case value
-        when nil                                then ""
+        when nil                                then nil  # CSV は nil→未引用空 / ""→引用空 "" ゆえ NULL は nil を返す（明細 CSV が未引用空に依存）
         when String                             then sanitize(value)
         when ActiveSupport::TimeWithZone, Time  then value.in_time_zone(time_zone).strftime("%H:%M")
         when Date                               then value.strftime("%Y-%m-%d")
