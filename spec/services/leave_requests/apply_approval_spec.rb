@@ -147,4 +147,19 @@ RSpec.describe LeaveRequests::ApplyApproval do
       expect(this_year.reload.used_days).to eq(BigDecimal("1"))
     end
   end
+
+  describe "leave_type_id の AR 焼き込み（3-3a）" do
+    it "paid 種別: 作成する休暇 AR に leave_type_id を set" do
+      create(:leave_balance, user:, leave_type: paid_type, fiscal_year:, granted_days: 20, used_days: 0)
+      apply(leave(type: paid_type, days: 1))
+      rec = AttendanceRecord.find_by(user:, work_date: start_date)
+      expect(rec.leave_type_id).to eq(paid_type.id)
+    end
+
+    it "非 paid 種別でも leave_type_id を set" do
+      apply(leave(type: unpaid_type, days: 1))
+      rec = AttendanceRecord.find_by(user:, work_date: start_date)
+      expect(rec.leave_type_id).to eq(unpaid_type.id)
+    end
+  end
 end

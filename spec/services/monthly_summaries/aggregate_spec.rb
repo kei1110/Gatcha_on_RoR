@@ -228,4 +228,30 @@ RSpec.describe MonthlySummaries::Aggregate do
       expect(summary.total_overtime_hours).to eq(2) # 週次は前期 tail 込みの 42h で算出（range だけなら 18h<40 で 0）
     end
   end
+
+  describe "休暇集計の合成（3-3a・§3.2）" do
+    let(:paid_type) { create(:leave_type, system_type: :annual, paid_leave: true) }
+
+    it "paid_leave_days_used / total_leave_hours を MAS に保存" do
+      org.setting.update!(closing_day: 31)
+      create(:user_work_pattern, user:, start_date: Date.new(2026, 1, 1),
+             work_pattern: create(:work_pattern, standard_work_hours: 8))
+      create(:attendance_record, user:, work_date: Date.new(2026, 3, 2),
+             status: :on_leave, clock_in: nil, leave_type: paid_type)
+      summary = described_class.call(user:, period: period("2026-03"))
+      expect(summary.paid_leave_days_used).to eq(1)
+      expect(summary.total_leave_hours).to eq(8)
+    end
+
+    it "休暇は worked 集計（work_days/total_work_hours）に混入しない" do
+      org.setting.update!(closing_day: 31)
+      create(:attendance_record, user:, work_date: Date.new(2026, 3, 2),
+             status: :on_leave, clock_in: nil, leave_type: paid_type)
+      worked(Date.new(2026, 3, 3), actual: 8)
+      summary = described_class.call(user:, period: period("2026-03"))
+      expect(summary.work_days).to eq(1)
+      expect(summary.total_work_hours).to eq(8)
+      expect(summary.paid_leave_days_used).to eq(1)
+    end
+  end
 end
