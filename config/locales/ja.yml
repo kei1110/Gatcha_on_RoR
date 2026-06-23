@@ -153,6 +153,10 @@ ja:
       approved: 承認済
       rejected: 却下
       canceled: 取消
+  monthly_summaries:
+    csv:
+      summary_headers: [社員コード, 氏名, 所定出勤日数, 実出勤日数, 総労働時間, 総残業, 60時間超残業, 法定休日労働, 深夜労働, 管理監督者, 有給使用日数, 遅刻回数, 早退回数, 総休暇時間]
+      detail_headers: [日付, 出勤, 退勤, 実労働時間, 残業, 深夜, 遅刻分, 早退分, 状態]
   devise:
     mailer:
       invitation_instructions:
