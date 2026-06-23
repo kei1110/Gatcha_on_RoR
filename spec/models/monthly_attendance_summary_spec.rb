@@ -126,4 +126,12 @@ RSpec.describe MonthlyAttendanceSummary do
       expect(summary).to be_valid
     end
   end
+
+  describe "休暇集計列（3-3a）" do
+    it "paid_leave_days_used / total_leave_hours を持ち default 0" do
+      summary = create(:monthly_attendance_summary)
+      expect(summary.paid_leave_days_used).to eq(0)
+      expect(summary.total_leave_hours).to eq(0)
+    end
+  end
 end

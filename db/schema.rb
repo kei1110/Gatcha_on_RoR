@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_23_021715) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_23_022241) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -210,9 +210,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_021715) do
     t.integer "late_days", default: 0, null: false
     t.bigint "organization_id", null: false
     t.decimal "overtime_hours_over_60", precision: 7, scale: 2, default: "0.0", null: false
+    t.decimal "paid_leave_days_used", precision: 6, scale: 2, default: "0.0", null: false
     t.integer "scheduled_work_days", default: 0, null: false
     t.integer "status", default: 0, null: false
     t.decimal "total_deep_night_hours", precision: 7, scale: 2, default: "0.0", null: false
+    t.decimal "total_leave_hours", precision: 7, scale: 2, default: "0.0", null: false
     t.decimal "total_overtime_hours", precision: 7, scale: 2, default: "0.0", null: false
     t.decimal "total_work_hours", precision: 7, scale: 2, default: "0.0", null: false
     t.datetime "updated_at", null: false
