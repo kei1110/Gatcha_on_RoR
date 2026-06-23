@@ -40,7 +40,7 @@ module MonthlySummaries
         overtime_hours_over_60: [ total_overtime_hours - 60, BigDecimal("0") ].max,
         late_days:              in_period.count(&:is_late),
         early_leave_days:       in_period.count(&:is_early_leave)
-      }
+      }.merge(LeaveAggregator.call(user: @user, period: @period))
     end
 
     # 日次 legal OT 寄与（period.range 内・法定休日除く）＋ 週次 extra（週末土曜が period.range 内）。
