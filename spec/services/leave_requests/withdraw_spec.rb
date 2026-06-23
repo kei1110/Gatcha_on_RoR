@@ -54,4 +54,28 @@ RSpec.describe LeaveRequests::Withdraw do
     expect { withdraw(leave(type: paid_type, days: 1)) }
       .to change { AttendanceHistory.where(event_type: :leave_withdrawn).count }.by(1)
   end
+
+  describe "leave_type_id クリア（3-3a・F3）" do
+    it "打刻ありの半休戻しで leave_type_id を nil に戻す" do
+      create(:leave_balance, user:, leave_type: paid_type, fiscal_year:, used_days: 1)
+      rec = create(:attendance_record, :done, user:, work_date: start_date,
+                   status: :afternoon_half, leave_type: paid_type)
+      withdraw(create(:leave_request, requester: user, leave_type: paid_type, start_date:, end_date: start_date,
+                      half_day_type: :afternoon, days_requested: BigDecimal("0.5"),
+                      approval_status: :withdrawal_requested, withdrawal_reason: "x"))
+      rec.reload
+      expect(rec.status).to eq("clocked_out")
+      expect(rec.leave_type_id).to be_nil
+    end
+
+    it "clocked 済日への全休 stale 戻しでも leave_type_id クリア（line-104）" do
+      create(:leave_balance, user:, leave_type: paid_type, fiscal_year:, used_days: 1)
+      rec = create(:attendance_record, :done, user:, work_date: start_date,
+                   status: :on_leave, leave_type: paid_type)
+      withdraw(leave(type: paid_type, days: 1))
+      rec.reload
+      expect(rec.status).to eq("clocked_out")
+      expect(rec.leave_type_id).to be_nil
+    end
+  end
 end

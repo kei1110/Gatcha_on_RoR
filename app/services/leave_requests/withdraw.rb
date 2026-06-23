@@ -54,7 +54,7 @@ module LeaveRequests
           if record.clock_in.blank?
             record.destroy!
           else
-            record.update!(status: record.clock_out.present? ? :clocked_out : :working)
+            record.update!(status: record.clock_out.present? ? :clocked_out : :working, leave_type_id: nil)
             Clockings::Recalculate.call(record:) if record.clock_out.present?
           end
         end
