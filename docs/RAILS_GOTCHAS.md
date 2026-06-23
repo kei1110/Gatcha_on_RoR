@@ -226,6 +226,13 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **HOW**: mutation 実験や高速な編集 ↔ revert の検証では、前後に `touch <file>` するか `tmp/cache/bootsnap` を削除して cache bust する。Mutant 導入（ROADMAP 1-2 完了後）時は特に注意
 - verified: Rails 8.1.3 / 2026-06-13（1-2 品質レビュー①で実踏 — 36,001 点中 18,000 点が幻の round 挙動・bust 後 0）
 
+### `/preflight` は Gemfile.lock 無変更だと bundle-audit を skip → CI security（常時 `--update`）と非対称で transitive vuln が PR で初顕在化
+
+- **WHAT**: 依存を一切触らない PR（feature コード + spec のみ）でも CI の security ジョブ（`bin/bundler-audit check --update`）が突然 fail し得る。ローカル `/preflight` は緑なのに CI だけ赤、という形で現れる
+- **WHY**: `/preflight` は diff scope 最適化で「Gemfile.lock 無変更 → bundle-audit skip」する設計（skill Phase 0）。一方 CI の security は**毎回 `--update` で最新アドバイザリ DB を取得**し全 lock を検査する。新規公開されたアドバイザリが既存の transitive gem（nokogiri・concurrent-ruby 等の Rails 依存）を flag すると、自分の diff と無関係に CI が落ちる。main を再実行しても同様に落ちる＝当該 PR の回帰ではない
+- **HOW**: ① まず無実確認（`git diff --stat <base>..HEAD -- Gemfile Gemfile.lock` が 0 行なら diff 起因でない）。② `bundle update <gem> --conservative` で該当 gem のみ patch 級 bump（transitive でも対象指定可・手編集は `block-gemfile-lock-edit` フックで不可ゆえ bundle 経由）。③ `bin/bundler-audit check --update` が "No vulnerabilities found" になるまで全件詰める（1 件直すと次が現れることがある）。④ feature PR に混ぜず**独立の chore PR**で出すと reviewed diff が汚れず main 全体のゲートも復旧。⑤ 恒久候補: preflight に「lock 無変更でも audit を回す」オプション or CI security の非ブロッキング/定期実行分離（運用判断）
+- verified: 2026-06-23（3-3a の PR #16 で security のみ fail。nokogiri 1.19.3→1.19.4・concurrent-ruby 1.3.6→1.3.7 の transitive 2 gem を chore PR で bump し解消＝両 gem は 3-3a の diff 外。bundler-audit "No vulnerabilities found" を実測）
+
 ---
 
 ## メタ原則
