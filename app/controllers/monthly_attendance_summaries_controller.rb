@@ -2,7 +2,7 @@
 
 # 月次締め（SPEC §6.6・3-2 設計 §4.2）。本人=提出、上長/hr_admin=確定/差戻し。
 class MonthlyAttendanceSummariesController < ApplicationController
-  before_action :set_summary, only: %i[show submit finalize defer]
+  before_action :set_summary, only: %i[show submit finalize defer detail_csv]
 
   def index
     authorize MonthlyAttendanceSummary
@@ -57,7 +57,33 @@ class MonthlyAttendanceSummariesController < ApplicationController
     redirect_to monthly_attendance_summaries_path, status: :see_other, notice: "#{ids.size} 件の確定を受け付けました"
   end
 
+  def summary_csv
+    authorize MonthlyAttendanceSummary, :summary_csv?
+    period = AttendancePeriod.new(organization: current_tenant, year_month: params[:year_month])
+    summaries = policy_scope(MonthlyAttendanceSummary)
+                  .where(year_month: period.label).includes(:user).order(:user_id).to_a
+    stream_csv(MonthlySummaries::Csv::SummaryExporter.call(summaries:),
+               "monthly_summary_#{period.label}.csv")
+  rescue ArgumentError
+    head :bad_request
+  end
+
+  def detail_csv
+    authorize @summary, :detail_csv?
+    period = AttendancePeriod.new(organization: current_tenant, year_month: @summary.year_month)
+    records = AttendanceRecord.where(user_id: @summary.user_id, work_date: period.range).order(:work_date).to_a
+    stream_csv(MonthlySummaries::Csv::DailyDetailExporter.call(records:, time_zone: current_tenant.time_zone),
+               "daily_detail_#{@summary.user.employee_code}_#{period.label}.csv")
+  end
+
   private
+
+  # 行は呼び出し側で .to_a 事前確定済（テナント文脈下）ゆえ body は文字列整形のみ＝DB 非依存・テナント安全（D7）
+  def stream_csv(enumerator, filename)
+    response.headers["Content-Type"] = "text/csv; charset=utf-8"
+    response.headers["Content-Disposition"] = %(attachment; filename="#{filename}")
+    self.response_body = enumerator
+  end
 
   def current_tenant = ActsAsTenant.current_tenant
 

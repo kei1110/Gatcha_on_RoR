@@ -85,11 +85,15 @@ Rails.application.routes.draw do
   end
 
   resources :monthly_attendance_summaries, only: %i[index show] do
-    collection { patch :bulk_finalize }
+    collection do
+      patch :bulk_finalize
+      get :summary_csv
+    end
     member do
       patch :submit
       patch :finalize
       patch :defer
+      get :detail_csv
     end
   end
 
