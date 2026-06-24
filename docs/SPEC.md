@@ -211,7 +211,7 @@ end
 | 代理打刻 | `manager?`（直接部下）または `hr_admin?`（全員） |
 
 - **`scope`:** 一覧系は `Pundit::Scope` で「自分 + 部下」に絞る。**一覧・一括・CSV エクスポート系は生 `where` を禁止し `policy_scope` 起点とする**。`params[:user_id]` 等の対象指定は scope に対する `find` で解決し、scope 外は 404（IDOR 対策）。代理打刻・欠勤確定・月次一括確定も対象集合を scope で固定する。
-- **Pundit の強制:** `ApplicationController` で `after_action :verify_authorized, :verify_policy_scoped` をデフォルト ON とし、明示 skip のみ列挙する。2 層防衛ゆえポリシー網羅漏れ＝即バイパスとなるため、強制フックを必須とする。
+- **Pundit の強制:** `ApplicationController` で `after_action :verify_authorized` をデフォルト ON とし、明示 skip のみ列挙する。2 層防衛ゆえポリシー網羅漏れ＝即バイパスとなるため、強制フックを必須とする。`verify_policy_scoped` は **index アクション限定**で強制する（Rails 7.1 `raise_on_missing_callback_actions` が show/update 等の非 index で誤 FAIL するため）。非 index の一覧・CSV・一括（`summary_csv` / `detail_csv` / `bulk_finalize` 等）は**手動 `policy_scope` 起点**で同等に担保する（実装裏取り済・Phase 3 spec-check）。
 - **自己承認防止:** §7.3 参照（申請者＝承認者の直接ケースに加え、代理承認の循環・第 1=第 2 段階同一・撤回承認にも適用）。
 
 ### 3.5 オーナーシップ（当事者アクセスの担保）
@@ -398,6 +398,7 @@ polymorphic 関連（`ApprovalAssignment.approvable` / `AttendanceHistory.source
 | scheduled_overtime_hours | decimal(6,2) | 所定外残業（退勤−所定終業。負は 0） |
 | deep_night_hours | decimal(6,2) | 深夜労働（22:00–05:00・休憩按分控除後。§5.3） |
 | status | integer (enum) | working / clocked_out / morning_half / afternoon_half / on_leave / absent |
+| leave_type_id | bigint | 休暇 status（morning_half / afternoon_half / on_leave）の休暇種別。複合 FK `(organization_id, leave_type_id) → leave_types` + CHECK（`leave_type_id IS NULL OR status IN (2,3,4)`）。月次集計の休暇内訳の素材（Phase 3-3a で追加・`LeaveRequests::ApplyApproval` が set / `Withdraw` が clear・§6.4） |
 | is_late / is_early_leave | boolean | 遅刻・早退フラグ |
 | late_minutes / early_leave_minutes | integer | 遅刻・早退分数 |
 | is_holiday_work | boolean | 承認済み休日出勤日への打刻で true |
@@ -482,7 +483,7 @@ polymorphic 関連（`ApprovalAssignment.approvable` / `AttendanceHistory.source
 | total_work_hours / total_overtime_hours | decimal | 月合計。`total_overtime_hours` は**法定残業（legal）基準**で集計し、表示用の `overtime_calc_base` に依存しない（コンプラ判定の基準。§8 冒頭） |
 | overtime_hours_over_60 | decimal | 月 60h 超残業（50% 対象。法定休日は含まない） |
 | holiday_work_hours | decimal | 法定休日労働（35% 対象。60h カウント外） |
-| total_deep_night_hours | decimal(6,2) | 月間深夜労働 |
+| total_deep_night_hours | decimal(7,2) | 月間深夜労働（月合計ゆえ日次 AR の (6,2) より 1 桁広い・schema 整合） |
 | paid_leave_days_used | decimal | 有給使用日数 |
 | absent_days / late_days / early_leave_days | integer | 欠勤・遅刻・早退回数 |
 | total_leave_hours | decimal | 総休暇時間 |
@@ -740,7 +741,7 @@ start_date〜end_date の全日から除外:
 - 社員が休暇種別を選び申請。半休可能種別で午前/午後半休を選択（半休は 1 日のみ）
 - v1 は日単位・半日単位のみ（時間単位は v3）
 - 複数日申請可（`days_requested` は §5.5 でリアルタイム算出）
-- **残高 2 段階表示**（paid_leave 種別のみ）: 確定残高（承認済）と仮残高（申請中含む）。申請後残日数が **正→通常 / 0→アンバー + ℹ️「今年度の有給を使い切ります」/ 負→赤警告**。不足でも申請は通す（承認者が最終判断）
+- **残高 2 段階表示**（paid_leave 種別のみ）: 確定残高（承認済）と仮残高（申請中含む）。申請後残日数が **正→通常 / 0→アンバー + ℹ️「今年度の有給を使い切ります」/ 負→赤警告**。不足でも申請は通す（承認者が最終判断）。**ただし承認時は残高超過をハード拒否**する（`used_days + days_requested > granted_days + carry_over_days` で `lock!` 下にエラー・§4.10 同時実行制御）。残高不足の申請を承認するには hr_admin が事前に `LeaveBalance` を付与する（設計 2-2b D1・over-balance のサイレント計上を防ぐ）
 - 理由欄に `ReasonTemplate`（applies_to: leave / both）をチップ表示
 - **承認後の自動処理**（承認サービス、§7）: 対象日の `AttendanceRecord` 作成/更新（全休→on_leave、午前→morning_half、午後→afternoon_half）、打刻済なら遅刻早退フラグ再計算・上書き（午前半休→遅刻免除 / 午後半休→早退免除）、`LeaveBalance.used_days` 加算（`lock!`）、`AttendanceHistory`（leave_approved）記録（v1 はここまで。Gatcha Work 連携の publish は §14 の将来拡張点）
 - **却下/取消:** `AttendanceHistory` に記録（連携 publish は §14 の将来拡張点）
