@@ -30,7 +30,10 @@ RSpec.describe "Admin::ReasonTemplates", type: :request do
       retired = ActsAsTenant.with_tenant(org) { create(:reason_template, label: "旧テンプレ", active: false) }
       get admin_reason_templates_url(host: tenant_host(org))
       expect(response.body).to include("電車遅延").and include("旧テンプレ").and include("打刻変更")
-      expect(response.body).not_to include("clock_change")
+      # 生 enum 値（applies_to=clock_change）をセル文字として露出しないこと。
+      # グローバルナビの href "/clock_change_requests" が部分文字列 "clock_change" を含むため、
+      # セル内テキスト（>clock_change<）で判定してナビ由来の偽陽性を避ける
+      expect(response.body).not_to include(">clock_change<")
     end
 
     it "作成できる（303 → show）" do

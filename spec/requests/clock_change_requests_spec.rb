@@ -29,6 +29,15 @@ RSpec.describe "ClockChangeRequests", type: :request do
     end
   end
 
+  describe "GET index" do
+    it "新規申請リンクが出る（new への動線・LR/HWR と対称）" do
+      get clock_change_requests_url(host: tenant_host(org))
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include(new_clock_change_request_path)
+      expect(response.body).to include("新規申請")
+    end
+  end
+
   describe "POST create" do
     it "申請を作成し original_* をサーバ snapshot（client 値を無視）" do
       expect {

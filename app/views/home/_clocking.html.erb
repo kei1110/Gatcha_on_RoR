@@ -19,7 +19,7 @@
   </div>
 
   <% if state.status == :clocked_out %>
-    <p class="mt-2 text-sm text-gray-500">時刻の修正は打刻変更申請で行えます（Phase 2 で提供予定）</p>
+    <p class="mt-2 text-sm text-gray-500">時刻の修正は<%= link_to "打刻変更申請", new_clock_change_request_path, class: "text-blue-600 underline" %>で行えます</p>
   <% end %>
 
   <% if state.unassigned_pattern? %>

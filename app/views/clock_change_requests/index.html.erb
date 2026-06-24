@@ -1,5 +1,8 @@
 <%# app/views/clock_change_requests/index.html.erb %>
-<h1 class="text-xl font-bold mb-4">打刻変更申請</h1>
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-xl font-bold">打刻変更申請</h1>
+  <%= link_to "新規申請", new_clock_change_request_path, class: "bg-blue-600 text-white px-3 py-1 rounded text-sm" %>
+</div>
 <% tz = current_user.organization.time_zone %>
 <% if @clock_change_requests.empty? %>
   <p class="text-gray-500">申請はありません。</p>

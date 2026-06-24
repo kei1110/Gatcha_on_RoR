@@ -1,0 +1,32 @@
+<%# app/views/admin/users/_leave_balances.html.erb — _work_pattern_assignments と同型のネスト残高セクション %>
+<section class="mt-8 max-w-2xl">
+  <div class="flex items-center justify-between">
+    <h3 class="text-base font-bold">休暇残高</h3>
+    <%= link_to "+ 新規付与", new_admin_user_leave_balance_path(@user), class: "rounded border px-3 py-1 text-sm" %>
+  </div>
+
+  <% if @leave_balances.any? %>
+    <table class="mt-3 w-full text-left text-sm">
+      <thead>
+        <tr class="border-b">
+          <th class="py-1">年度</th><th>休暇種別</th><th>付与</th><th>繰越</th><th>使用</th><th>残</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @leave_balances.each do |b| %>
+          <tr class="border-b">
+            <td class="py-1"><%= b.fiscal_year %></td>
+            <td><%= b.leave_type.name %></td>
+            <td><%= b.granted_days.to_s("F") %></td>
+            <td><%= b.carry_over_days.to_s("F") %></td>
+            <td><%= b.used_days.to_s("F") %></td>
+            <td><%= b.remaining.to_s("F") %></td>
+            <td class="py-1"><%= link_to "編集", edit_admin_user_leave_balance_path(@user, b), class: "underline" %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% else %>
+    <p class="mt-2 text-sm text-gray-500">残高はまだ登録されていません。</p>
+  <% end %>
+</section>

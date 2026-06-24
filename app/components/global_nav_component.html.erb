@@ -1,0 +1,18 @@
+<%# app/components/global_nav_component.html.erb %>
+<nav class="border-b border-gray-300 bg-white">
+  <div class="container mx-auto flex flex-wrap items-center justify-between gap-2 px-5 py-3">
+    <ul class="flex flex-wrap gap-1 text-sm">
+      <% links.each do |label, path, match_path| %>
+        <li>
+          <%= link_to label, path,
+                class: "inline-block rounded px-3 py-1.5 #{active?(path, match_path) ? 'bg-gray-800 font-bold text-white' : 'text-gray-600 hover:bg-gray-100'}" %>
+        </li>
+      <% end %>
+    </ul>
+    <div class="flex items-center gap-3 text-sm text-gray-600">
+      <span><%= current_user.name %><% if ActsAsTenant.current_tenant %>（<%= ActsAsTenant.current_tenant.name %>）<% end %></span>
+      <%= button_to "ログアウト", helpers.destroy_user_session_path, method: :delete,
+            class: "rounded bg-gray-800 px-3 py-1.5 text-white" %>
+    </div>
+  </div>
+</nav>
