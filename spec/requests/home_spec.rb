@@ -53,7 +53,9 @@ RSpec.describe "Home", type: :request do
       visit_home
 
       expect(response.body).to include("退勤済")
-      expect(response.body).to include("時刻の修正は打刻変更申請で行えます")
+      # 打刻変更申請への誘導が new への実リンクであること（A4: 旧「Phase 2 で提供予定」陳腐化を解消）
+      expect(response.body).to include("時刻の修正は")
+      expect(response.body).to include(new_clock_change_request_path)
     end
   end
 
