@@ -10,12 +10,12 @@ description: docs/SPEC.md の仕様と Rails 実装の乖離を確認したい�
 ## 設計原則
 
 - **判定せず材料提供** — 差異を列挙し、「要修正」か「後続 Phase 送り」かの最終判断は人に委ねる
-- **並列 subagent** で output token を節約（4 観点を同時起動）
+- **並列 subagent** で output token を節約（5 観点を同時起動）
 - **Phase 別スコープを尊重** — `docs/SPEC.md` §15 のロードマップで未着手の項目は「乖離」ではなく「予定」として報告する
 
 ## 手順
 
-4 つの subagent（Explore / general）を**並列**起動し、結果をマージする。
+5 つの subagent（Explore / general）を**並列**起動し、結果をマージする。
 
 ### Agent 1: データモデル照合
 `docs/SPEC.md` §4（全モデル・全カラム）↔ `app/models/` + `db/schema.rb`（or `db/migrate/`）
@@ -44,6 +44,13 @@ description: docs/SPEC.md の仕様と Rails 実装の乖離を確認したい�
 - 自己承認防止（§7.3）の実装
 - オーナー（`user_id`）と操作者の分離（§3.5）
 
+### Agent 5: ユーザーストーリー網羅性照合（§1.4）
+`docs/SPEC.md` §1.4 動線マップ ↔ `config/routes.rb` + `app/controllers/` + `app/views/` + `app/components/`
+- §1.4 各行の `起点 route` が routes.rb に実在し、`nav 入口`（`GlobalNavComponent#links` 等）からクリック到達できるか
+- 「機能・policy はあるが画面にリンクが無い」「action はあるが nav/画面から到達不能」な**動線断絶**の検出（§1.4 に無い到達不能画面が無いか）
+- §1.4 の `状態`（✅/⚠️）が実態と一致するか・空の `起点 route`／欠落 `nav 入口` が無いか
+- ※ 個別機能の有無は Agent 1–4 が担当。本観点は「アクターが端から端まで辿れるか」の到達性のみ見る
+
 ## 出力フォーマット
 
 ```markdown
@@ -61,6 +68,9 @@ description: docs/SPEC.md の仕様と Rails 実装の乖離を確認したい�
 
 ## 認可・テナント（§3）
 | 観点 | 判定 | 該当箇所 |
+
+## ユーザーストーリー網羅性（§1.4）
+| Story（アクター×目的） | 到達可能? (✅/⚠️/❌) | 起点 route 実在 | nav 入口 | 欠落点 |
 ```
 
 ## グリーンフィールド時の注意

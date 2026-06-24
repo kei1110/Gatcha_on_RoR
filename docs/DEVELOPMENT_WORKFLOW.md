@@ -13,6 +13,7 @@
 | スペック準拠レビュー | **主エージェントが git diff 直接突合** | 約 30 万トークン/スライス削減（0b-5 実測）・検出力低下なし |
 | 品質レビュー（敵対的） | 独立サブエージェント（下記③④） | 著者バイアス対策の本丸。0b-4 で 4 件・1-1 で 6 件の実指摘 |
 | マージ前最終 | tenant-isolation-reviewer（models/migrations 変更時）・labor-law-compliance-reviewer（calculator/compliance 変更時） | CLAUDE.md のエージェント規約 |
+| マージ前 DoD（動線到達性） | 主エージェント（SPEC §1.4 ↔ git diff 突合） | Phase 3 spec-check が動線断絶を検出（PR #19/#20）。変更/新規機能は §1.4 に対応行があり起点(route+nav)が実在・状態(✅/⚠️)一致を確認、新機能は §1.4 に行追加してからマージ |
 
 ## 効率化 5 項目（1-1 で実証済み）
 
