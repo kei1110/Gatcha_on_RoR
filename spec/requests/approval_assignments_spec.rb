@@ -7,7 +7,9 @@ RSpec.describe "ApprovalAssignments", type: :request do
   let!(:hr)      { ActsAsTenant.with_tenant(org) { create(:user, :hr_admin) } }
   let!(:dept)    { ActsAsTenant.with_tenant(org) { create(:user, :manager_role, manager: hr) } }
   let!(:boss)    { ActsAsTenant.with_tenant(org) { create(:user, :manager_role, manager: dept) } }
-  let!(:emp)     { ActsAsTenant.with_tenant(org) { create(:user, manager: boss) } }   # route: [boss, dept]
+  # name は factory デフォルト（"テスト 太郎"）と衝突させない — グローバルナビが current_user.name を
+  # 全画面表示するため、emp.name が承認者の名と同名だと not_to include(emp.name) が誤発火する
+  let!(:emp)     { ActsAsTenant.with_tenant(org) { create(:user, manager: boss, name: "申請 太郎") } } # route: [boss, dept]
   let!(:leave_type) { ActsAsTenant.with_tenant(org) { create(:leave_type, paid_leave: false) } }
 
   # emp の休暇申請を 1 件起票（承認エンジン起動済）
