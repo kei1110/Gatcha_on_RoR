@@ -18,6 +18,9 @@ module Admin
       @org_today = @user.organization.today
       # 述語は effective_on（Phase 1 取得条件と同一の単一ソース）— 「割当行ゼロ」で判定しない
       @no_effective_assignment = @user.user_work_patterns.effective_on(@org_today).none?
+      # 残高は @user 経由（acts_as_tenant スコープ・@user は policy_scope 由来ゆえ IDOR なし・§3.6）
+      @leave_balances = @user.leave_balances.includes(:leave_type)
+                             .order(fiscal_year: :desc, leave_type_id: :asc)
     end
 
     def new

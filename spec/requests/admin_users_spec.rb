@@ -298,4 +298,30 @@ RSpec.describe "Admin::Users", type: :request do
       expect(flash[:alert]).to include("在籍中")
     end
   end
+
+  describe "GET /admin/users/:id 残高セクション（A3）" do
+    let!(:lt) { ActsAsTenant.with_tenant(org) { create(:leave_type, name: "有給") } }
+    let!(:target) { ActsAsTenant.with_tenant(org) { create(:user, name: "対象 太郎") } }
+
+    it "残高一覧と新規付与・編集リンクが出る" do
+      # balance は with_tenant 内で捕捉する — リクエスト後（テナント文脈外）の再クエリは NoTenantSet
+      balance = ActsAsTenant.with_tenant(org) do
+        create(:leave_balance, user: target, leave_type: lt, fiscal_year: "2026",
+               granted_days: 20, carry_over_days: 0, used_days: 5, granted_on: Date.new(2026, 4, 1))
+      end
+      sign_in admin
+      get admin_user_url(target, host: tenant_host(org))
+      expect(response.body).to include("休暇残高").and include("有給")
+      expect(response.body).to include(new_admin_user_leave_balance_path(target))
+      expect(response.body).to include(edit_admin_user_leave_balance_path(target, balance))
+    end
+
+    it "残高ゼロ件でも新規付与リンクと空状態が出る" do
+      sign_in admin
+      get admin_user_url(target, host: tenant_host(org))
+      expect(response.body).to include("休暇残高")
+      expect(response.body).to include(new_admin_user_leave_balance_path(target))
+      expect(response.body).to include("残高はまだ登録されていません")
+    end
+  end
 end
