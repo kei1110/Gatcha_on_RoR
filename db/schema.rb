@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_26_021532) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_26_022024) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -230,7 +230,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_26_021532) do
   create_table "organization_settings", force: :cascade do |t|
     t.integer "closing_day", default: 31, null: false
     t.datetime "created_at", null: false
+    t.boolean "email_notification_enabled", default: false, null: false
+    t.boolean "holiday_block_enabled", default: true, null: false
     t.bigint "organization_id", null: false
+    t.boolean "quiet_hours_enabled", default: true, null: false
+    t.integer "quiet_hours_end", default: 8, null: false
+    t.integer "quiet_hours_start", default: 19, null: false
     t.integer "submit_deadline_days", default: 5, null: false
     t.datetime "updated_at", null: false
     t.index ["organization_id", "id"], name: "index_organization_settings_on_organization_id_and_id", unique: true
