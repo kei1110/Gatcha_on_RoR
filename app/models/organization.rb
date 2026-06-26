@@ -17,6 +17,10 @@ class Organization < ApplicationRecord
 
   validate :fiscal_year_end_month_locked_when_balances_exist
 
+  # ディスパッチャ（NotificationDispatchJob）がスコープ外列挙に使う（§9⑩・設計 §4.4）。
+  # resolve_tenant は生 where(active:) を使うため scope 化はここが初出。
+  scope :active, -> { where(active: true) }
+
   # 設定行の唯一の取得経路（0b-5 設計 §0 のアクセサ規約 — Phase 2〜4 の読み取りもここを通すこと）。
   # create_or_find_by! は [organization_id] unique index 前提で並行初回アクセスの
   # SELECT→INSERT 競合を吸収する（属性なし呼び出し = DB 既定値で完結）。

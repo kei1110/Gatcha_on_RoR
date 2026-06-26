@@ -135,6 +135,15 @@ RSpec.describe Organization, type: :model do
     end
   end
 
+  describe ".active スコープ（§9⑩・ディスパッチャ用）" do
+    it "active=true のみ返す" do
+      active = create(:organization)
+      inactive = create(:organization, active: false)
+      expect(Organization.active).to include(active)
+      expect(Organization.active).not_to include(inactive)
+    end
+  end
+
   describe "#today（0b-4 設計 §0 の TZ 契約）" do
     it "組織 TZ の当日を返す（アプリ TZ = UTC と日付が割れる時刻帯）" do
       org = build(:organization, time_zone: "Asia/Tokyo")
