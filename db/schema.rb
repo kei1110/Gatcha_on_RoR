@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_26_023055) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_26_023706) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -227,6 +227,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_26_023055) do
     t.index ["organization_id"], name: "index_monthly_attendance_summaries_on_organization_id"
   end
 
+  create_table "notification_deliveries", force: :cascade do |t|
+    t.integer "channel", null: false
+    t.datetime "created_at", null: false
+    t.bigint "notification_id", null: false
+    t.bigint "organization_id", null: false
+    t.integer "retry_count", default: 0, null: false
+    t.timestamptz "scheduled_at", null: false
+    t.integer "status", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.index ["organization_id", "id"], name: "index_notification_deliveries_on_organization_id_and_id", unique: true
+    t.index ["organization_id", "status", "scheduled_at"], name: "index_notification_deliveries_sweep"
+    t.index ["organization_id"], name: "index_notification_deliveries_on_organization_id"
+  end
+
   create_table "notifications", force: :cascade do |t|
     t.text "body", null: false
     t.datetime "created_at", null: false
@@ -391,6 +405,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_26_023055) do
   add_foreign_key "leave_types", "organizations"
   add_foreign_key "monthly_attendance_summaries", "organizations"
   add_foreign_key "monthly_attendance_summaries", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
+  add_foreign_key "notification_deliveries", "notifications", column: ["organization_id", "notification_id"], primary_key: ["organization_id", "id"]
+  add_foreign_key "notification_deliveries", "organizations"
   add_foreign_key "notifications", "organizations"
   add_foreign_key "notifications", "users", column: ["organization_id", "subject_user_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "notifications", "users", column: ["organization_id", "target_user_id"], primary_key: ["organization_id", "id"]
