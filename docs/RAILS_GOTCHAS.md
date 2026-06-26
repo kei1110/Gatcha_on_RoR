@@ -145,6 +145,20 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **HOW**: 拒否を起こす 1 文だけを `ActiveRecord::Base.transaction(requires_new: true) { ... }`（savepoint）で包む。savepoint だけが rollback され親 tx は生存する。`spec/models/attendance_history_spec.rb` の `in_savepoint` ヘルパが見本（層③の `update_all` / `delete_all` / raw DELETE / TRUNCATE 全例で使用）。層①②（`readonly?` / `before_destroy` の Ruby 例外）は SQL 未発行ゆえ隔離不要
 - verified: Rails 8.1.3 / PG 17 / 2026-06-13（1-3 Task 2 で実装・追記専用 4 経路の拒否 spec）
 
+### `retry_on` のリトライ挙動は `perform_now` では検証できない（`perform_enqueued_jobs` で駆動する）
+
+- **WHAT**: `retry_on(SomeError)` を持つジョブで「transient 失敗で raise する／枯渇で error 確定する」を `perform_now` でテストすると意図とズレる。`expect { perform_now }.to raise_error` は偽 FAIL（例外がテストに届かない）になる
+- **WHY**: `retry_on` は内部で `rescue_from` を登録する。`perform_now` でもこの rescue が走り、例外を捕捉して `retry_job`（test adapter では再エンキュー）を呼ぶため、例外は呼び出し元へ伝播しない
+- **HOW**: リトライ経路は `perform_enqueued_jobs { Job.perform_later(...) }` で駆動する（`wait: :polynomially_longer` のリトライも枯渇まで実行される）。枯渇時の確定処理は `retry_on(..., attempts:) do |job, error| ... end` の **block** に置くと block 形式ゆえ枯渇後 re-raise されず、`delivery.reload` で結果を assert できる（`job.executions` が試行回数）。なお SolidQueue は `retry_on` 無しでは自動再試行しない（transient リトライが要るなら `retry_on` を消さない）
+- verified: Rails 8.1 / 2026-06-26（4-1b Task 3 NotificationEmailJob・当初 retry_on 除去案を probe 実走で却下）
+
+### `have_broadcasted_to(obj).from_channel(Turbo::StreamsChannel)` は turbo-rails の `broadcast_*_to` に効かない
+
+- **WHAT**: `Turbo::StreamsChannel.broadcast_prepend_to(user, ...)` を `have_broadcasted_to(user).from_channel(Turbo::StreamsChannel)` で検証すると常に FAIL する（repo 初の Turbo Streams broadcast テストで実踏）
+- **WHY**: turbo-rails の `broadcast_*_to` は `ActionCable.server.broadcast(user.to_gid_param, content)` を **raw GID param** をキーに発行する。一方 ActionCable の `broadcasting_for(obj)` は `"ChannelClass:gid_param"` 形式を期待するため不一致
+- **HOW**: `have_broadcasted_to(user.to_gid_param)` で raw GID param を直接照合する（または `Turbo::Broadcastable::TestHelper#assert_turbo_stream_broadcasts`）。署名（`turbo_stream_from` の signed_stream_name）は購読ハンドシェイクの検証のみで broadcast キーには関与しないため、サーバ `broadcast_*_to(user)` と client `turbo_stream_from(user)` は同一 raw GID param stream で一致する
+- verified: turbo-rails 2.0.23 / 2026-06-26（4-1b Task 4 Notifier・reviewer が gem ソース照合）
+
 ---
 
 ## 生成物・設定
