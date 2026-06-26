@@ -27,6 +27,7 @@ RSpec.describe NotificationEmailJob, type: :job do
     expect {
       described_class.perform_now(organization_id: org.id, delivery_id: delivery.id)
     }.not_to change { ActionMailer::Base.deliveries.size }
+    expect(delivery.reload).to be_sent # error に落ちていない
   end
 
   it "削除済み delivery は無視（早期 return）" do
@@ -48,8 +49,9 @@ RSpec.describe NotificationEmailJob, type: :job do
     perform_enqueued_jobs do
       described_class.perform_later(organization_id: org.id, delivery_id: delivery.id)
     end
-    expect(call_count).to be >= 2      # 再試行された
-    expect(delivery.reload).to be_sent # 最終的に成功
+    expect(call_count).to be >= 2          # 再試行された
+    expect(delivery.reload).to be_sent     # 最終的に成功
+    expect(delivery.retry_count).to be >= 1 # retry_count ミラーが再試行回数を反映
   end
 
   it "リトライ枯渇で status: error 確定（executions ミラー）" do

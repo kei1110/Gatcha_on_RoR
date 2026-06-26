@@ -12,18 +12,23 @@ class NotificationEmailJob < ApplicationJob
   # retry_count 列は executions の監査ミラー（§9⑧・SolidQueue と二重管理しない）。
   retry_on(*RETRYABLE, wait: :polynomially_longer, attempts: MAX_ATTEMPTS) do |job, error|
     organization_id, delivery_id = job.arguments.first.values_at(:organization_id, :delivery_id)
-    ActsAsTenant.with_tenant(Organization.find(organization_id)) do
-      delivery = NotificationDelivery.find_by(id: delivery_id)
-      delivery&.with_lock do
-        next if delivery.sent? # 競合で送信済みなら error にしない
-        delivery.update!(status: :error, retry_count: job.executions - 1)
+    org = Organization.find_by(id: organization_id)
+    if org # retry 中に組織が削除され得る → 未処理例外で error 確定を漏らさない
+      ActsAsTenant.with_tenant(org) do
+        delivery = NotificationDelivery.find_by(id: delivery_id)
+        delivery&.with_lock do
+          next if delivery.sent? # 競合で送信済みなら error にしない
+          delivery.update!(status: :error, retry_count: job.executions - 1)
+        end
       end
     end
     Rails.logger.error("[NotificationEmail] ##{delivery_id} error after #{job.executions} executions: #{error.class}")
   end
 
   def perform(organization_id:, delivery_id:)
-    org = Organization.find(organization_id)
+    org = Organization.find_by(id: organization_id)
+    return if org.nil? # 組織削除済みは無視（block 側の nil 安全と対称）
+
     ActsAsTenant.with_tenant(org) do # §3.6 必須（リクエスト文脈なし）
       delivery = NotificationDelivery.find_by(id: delivery_id)
       return if delivery.nil? # 削除済みは無視
