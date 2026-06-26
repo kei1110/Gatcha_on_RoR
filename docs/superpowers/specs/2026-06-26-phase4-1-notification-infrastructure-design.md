@@ -2,7 +2,7 @@
 
 - 日付: 2026-06-26
 - 対象: ROADMAP Phase 4-1「通知基盤」
-- SPEC 参照: §3.6 / §4.4 / §4.15 / §4.17 / §4.18 / §9 / §10 / §12.1 / §1.4
+- SPEC 参照: §3.6 / §4.3 / §4.15 / §4.17 / §4.18 / §9 / §10 / §12.1 / §1.4
 - 関連 backlog: ROADMAP「LeaveRequest.last_stale_notified_on の未実装（CCR との非対称）」(#113 行)
 
 ## 0. ゴールと非ゴール
@@ -19,12 +19,12 @@
 | # | 判断 | 根拠 |
 |---|------|------|
 | A | **基盤 + 消費面 + producer 1 本**を 4-1 の範囲とする（純配管にしない） | §1.4 到達性 DoD（built-but-unreachable 禁止）/ 配管の API は caller で実証する必要 |
-| B | `email_enabled` は **`users` 列に置く**（SSOT）。`UserNotificationPreference` は抑制系のみ | ROADMAP「User.email_enabled migration…0a 後送り」/ §4.4 / 組織フラグとの AND ゲート（fallback ではない）意味論 |
+| B | `email_enabled` は **`users` 列に置く**（SSOT）。`UserNotificationPreference` は抑制系のみ | ROADMAP「User.email_enabled migration…0a 後送り」/ §4.3 / 組織フラグとの AND ゲート（fallback ではない）意味論 |
 | C | **3 サブ PR** に分割（4-1a データ層 / 4-1b 配信コア / 4-1c UI+producer） | 1 スライス = 1 PR・各 PR をレビュー可能な粒度に |
 | D | 毎時ディスパッチャ = **取りこぼし回収 sweep + 規範実装**、happy path は `set(wait_until:)` | §9.3 と §10 の二機構を二重管理せず和解させる |
 | E | producer は **承認/却下のみ前倒し**（代理打刻・バッチ検知は 4-2 据え置き） | 最小・request 文脈・compliance 計算なしで pipe を実証できる最軽量 producer |
 
-**SPEC 不整合の解消（B に伴う docs 修正・4-1a に同梱）**: SPEC §4.17 UserNotificationPreference の `email_enabled` 行を削除し「個人メール opt-in は `User.email_enabled`（§4.4）、本テーブルは抑制系のみ」と注記する。
+**SPEC 不整合の解消（B に伴う docs 修正・4-1a に同梱）**: SPEC §4.17 UserNotificationPreference の `email_enabled` 行を削除し「個人メール opt-in は `User.email_enabled`（§4.3）、本テーブルは抑制系のみ」と注記する。
 
 ## 2. アーキテクチャ
 
