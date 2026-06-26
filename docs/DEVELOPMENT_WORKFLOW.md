@@ -29,6 +29,7 @@
 - **3 か条を毎回注入**: ①ステップ完了ごとに即コミット ②不要だった編集は revert してから報告 ③検証コマンド（rspec・`rubocop --force-exclusion`・app/ に触れたら brakeman）を明記し実行結果を報告させる
 - **docs/RAILS_GOTCHAS.md を注入**（該当する罠の要点をプロンプトへ転記。フックはサブエージェントをすり抜けるため指示で補う）
 - 報告形式を固定: DONE / DONE_WITH_CONCERNS / NEEDS_CONTEXT / BLOCKED + 検証実出力 + コミット SHA。**BLOCKED に同条件再試行はさせない**（文脈追加・モデル昇格・分割・計画修正のいずれかを変える）
+- **SPEC §番号は節タイトルを併記 or 検証してから転記する** — §番号は位置依存で renumber する drift 源（CLAUDE.md「バージョン記法＝SSOT を指す」の §参照版）。転写型タスクは設計・計画の §番号をコード（migration コメント・spec の describe）へ忠実に写すため、**source の §番号が誤っていると下流まで伝播する**。設計/計画では `SPEC §4.3 User` のように**タイトル併記**するか、`grep -n "^### 4\.3 " docs/SPEC.md` で節タイトル一致を確認してからディスパッチする（4-1a で `§4.4`→実は `§4.3 User` のドリフトが migration コメント・user_spec まで転写され whole-branch review で発覚）
 
 ## 罠の還流（このループが本体制の利息）
 

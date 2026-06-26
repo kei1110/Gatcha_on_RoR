@@ -95,6 +95,13 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **HOW**: setup のモデル操作を `ActsAsTenant.with_tenant(org) { ... }` で包む（本番のコントローラ文脈の写像）
 - verified: 2026-06-11（0b-1 G2 で顕在化）
 
+### 必須 `belongs_to` の同一組織 validator は presence と二重発火し model テストで単体検証できない
+
+- **WHAT**: 必須 `belongs_to`（`target_user` 等）に付けた `x_must_belong_to_same_organization` を model spec の「他 org の id を代入 → `be_invalid`」で検証しても、**validator を消しても緑のまま**（単体検証できていない）。`errors[:x]` を見ても判別不能
+- **WHY**: acts_as_tenant が関連を自テナントに default scope するため、他 org の id を代入すると `x` は `nil` ロード → **必須 `belongs_to` の presence 検証だけで invalid**（`errors[:x]` にも presence の "must exist" が入る）。custom validator は presence と同じ属性に二重発火し、出力が区別できない。**optional `belongs_to`（`subject_user` 等）は presence を通る**ため custom validator が唯一の砦＝ model `be_invalid` が判別的、という非対称がある
+- **HOW**: 必須参照の検証可能な防衛線は**複合 FK**。`save!(validate: false)` で `ActiveRecord::InvalidForeignKey` を確認（model 層を貫通して DB 制約だけを露出）。model validator は §3.6-(2) 二層防御の belt-and-suspenders として残すが、テストの判別性は DB 層で担保する。spec 作法は `.claude/skills/gen-spec` 規約 4a/4b 参照
+- verified: 2026-06-26（4-1a whole-branch review〔opus〕で顕在化・gen-spec 規約 #4 を二層化して還流）
+
 ## Pundit / 認可
 
 ### `policy_scope(Model)` の Scope 解決規則（top-level Policy 不在で `NotDefinedError`）
@@ -258,6 +265,13 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
   - ワーカー起動: `bin/jobs`
 - **fallback**: `connects_to` を外し SolidQueue テーブルを primary DB に置く方式も可（ENV 毎の接続分離は不要）
 - verified: Rails 8.1 / SolidQueue / Ruby 4.0.2 / 2026-06-21（3-2 Task 15 で実踏。`db:prepare` が `db/queue_schema.rb` を自動ロード・rspec 975/0 確認）
+
+### rspec 後の `db/queue_schema.rb` は「内容差なしの mtime ノイズ」（`git add` しない）
+
+- **WHAT**: rspec 走行後に `git status` が `db/queue_schema.rb` を modified と**散発的に**表示するが、`git diff` は **0 行**（内容は `version: 1` で安定）。「schema を変えたか？」と誤認して `git add` すると無関係差分をコミットに混ぜる
+- **WHY**: test 実行時の queue 接続が同ファイルを **mtime-touch** するだけで再生成はしない。racy stat ゆえ走行ごとに出たり出なかったりする（1 回目で flag・2 回目 clean を実測）
+- **HOW**: **内容差が無いので `git add` しない**。コミット前に `git status` で混入していないことだけ確認（混入していれば `git checkout -- db/queue_schema.rb`・大半は no-op）。生成系スキーマ（schema.rb 同様）は手で触らない原則の延長
+- verified: 2026-06-26（4-1a SDD で全タスク実踏。`git diff db/queue_schema.rb` 常に 0 行＝mtime のみ・「再生成で内容が変わる」は誤り）
 
 ## Ruby / ツールチェーン
 
