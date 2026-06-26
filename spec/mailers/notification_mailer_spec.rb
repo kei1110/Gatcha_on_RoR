@@ -24,22 +24,22 @@ RSpec.describe NotificationMailer, type: :mailer do
     end
 
     it "本文に notification.body を含む" do
-      expect(mail.text_part.body.to_s).to include("あなたの休暇申請が承認されました。")
-      expect(mail.html_part.body.to_s).to include("あなたの休暇申請が承認されました。")
+      expect(mail.text_part.body.decoded).to include("あなたの休暇申請が承認されました。")
+      expect(mail.html_part.body.decoded).to include("あなたの休暇申請が承認されました。")
     end
 
     it "リンクは組織サブドメイン入り（§9⑦・job 文脈で request 無し）" do
-      expect(mail.text_part.body.to_s).to include("acme.")
-      expect(mail.html_part.body.to_s).to include("acme.")
+      expect(mail.text_part.body.decoded).to include("acme.")
+      expect(mail.html_part.body.decoded).to include("acme.")
     end
 
     it "別テナント文脈でも org のサブドメインで組む（current_tenant 由来でない・鏡像）" do
       other = create(:organization, subdomain: "other")
       ActsAsTenant.with_tenant(other) do
-        expect(mail.text_part.body.to_s).to include("acme.")
-        expect(mail.html_part.body.to_s).to include("acme.")
-        expect(mail.text_part.body.to_s).not_to include("other.")
-        expect(mail.html_part.body.to_s).not_to include("other.")
+        expect(mail.text_part.body.decoded).to include("acme.")
+        expect(mail.html_part.body.decoded).to include("acme.")
+        expect(mail.text_part.body.decoded).not_to include("other.")
+        expect(mail.html_part.body.decoded).not_to include("other.")
       end
     end
   end
