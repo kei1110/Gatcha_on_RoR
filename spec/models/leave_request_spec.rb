@@ -148,4 +148,13 @@ RSpec.describe LeaveRequest do
       expect(lr).not_to be_valid
     end
   end
+
+  describe "last_stale_notified_on（滞留アラート重複防止・§4.9）" do
+    it "既定は nil・date を保持できる" do
+      lr = create(:leave_request)
+      expect(lr.last_stale_notified_on).to be_nil
+      lr.update!(last_stale_notified_on: Date.current)
+      expect(lr.reload.last_stale_notified_on).to eq(Date.current)
+    end
+  end
 end

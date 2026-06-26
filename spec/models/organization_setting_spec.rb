@@ -43,4 +43,29 @@ RSpec.describe OrganizationSetting, type: :model do
       expect { dup.save(validate: false) }.to raise_error(ActiveRecord::RecordNotUnique)
     end
   end
+
+  describe "通知列の lazy 既定（§4.15）" do
+    it "Organization#setting が抑制/opt-in の既定値を返す" do
+      expect(setting.quiet_hours_enabled).to be(true)
+      expect(setting.quiet_hours_start).to eq(19)
+      expect(setting.quiet_hours_end).to eq(8)
+      expect(setting.holiday_block_enabled).to be(true)
+      expect(setting.email_notification_enabled).to be(false)
+    end
+  end
+
+  describe "quiet hours の時刻範囲検証（0..23）" do
+    it "0..23 の外は無効" do
+      setting.quiet_hours_start = 24
+      expect(setting).not_to be_valid
+      setting.quiet_hours_start = -1
+      expect(setting).not_to be_valid
+    end
+
+    it "0 と 23 は有効" do
+      setting.quiet_hours_start = 0
+      setting.quiet_hours_end = 23
+      expect(setting).to be_valid
+    end
+  end
 end

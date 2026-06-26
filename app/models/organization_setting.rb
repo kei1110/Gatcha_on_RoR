@@ -9,6 +9,7 @@ class OrganizationSetting < ApplicationRecord
   validates :closing_day, inclusion: { in: 1..31 } # 31 = 月末扱い（SPEC §4.15）
   # 28 = 2 月の最短月長 — どの月でも実在する日に収める
   validates :submit_deadline_days, inclusion: { in: 1..28 }
+  validates :quiet_hours_start, :quiet_hours_end, inclusion: { in: 0..23 } # 時（SPEC §4.15）
   # [organization_id] unique index の DB 例外前にフォームエラー化（テナント毎 1 行）
   validates :organization_id, uniqueness: true
 end

@@ -52,6 +52,12 @@ RSpec.describe User, type: :model do
     end
   end
 
+  describe "email_enabled（個人メール opt-in・§4.3）" do
+    it "既定は false" do
+      expect(create(:user).email_enabled).to be(false)
+    end
+  end
+
   describe "require_tenant canary" do
     it "raises on unscoped query (恒久 regression)" do
       ActsAsTenant.test_tenant = nil

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_23_022241) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_26_024143) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -174,6 +174,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_022241) do
     t.decimal "days_requested", precision: 6, scale: 2, null: false
     t.date "end_date", null: false
     t.integer "half_day_type", default: 0, null: false
+    t.date "last_stale_notified_on"
     t.bigint "leave_type_id", null: false
     t.bigint "organization_id", null: false
     t.text "reason"
@@ -227,10 +228,45 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_022241) do
     t.index ["organization_id"], name: "index_monthly_attendance_summaries_on_organization_id"
   end
 
+  create_table "notification_deliveries", force: :cascade do |t|
+    t.integer "channel", null: false
+    t.datetime "created_at", null: false
+    t.bigint "notification_id", null: false
+    t.bigint "organization_id", null: false
+    t.integer "retry_count", default: 0, null: false
+    t.timestamptz "scheduled_at", null: false
+    t.integer "status", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.index ["organization_id", "id"], name: "index_notification_deliveries_on_organization_id_and_id", unique: true
+    t.index ["organization_id", "status", "scheduled_at"], name: "index_notification_deliveries_sweep"
+    t.index ["organization_id"], name: "index_notification_deliveries_on_organization_id"
+  end
+
+  create_table "notifications", force: :cascade do |t|
+    t.text "body", null: false
+    t.datetime "created_at", null: false
+    t.bigint "organization_id", null: false
+    t.integer "priority", null: false
+    t.timestamptz "read_at"
+    t.integer "source_type", null: false
+    t.bigint "subject_user_id"
+    t.bigint "target_user_id", null: false
+    t.string "title", null: false
+    t.datetime "updated_at", null: false
+    t.index ["organization_id", "id"], name: "index_notifications_on_organization_id_and_id", unique: true
+    t.index ["organization_id", "target_user_id", "read_at"], name: "index_notifications_target_unread"
+    t.index ["organization_id"], name: "index_notifications_on_organization_id"
+  end
+
   create_table "organization_settings", force: :cascade do |t|
     t.integer "closing_day", default: 31, null: false
     t.datetime "created_at", null: false
+    t.boolean "email_notification_enabled", default: false, null: false
+    t.boolean "holiday_block_enabled", default: true, null: false
     t.bigint "organization_id", null: false
+    t.boolean "quiet_hours_enabled", default: true, null: false
+    t.integer "quiet_hours_end", default: 8, null: false
+    t.integer "quiet_hours_start", default: 19, null: false
     t.integer "submit_deadline_days", default: 5, null: false
     t.datetime "updated_at", null: false
     t.index ["organization_id", "id"], name: "index_organization_settings_on_organization_id_and_id", unique: true
@@ -261,6 +297,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_022241) do
     t.index ["organization_id"], name: "index_reason_templates_on_organization_id"
   end
 
+  create_table "user_notification_preferences", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.boolean "holiday_block_enabled", default: true, null: false
+    t.bigint "organization_id", null: false
+    t.boolean "quiet_hours_enabled", default: true, null: false
+    t.integer "quiet_hours_end", default: 8, null: false
+    t.integer "quiet_hours_start", default: 19, null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["organization_id", "id"], name: "index_user_notification_preferences_on_organization_id_and_id", unique: true
+    t.index ["organization_id", "user_id"], name: "index_user_notification_preferences_unique", unique: true
+    t.index ["organization_id"], name: "index_user_notification_preferences_on_organization_id"
+  end
+
   create_table "user_work_patterns", force: :cascade do |t|
     t.boolean "active", default: true, null: false
     t.datetime "created_at", null: false
@@ -283,6 +333,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_022241) do
     t.datetime "current_sign_in_at"
     t.string "current_sign_in_ip"
     t.string "email", null: false
+    t.boolean "email_enabled", default: false, null: false
     t.string "employee_code", null: false
     t.string "encrypted_password", default: "", null: false
     t.boolean "exempt_from_overtime", default: false, null: false
@@ -355,8 +406,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_022241) do
   add_foreign_key "leave_types", "organizations"
   add_foreign_key "monthly_attendance_summaries", "organizations"
   add_foreign_key "monthly_attendance_summaries", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
+  add_foreign_key "notification_deliveries", "notifications", column: ["organization_id", "notification_id"], primary_key: ["organization_id", "id"]
+  add_foreign_key "notification_deliveries", "organizations"
+  add_foreign_key "notifications", "organizations"
+  add_foreign_key "notifications", "users", column: ["organization_id", "subject_user_id"], primary_key: ["organization_id", "id"]
+  add_foreign_key "notifications", "users", column: ["organization_id", "target_user_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "organization_settings", "organizations"
   add_foreign_key "reason_templates", "organizations"
+  add_foreign_key "user_notification_preferences", "organizations"
+  add_foreign_key "user_notification_preferences", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "user_work_patterns", "organizations"
   add_foreign_key "user_work_patterns", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "user_work_patterns", "work_patterns", column: ["organization_id", "work_pattern_id"], primary_key: ["organization_id", "id"]
