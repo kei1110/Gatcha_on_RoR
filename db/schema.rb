@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_26_022515) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_26_023055) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -227,6 +227,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_26_022515) do
     t.index ["organization_id"], name: "index_monthly_attendance_summaries_on_organization_id"
   end
 
+  create_table "notifications", force: :cascade do |t|
+    t.text "body", null: false
+    t.datetime "created_at", null: false
+    t.bigint "organization_id", null: false
+    t.integer "priority", null: false
+    t.timestamptz "read_at"
+    t.integer "source_type", null: false
+    t.bigint "subject_user_id"
+    t.bigint "target_user_id", null: false
+    t.string "title", null: false
+    t.datetime "updated_at", null: false
+    t.index ["organization_id", "id"], name: "index_notifications_on_organization_id_and_id", unique: true
+    t.index ["organization_id", "target_user_id", "read_at"], name: "index_notifications_target_unread"
+    t.index ["organization_id"], name: "index_notifications_on_organization_id"
+  end
+
   create_table "organization_settings", force: :cascade do |t|
     t.integer "closing_day", default: 31, null: false
     t.datetime "created_at", null: false
@@ -375,6 +391,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_26_022515) do
   add_foreign_key "leave_types", "organizations"
   add_foreign_key "monthly_attendance_summaries", "organizations"
   add_foreign_key "monthly_attendance_summaries", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
+  add_foreign_key "notifications", "organizations"
+  add_foreign_key "notifications", "users", column: ["organization_id", "subject_user_id"], primary_key: ["organization_id", "id"]
+  add_foreign_key "notifications", "users", column: ["organization_id", "target_user_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "organization_settings", "organizations"
   add_foreign_key "reason_templates", "organizations"
   add_foreign_key "user_notification_preferences", "organizations"

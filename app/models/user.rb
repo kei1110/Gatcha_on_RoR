@@ -18,6 +18,7 @@ class User < ApplicationRecord
   has_many :leave_requests, foreign_key: :requester_id, inverse_of: :requester, dependent: :destroy
   has_many :holiday_work_requests, foreign_key: :requester_id, inverse_of: :requester, dependent: :destroy
   has_one :notification_preference, class_name: "UserNotificationPreference", dependent: :destroy
+  has_many :notifications, foreign_key: :target_user_id, inverse_of: :target_user, dependent: :destroy
 
   enum :role, { employee: 0, manager: 1, hr_admin: 2 }, validate: true
 
