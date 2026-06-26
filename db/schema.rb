@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_26_022024) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_26_022515) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -266,6 +266,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_26_022024) do
     t.index ["organization_id"], name: "index_reason_templates_on_organization_id"
   end
 
+  create_table "user_notification_preferences", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.boolean "holiday_block_enabled", default: true, null: false
+    t.bigint "organization_id", null: false
+    t.boolean "quiet_hours_enabled", default: true, null: false
+    t.integer "quiet_hours_end", default: 8, null: false
+    t.integer "quiet_hours_start", default: 19, null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["organization_id", "id"], name: "index_user_notification_preferences_on_organization_id_and_id", unique: true
+    t.index ["organization_id", "user_id"], name: "index_user_notification_preferences_unique", unique: true
+    t.index ["organization_id"], name: "index_user_notification_preferences_on_organization_id"
+  end
+
   create_table "user_work_patterns", force: :cascade do |t|
     t.boolean "active", default: true, null: false
     t.datetime "created_at", null: false
@@ -363,6 +377,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_26_022024) do
   add_foreign_key "monthly_attendance_summaries", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "organization_settings", "organizations"
   add_foreign_key "reason_templates", "organizations"
+  add_foreign_key "user_notification_preferences", "organizations"
+  add_foreign_key "user_notification_preferences", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "user_work_patterns", "organizations"
   add_foreign_key "user_work_patterns", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "user_work_patterns", "work_patterns", column: ["organization_id", "work_pattern_id"], primary_key: ["organization_id", "id"]
