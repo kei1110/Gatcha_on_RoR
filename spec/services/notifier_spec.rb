@@ -119,5 +119,20 @@ RSpec.describe Notifier, type: :service do
         expect(enqueued[:at]).to be_within(1.second).of(delivery.scheduled_at.to_f)
       end
     end
+
+    it "個人 UserNotificationPreference が組織設定を上書きする（§4.2 フォールバック順）" do
+      # 夜間。組織設定は quiet 有効（既定）だが、個人 UNP で quiet 無効 → UNP 優先で非抑制（即時）。
+      # resolved_preference が誤って org.setting を使うと未来 scheduled_at になり FAIL する＝判別的。
+      ActsAsTenant.with_tenant(org) do
+        create(:user_notification_preference, user: target, quiet_hours_enabled: false)
+      end
+      travel_to(Time.utc(2026, 6, 24, 11, 0)) # 20:00 JST（組織設定単独なら抑制される時刻）
+      ActsAsTenant.with_tenant(org) do
+        described_class.call(target_user: target, title: "t", body: "b",
+                             priority: :action_required, source_type: :request_approved)
+        delivery = NotificationDelivery.email.last
+        expect(delivery.scheduled_at).to be_within(5.seconds).of(Time.current)
+      end
+    end
   end
 end
