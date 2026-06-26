@@ -601,7 +601,8 @@ polymorphic 関連（`ApprovalAssignment.approvable` / `AttendanceHistory.source
 | quiet_hours_enabled | boolean | 個人の抑制 ON/OFF |
 | quiet_hours_start / quiet_hours_end | integer | 個人の抑制時間帯 |
 | holiday_block_enabled | boolean | 個人の休日ブロック |
-| email_enabled | boolean | 個人メール opt-in（組織側が true のときのみ有効・二重 opt-in） |
+
+> **email_enabled は本テーブルに持たない（4-1a で確定）:** 個人メール opt-in は `User.email_enabled`（§4.4）が SSOT。本テーブルは抑制系（quiet hours / 休日ブロック）のみを個人上書きとして持つ。組織フラグ `email_notification_enabled`（§4.15）との AND ゲートであり、組織設定への fallback を持つ抑制系とは意味論が異なるため分離する。
 
 ### 4.18 Notification / NotificationDelivery（通知）
 

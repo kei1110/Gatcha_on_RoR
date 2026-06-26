@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_23_022241) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_26_021532) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -283,6 +283,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_022241) do
     t.datetime "current_sign_in_at"
     t.string "current_sign_in_ip"
     t.string "email", null: false
+    t.boolean "email_enabled", default: false, null: false
     t.string "employee_code", null: false
     t.string "encrypted_password", default: "", null: false
     t.boolean "exempt_from_overtime", default: false, null: false
