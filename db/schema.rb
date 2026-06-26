@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_26_023706) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_26_024143) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -174,6 +174,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_26_023706) do
     t.decimal "days_requested", precision: 6, scale: 2, null: false
     t.date "end_date", null: false
     t.integer "half_day_type", default: 0, null: false
+    t.date "last_stale_notified_on"
     t.bigint "leave_type_id", null: false
     t.bigint "organization_id", null: false
     t.text "reason"
