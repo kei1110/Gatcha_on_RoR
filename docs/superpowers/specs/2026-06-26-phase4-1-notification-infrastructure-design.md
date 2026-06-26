@@ -149,11 +149,12 @@ enum :status,  { pending: 0, sent: 1, error: 2 }, validate: true
 
 ### 4.2 抑制（§9.3・email のみ）
 
-`Notifications::SuppressionWindow`(PORO): 対象ユーザーの `UserNotificationPreference` →（無ければ）`OrganizationSetting` を参照し、
-- `quiet_hours_enabled` ∧ 現在時刻が `quiet_hours_start`〜`quiet_hours_end` 帯
-- または `holiday_block_enabled` ∧ `CompanyCalendar` で当日が休日
+`Notifications::SuppressionWindow`(**純 PORO・値注入**・§9 反映①②): preference の解決（`UserNotificationPreference` →（無ければ）`OrganizationSetting`）と休日判定（`CompanyCalendar`）という **AR 読み取りは `Notifier`(Service) 側で行い**、SuppressionWindow には**解決済みの値だけを注入**する — `SuppressionWindow.new(now_local:, quiet_enabled:, quiet_start:, quiet_end:, holiday_block:, holiday?:)`。これにより DB なしで境界算術を網羅テストできる（§2.2-1 PORO 契約を回復）。
+- **`now_local` は組織ローカル時刻**（`Time.current` は UTC ゆえ `ActsAsTenant.current_tenant.time_zone` で `in_time_zone` してから渡す・organization.rb の `#today`/`#time_zone` idiom と同経路）。
+- `quiet_enabled` ∧ `now_local` が `quiet_start`〜`quiet_end` 帯（**start 包含・end 排他**・日跨ぎ start=19/end=8 を扱う）
+- または `holiday_block` ∧ 当日が休日
 
-のいずれかなら `suppressed? = true`・`next_allowed_at`（抑制終了時刻）を返す。非抑制なら即時（`scheduled_at = Time.current`）。`action_required` も抑制対象（§9.3 は優先度で除外しない）。quiet_hours は日跨ぎ（start=19, end=8 のような夜間帯）を扱う。
+のいずれかなら `suppressed? = true`・`next_allowed_at`（抑制終了時刻・組織ローカル）を返す。非抑制なら即時（`scheduled_at = Time.current`）。`action_required` も抑制対象（§9.3 は優先度で除外しない）。
 
 ### 4.3 コンポーネント
 
@@ -193,9 +194,10 @@ enum :status,  { pending: 0, sent: 1, error: 2 }, validate: true
 
 ### 5.4 producer 接続（pipe 実証・判断 E）
 
-- 接ぎ目: `Approvable` / `app/services/approvals/*` の**終端遷移（approved / rejected）後**（`after_commit` 相当の確定後）に `Notifier.call`。
+- 接ぎ目: **承認 tx が確定した後**に `Notifier.call`（§9 反映③・最重要）。`Approvals::Approve#call` は `with_lock` 内で `apply_*_effects!` を呼び、LeaveRequest 承認は `OverBalanceError` で **rollback し得る**（approve.rb:20-27,52 + RAILS_GOTCHAS 2-2b）。`Notifier` を tx/`with_lock` 内に置くと in_app broadcast が即時に飛び、rollback 時に**幻の承認ベル**が残る。**発火点は `Approvals::Approve.call` / `Approvals::Reject.call` の戻り後（controller 層で `approvable.approved? / rejected?` を見て呼ぶ）か host モデルの `after_commit` に固定**し、`apply_*_effects!`/`with_lock` 内には**置かない**。
   - target_user = requester、priority = **informational**（§9.1「申請の承認/却下｜情報提供｜ベル｜即時」）、source_type = `request_approved` / `request_rejected`、subject_user = requester。
   - informational ゆえ既定はベルのみ（二重 opt-in 時のみメール）= §9.1 の「ベル」と一致。
+  - **多段承認**: 中間段階では通知せず、**終端（全段承認 = `finalize!` / 却下）でのみ**発火（2 段ルートの 1 人目承認では requester 通知ゼロ）。
 - 既存の承認/却下サービス（LeaveRequest / ClockChangeRequest / HolidayWorkRequest を `Approvable` で共通化）の seam を**実コードで特定**し、副作用の atomicity（承認確定 tx との境界）を確認。**approval-engine-reviewer 必須**。
 
 ### 5.5 §1.4 動線マップ行追加
@@ -236,3 +238,71 @@ enum :status,  { pending: 0, sent: 1, error: 2 }, validate: true
 | **4-1c** UI+producer | §5 のベル / 一覧 / 設定 / 承認接続 / §1.4 行 + 統合テスト | ✅ | tenant-isolation + approval-engine |
 
 > 4-1a データ層は §1.4 行を持たない（到達面ゼロ）。これは §1.4 が「ユーザー向け動線の到達性」を測る指標であり、データ層 slice には動線が無いことを正直に反映したもの（行を持たないことが整合）。phase 4-1 全体としては 4-1c で reachable に着地する。
+
+## 9. 多視点レビュー反映（2026-06-26・binding 追補）
+
+5 視点（原則整合 / 実用主義 / YAGNI / セキュリティ・テナント / テスト網羅）の並列 critique を反映。**本節は §2〜§6 を上書きする拘束力を持つ**（writing-plans は本節を必須要件として扱う）。骨格（3 サブ PR・二機構の和解・enum+SolidQueue）は妥当と確認され、以下は「明示の追補」。
+
+### ① タイムゾーン（実用 High・視点一致）
+quiet hours 境界は**組織ローカル時刻**で判定する。`Time.current` は UTC ゆえ `ActsAsTenant.current_tenant.time_zone` で `in_time_zone` してから hour 比較（organization.rb の `#today`/`#time_zone` と同経路）。§4.2 を改訂済。テストは JST 固定 `travel_to` で境界を pin。
+
+### ② SuppressionWindow を純 PORO 化（原則整合 Med）
+AR 読み取り（preference 解決・休日判定）は `Notifier`(Service) に置き、SuppressionWindow には**解決済み値を注入**（§4.2 改訂済）。§2.2-1 の「DB なし網羅テスト」契約を回復。
+
+### ③ producer 接ぎ目の atomicity（原則整合/実用/テスト 一致・最重要）
+`Notifier.call` は**承認 tx 確定後**に発火（§5.4 改訂済）。`apply_*_effects!`/`with_lock` 内に置かない。`Notifier` 自身の DB 書き込み（Notification + NotificationDelivery）は**明示 tx で囲み、in_app broadcast と job enqueue は after_commit 後**に発火（`enqueue_after_transaction_commit` 設定 + 手動 broadcast の発火点固定）。これで sweep が「未コミット行」を拾う事故も防ぐ。
+
+### ④ model レベル同一組織検証（セキュリティ High）
+複合 FK（DB 最終防衛）に加え、**AR 検証 `*_must_belong_to_same_organization` を二重防御として付与**（repo 全モデルの idiom・`approval_assignment.rb` 踏襲）:
+- `Notification#target_user` / `#subject_user`（optional は早期 return）
+- `NotificationDelivery#notification`
+- `UserNotificationPreference#user`
+
+### ⑤ NotificationPolicy / Scope / 既読 IDOR（セキュリティ High・テスト High）
+acts_as_tenant は**テナント越境のみ**遮断（同一テナント他人は素通り）。Pundit で塞ぐ:
+- `NotificationPolicy::Scope#resolve = scope.where(target_user_id: user.id)`
+- `NotificationPolicy#update? = record.target_user_id == user.id`（既読化）
+- controller は `policy_scope(Notification).find(...)` で取得（bare `Notification.find` 禁止・二重防御）
+- `NotificationPreferencePolicy` を立て edit/update も Pundit 一元化（原則 §2.2-4・"current_user だから安全" の暗黙認可層を作らない）
+
+### ⑥ 通知設定フォームの境界（セキュリティ Med・テスト Med）
+- User 更新は **current_user 限定・permit は `:email_enabled` のみ**。Preference の `user_id`/`organization_id` は**サーバ権威**（current_user 由来・params で受けない）。
+- 2 モデル更新（User + UserNotificationPreference）は**単一 tx**（`update!` 2 本）。片方失敗で部分更新を残さない。`find_or_initialize_by` で lazy 生成。
+
+### ⑦ NotificationMailer（実用 Med・セキュリティ Med）
+- `default from: ENV.fetch("MAILER_SENDER", ...)`（`ApplicationMailer` の placeholder `from@example.com` を継承しない）。
+- リンク host は **job 文脈に request が無い**ため `notification.organization.subdomain` から構築（`request.subdomain` 不可）。§3.2 のテナント再確定を満たす。
+
+### ⑧ retry の出所と配信ロックの注記（実用 Low/Med）
+- error 確定（`>3`）の判定は **ActiveJob 組込 `executions`** を正とし、`retry_count` 列はその**監査ミラー**（job が反映）。SolidQueue と二重管理しない（§2 と整合）。
+- `deliver_now` を `with_lock` 内で実行＝SMTP I/O 間の行ロック保持は**意図的**（4-1 は低ボリューム前提）。volume 増時は claim-then-send（`sending` へ flip→commit→ロック外 deliver）に分解する旨を注記。
+- status 遷移の書き込みは**単一メソッド（with_lock 内）に集約**（enum が散在状態機械にならないよう・原則 §13 精神）。
+
+### ⑨ Turbo Stream 署名不変条件（原則整合 Med・セキュリティ Med）
+`turbo_stream_from current_user`（GlobalID 署名 stream）を使い、**未署名の独自 ActionCable channel を新設しない**。broadcast 先も target_user の GlobalID stream に限定。ベル描画は `policy_scope(Notification)` 経由。**repo 初の Turbo Streams 利用ゆえ DoD に固定**。dev は async adapter（in-process）= 4-1 producer は request 文脈ゆえベルは出るが、**将来 worker 文脈 broadcast は dev async では不可視**（本番 solid_cable は別 DB 経由で可）の注記を残す。
+
+### ⑩ Organization.active（セキュリティ Low）
+ディスパッチャの `Organization.active.find_each` が依存する `scope :active, -> { where(active: true) }` を `Organization` に追加（未定義・`resolve_tenant` は生 `where(active: true)`）。子→email の enqueue は `(organization_id: org.id, delivery_id:)` を明示。
+
+### ⑪ sweep の根拠言い換え（実用 Low・YAGNI Med）
+毎時 sweep の正当化を「scheduled job が失われた」から **「enqueue 取りこぼし回収（Delivery 作成済・enqueue 前クラッシュ）＋ 4-2/4-3 が踏襲する dispatcher 雛形の規範実装」**に言い換え（SolidQueue scheduled job は DB 永続で耐久的・二重機構自体は §10 準拠で正当）。
+
+### ⑫ ROADMAP reconcile（YAGNI Med・drift 防止）
+承認/却下 producer を 4-1c へ前倒しするため、**ROADMAP 4-2 行の「承認/却下接続」を「4-1c で充足済」へ更新**し、4-2 での二重実装を防ぐ（4-1c の PR に同梱）。
+
+### ⑬ テスト負例の明文化（テスト High×4 ＋ Med 群）
+§6 の各層に**負例を明示列挙**（positive 素通り防止）:
+- **既読 IDOR**: 他人/他テナントの notification を PATCH→403/404・`read_at` 不変。index の policy_scope が自分宛のみ
+- **quiet hours 境界**: 18:59 非抑制 / 19:00 抑制（start 包含）/ 07:59 抑制 / 08:00 非抑制（end 排他）/ 各 `next_allowed_at` 実値。非日跨ぎ窓（start=8/end=19）と start==end 縮退も
+- **二重 opt-in AND ゲート**: informational で 組織on×個人off→メール無 / 組織off×個人on→メール無 / 両on→有 の **3 セル個別**。reference は両 opt-in でも Delivery 0 件。action_required は全 off でも email Delivery 生成
+- **却下経路**: reject 経由でも requester に Notification（source_type: request_rejected）+ broadcast（承認と対の 2 ケース）
+- **休日判定**: どの `day_type`（saturday/sunday/holiday/legal_holiday/company_holiday）が「休日」か・未登録日 fallback（Resolver :sunday）の扱いを表で固定
+- **冪等二重発火**: 同一 delivery に perform 2 回（wait_until + sweep 相当）→ `ActionMailer.deliveries` 1 通
+- **dispatch 絞り込み**: scheduled_at 未来 / sent・error / 非 active org を拾わない
+- **承認 tx rollback**: 後続副作用失敗で rollback→Notification 0 件・broadcast 0 件（幻通知なし）
+- **多段中間**: 1 人目承認で通知ゼロ・終端で 1 件
+- **broadcast/enqueue assertion**: `have_broadcasted_to(current_user)`・`have_enqueued_job(NotificationEmailJob).with(wait_until:, organization_id:, delivery_id:)`（repo 初の broadcast テストゆえ基盤ごと固定）
+- **OrganizationSetting 新 5 列**の lazy 既定（quiet 19/8・各 enabled）
+
+### 是認（変更不要と確認された設計判断）
+`source_type` 2 値限定 / `channel` の `in_app` 予約値（SPEC §4.18 準拠・再番号は逆に drift）/ `NotificationDispatchTenantJob` 別クラス（親=スコープ外列挙と子=with_tenant は同居不可）/ `last_stale_notified_on` の 1 フェーズ早い追加（ROADMAP #113 明示・nullable で安価）/ org_settings 5 列限定 / §9.5 error→hr_admin 見送り / archive 見送り（§11.4）。
