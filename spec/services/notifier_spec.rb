@@ -120,6 +120,19 @@ RSpec.describe Notifier, type: :service do
       end
     end
 
+    it "休日ブロックで抑制され scheduled_at が未来にずれる（§4.2 holiday 配線）" do
+      # holiday 配線（resolver day_type→Boolean→SuppressionWindow 注入）を Notifier レベルで exercise。
+      # quiet を無効化し holiday 次元だけ分離。当日を休日登録すると next_allowed_at=翌日 0:00（未来）。
+      ActsAsTenant.with_tenant(org) do
+        org.setting.update!(quiet_hours_enabled: false, holiday_block_enabled: true)
+        create(:company_calendar, date: org.today, day_type: :holiday)
+        described_class.call(target_user: target, title: "t", body: "b",
+                             priority: :action_required, source_type: :request_approved)
+        delivery = NotificationDelivery.email.last
+        expect(delivery.scheduled_at).to be > Time.current
+      end
+    end
+
     it "個人 UserNotificationPreference が組織設定を上書きする（§4.2 フォールバック順）" do
       # 夜間。組織設定は quiet 有効（既定）だが、個人 UNP で quiet 無効 → UNP 優先で非抑制（即時）。
       # resolved_preference が誤って org.setting を使うと未来 scheduled_at になり FAIL する＝判別的。
