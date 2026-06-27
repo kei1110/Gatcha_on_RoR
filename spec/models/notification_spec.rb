@@ -60,4 +60,26 @@ RSpec.describe Notification do
       expect(n).to be_invalid
     end
   end
+
+  describe "同一組織強制（§3.6・二層防御）" do
+    let(:org)   { create(:organization) }
+    let(:other) { create(:organization) }
+    let(:other_user) { ActsAsTenant.with_tenant(other) { create(:user) } }
+
+    it "必須 target_user の他組織 id は DB 複合 FK で拒否（model 層を貫通）" do
+      ActsAsTenant.with_tenant(org) do
+        n = build(:notification, target_user: nil)
+        n.target_user_id = other_user.id # 他組織 id を直挿（acts_as_tenant の nil ロードを迂回）
+        expect { n.save!(validate: false) }.to raise_error(ActiveRecord::InvalidForeignKey)
+      end
+    end
+
+    it "optional subject_user の他組織 id は model validator が判別的に弾く" do
+      ActsAsTenant.with_tenant(org) do
+        n = build(:notification, subject_user_id: other_user.id)
+        expect(n).to be_invalid
+        expect(n.errors[:subject_user]).to be_present
+      end
+    end
+  end
 end

@@ -42,4 +42,20 @@ RSpec.describe NotificationDelivery do
       expect(d).to be_invalid
     end
   end
+
+  describe "同一組織強制（§3.6・二層防御）" do
+    let(:org)   { create(:organization) }
+    let(:other) { create(:organization) }
+    let(:other_notification) do
+      ActsAsTenant.with_tenant(other) { create(:notification) }
+    end
+
+    it "必須 notification の他組織 id は DB 複合 FK で拒否" do
+      ActsAsTenant.with_tenant(org) do
+        d = build(:notification_delivery, notification: nil)
+        d.notification_id = other_notification.id
+        expect { d.save!(validate: false) }.to raise_error(ActiveRecord::InvalidForeignKey)
+      end
+    end
+  end
 end

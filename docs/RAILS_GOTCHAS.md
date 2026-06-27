@@ -159,6 +159,13 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **HOW**: `have_broadcasted_to(user.to_gid_param)` で raw GID param を直接照合する（または `Turbo::Broadcastable::TestHelper#assert_turbo_stream_broadcasts`）。署名（`turbo_stream_from` の signed_stream_name）は購読ハンドシェイクの検証のみで broadcast キーには関与しないため、サーバ `broadcast_*_to(user)` と client `turbo_stream_from(user)` は同一 raw GID param stream で一致する
 - verified: turbo-rails 2.0.23 / 2026-06-26（4-1b Task 4 Notifier・reviewer が gem ソース照合）
 
+### 1 回の呼び出しが複数 broadcast する時、`have_broadcasted_to` の既定 exactly-1 が崩れる（payload で判別する）
+
+- **WHAT**: `Notifier.call` が同一 stream に prepend（ドロップダウン）+ replace（未読バッジ）の **2 件**を broadcast するようになると、カウント無しの `have_broadcasted_to(user.to_gid_param)`（＝exactly 1 を期待）が「2 件あって 1 件期待」で FAIL する。安易に `.at_least(:once)` へ緩めると、2 件のうち 1 件（例: prepend）が欠落しても残り 1 件で green になり**回帰を捕捉できなくなる**（判別性喪失）
+- **WHY**: rspec-rails の `have_broadcasted_to` は引数無しだと exactly-once を期待する。`.at_least(:once)` は「stream に何か 1 件以上」しか保証せず、どの broadcast かを問わない
+- **HOW**: 各 broadcast を**相互排他な payload マーカー**で個別検証する。`have_broadcasted_to(stream).with(a_string_including("notification-item"))`（prepend の partial の class）／ `...with(a_string_including("notification_bell_count"))`（replace の target id）。turbo は raw HTML **文字列**を送るため `.with` は string matcher（hash ではない・`hash_including(content:)` は不一致）。`.with` は「1 件以上が条件を満たす」照合ゆえ各 broadcast を別マーカーで独立に固定できる。不発火（幻通知防止）の判別は `not_to have_broadcasted_to` が担う
+- verified: turbo-rails 2.0.23 / Rails 8.1 / 2026-06-27（4-1c Task 5 で件数 broadcast 追加時に実踏・当初 `.at_least(:once)` 案を review が判別性喪失と指摘→payload マーカーで仕留め）
+
 ---
 
 ## 生成物・設定

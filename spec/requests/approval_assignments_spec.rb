@@ -213,4 +213,88 @@ RSpec.describe "ApprovalAssignments", type: :request do
       expect(balance.granted_days).to eq(1)
     end
   end
+
+  describe "producer 接続（承認/却下 → requester 通知・§5.4）" do
+    include ActiveJob::TestHelper
+
+    # 正例の broadcast は .at_least(:once)：Notifier.call は同一 stream に prepend + 件数 replace の
+    # 2 件を broadcast するため（既定の have_broadcasted_to は exactly 1 を期待）。不発火の判別は
+    # 負例 not_to have_broadcasted_to が担う。
+    it "終端承認（全段）で requester に request_approved 通知 + broadcast" do
+      sign_in boss
+      patch approve_approval_assignment_url(assignment_for(1), host: tenant_host(org)) # 中間（pos1）
+      sign_in dept
+      expect {
+        patch approve_approval_assignment_url(assignment_for(2), host: tenant_host(org)) # 終端（pos2）
+      }.to have_broadcasted_to(emp.to_gid_param).at_least(:once)
+      ActsAsTenant.with_tenant(org) do
+        n = Notification.where(target_user: emp, source_type: :request_approved)
+        expect(n.count).to eq(1)
+        expect(n.first.priority).to eq("informational")
+        expect(n.first.subject_user_id).to eq(emp.id)
+      end
+    end
+
+    it "中間段階（pos1 のみ承認・applying）では通知ゼロ" do
+      sign_in boss
+      expect {
+        patch approve_approval_assignment_url(assignment_for(1), host: tenant_host(org))
+      }.not_to have_broadcasted_to(emp.to_gid_param)
+      ActsAsTenant.with_tenant(org) do
+        expect(leave.reload.approval_status).to eq("applying")
+        expect(Notification.where(target_user: emp).count).to eq(0)
+      end
+    end
+
+    it "却下で requester に request_rejected 通知" do
+      sign_in boss
+      expect {
+        patch reject_approval_assignment_url(assignment_for(1), host: tenant_host(org), params: { comment: "却下理由" })
+      }.to have_broadcasted_to(emp.to_gid_param).at_least(:once)
+      ActsAsTenant.with_tenant(org) do
+        expect(leave.reload.approval_status).to eq("rejected")
+        n = Notification.where(target_user: emp, source_type: :request_rejected)
+        expect(n.count).to eq(1)
+        expect(n.first.priority).to eq("informational")
+      end
+    end
+
+    it "通知失敗は承認の成功応答を覆さない（§9.5 ログのみ・rescue 反転防止）" do
+      # Notifier が RecordInvalid を投げても、approve の rescue ActiveRecord::RecordInvalid に
+      # 落ちて「承認できませんでした」と反転しないこと（承認 tx は既に commit 済）。
+      allow(Notifier).to receive(:call).and_raise(ActiveRecord::RecordInvalid) # 承認 rescue が掴む種類
+      sign_in boss
+      patch approve_approval_assignment_url(assignment_for(1), host: tenant_host(org))
+      sign_in dept
+      patch approve_approval_assignment_url(assignment_for(2), host: tenant_host(org))
+      expect(response).to have_http_status(:see_other)
+      expect(flash[:notice]).to eq("承認しました") # 反転していない
+      expect(flash[:alert]).to be_nil
+      expect(ActsAsTenant.with_tenant(org) { leave.reload.approval_status }).to eq("approved") # 承認は commit 済
+    end
+  end
+
+  describe "producer の幻通知防止（over-balance rollback・§9③）" do
+    let!(:paid_type) { ActsAsTenant.with_tenant(org) { create(:leave_type, system_type: :annual, paid_leave: true) } }
+    let!(:paid_leave) do
+      ActsAsTenant.with_tenant(org) do
+        LeaveRequests::Create.call(requester: emp, leave_type: paid_type, start_date: Date.new(2026, 5, 1),
+                                   end_date: Date.new(2026, 5, 1), half_day_type: "none", reason: "有給")
+      end
+    end
+    def paid_assignment(pos) = ActsAsTenant.with_tenant(org) { paid_leave.approval_assignments.find_by(position: pos) }
+
+    it "残高ゼロの最終承認は rollback → Notification 0 件・broadcast 0 件（幻ベルなし）" do
+      sign_in boss
+      patch approve_approval_assignment_url(paid_assignment(1), host: tenant_host(org))
+      sign_in dept
+      expect {
+        patch approve_approval_assignment_url(paid_assignment(2), host: tenant_host(org)) # OverBalanceError → rollback
+      }.not_to have_broadcasted_to(emp.to_gid_param)
+      ActsAsTenant.with_tenant(org) do
+        expect(paid_leave.reload.approval_status).to eq("applying") # rollback で applying のまま
+        expect(Notification.where(target_user: emp).count).to eq(0)
+      end
+    end
+  end
 end

@@ -1,0 +1,19 @@
+<% content_for :title, "通知" %>
+<div class="w-full max-w-2xl">
+  <h1 class="mb-4 text-lg font-bold">通知</h1>
+  <% if @notifications.empty? %>
+    <p class="text-sm text-gray-500">通知はありません。</p>
+  <% else %>
+    <ul id="notifications_index" class="rounded border border-gray-200 bg-white">
+      <% @notifications.each do |notification| %>
+        <li class="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-sm <%= notification.read_at? ? "text-gray-500" : "font-semibold text-gray-900" %>">
+          <span><%= notification.title %></span>
+          <% unless notification.read_at? %>
+            <%= button_to "既読にする", notification_path(notification), method: :patch,
+                  class: "rounded bg-gray-800 px-2 py-1 text-xs text-white" %>
+          <% end %>
+        </li>
+      <% end %>
+    </ul>
+  <% end %>
+</div>

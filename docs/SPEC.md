@@ -95,6 +95,8 @@
 | 社員 | 休日出勤を申請し代休を得たい | `/holiday_work_requests/new` | ナビ「休日出勤」 | 承認後 is_holiday_work・代休 +1 | ✅ | §6.11 |
 | 社員 | 承認済み申請を撤回したい | 各 index 行内フォーム | ナビ「休暇申請」「打刻変更」 | 逆操作（残高/記録復元） | ✅ | §7.6 |
 | 社員 | 自分の月次サマリを提出したい | `/monthly_attendance_summaries/:id` | ナビ「月次サマリ」→ 詳細 | submit 遷移 | ✅ | §6.6 |
+| 社員 | 通知を確認し既読にしたい | `/notifications` | ナビ 🔔ベル →「すべての通知」 | 通知一覧・既読 flagging | ✅ | §4.18 |
+| 社員 | 通知設定（抑制・メール opt-in）を変更したい | `/notification_preferences/edit` | ナビ 🔔ベル →「通知設定」 | quiet_hours / email_enabled 更新 | ✅ | §4.15/§4.17 |
 | 管理者 | 申請を承認/却下したい | `/approval_assignments` | ナビ「承認」 | AASM 遷移 + 副作用 | ✅ | §7 |
 | 管理者 | 部下の締めを確定/差戻ししたい | `/monthly_attendance_summaries/:id` | ナビ「月次サマリ」→ 詳細 | finalize/defer | ✅ | §6.6 |
 | 管理者 | 月次サマリを一括確定したい | `/monthly_attendance_summaries`（bulk_finalize） | ナビ「月次サマリ」→ 一括 | BulkFinalizeJob（冪等） | ✅ | §6.6 |
