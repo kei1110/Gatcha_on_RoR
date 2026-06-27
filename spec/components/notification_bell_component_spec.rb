@@ -27,4 +27,10 @@ RSpec.describe NotificationBellComponent, type: :component do
     expect(page).to have_css("ul#notifications", visible: :all)
     expect(page).to have_selector("li", text: "申請が承認されました", visible: :all)
   end
+
+  it "通知一覧・通知設定への動線を持つ（§1.4 到達性 — preferences は本リンクが唯一の nav 入口）" do
+    render_inline(described_class.new(current_user: user))
+    expect(page).to have_link("すべての通知", href: "/notifications", visible: :all)
+    expect(page).to have_link("通知設定", href: "/notification_preferences/edit", visible: :all)
+  end
 end
