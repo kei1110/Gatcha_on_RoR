@@ -26,6 +26,7 @@
   <body>
     <% if user_signed_in? %>
       <%= render GlobalNavComponent.new(current_user: current_user) %>
+      <%= turbo_stream_from current_user %><%# §9⑨ 単一引数=Notifier の broadcast_*_to(@target_user) と同一 GID stream %>
     <% end %>
     <% flash.each do |type, message| %>
       <% next unless %w[notice alert].include?(type) %>

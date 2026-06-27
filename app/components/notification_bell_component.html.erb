@@ -1,0 +1,17 @@
+<%# ネイティブ disclosure（JS 不要）。#notifications=prepend 先 / #notification_bell_count=件数 replace 先 %>
+<details class="relative">
+  <summary class="flex cursor-pointer list-none items-center rounded px-2 py-1.5 hover:bg-gray-100">
+    <span aria-label="通知" title="通知">🔔</span>
+    <%= render "notifications/bell_count", count: unread_count %>
+  </summary>
+  <div class="absolute right-0 z-10 mt-1 w-72 rounded border border-gray-200 bg-white shadow">
+    <ul id="notifications" class="max-h-80 overflow-y-auto">
+      <% recent.each do |notification| %>
+        <%= render "notifications/notification", notification: notification %>
+      <% end %>
+    </ul>
+    <div class="border-t border-gray-100 px-3 py-2 text-center text-xs">
+      <%= link_to "すべての通知", helpers.notifications_path, class: "text-gray-600 hover:underline" %>
+    </div>
+  </div>
+</details>

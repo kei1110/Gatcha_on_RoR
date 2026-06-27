@@ -1,0 +1,4 @@
+<%# 未読バッジ。broadcast replace の target ゆえ id を保持。0 件は数字非表示 %>
+<span id="notification_bell_count" class="<%= count.positive? ? "ml-1 rounded-full bg-red-600 px-1.5 text-xs text-white" : "" %>">
+  <%= count.positive? ? count : "" %>
+</span>

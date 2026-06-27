@@ -10,6 +10,7 @@
       <% end %>
     </ul>
     <div class="flex items-center gap-3 text-sm text-gray-600">
+      <%= render NotificationBellComponent.new(current_user: current_user) %>
       <span><%= current_user.name %><% if ActsAsTenant.current_tenant %>（<%= ActsAsTenant.current_tenant.name %>）<% end %></span>
       <%= button_to "ログアウト", helpers.destroy_user_session_path, method: :delete,
             class: "rounded bg-gray-800 px-3 py-1.5 text-white" %>

@@ -89,13 +89,19 @@ class Notifier
     CompanyCalendarResolver.new(organization: org).day_type(date).in?(HOLIDAY_DAY_TYPES)
   end
 
-  # 署名 stream（GlobalID）にのみ broadcast（§9⑨）。target は 4-1c のベル list 要素。
+  # 署名 stream（GlobalID）にのみ broadcast（§9⑨）。prepend（ドロップダウン）+ 件数 replace（バッジ）。
   def broadcast_in_app(notification)
     Turbo::StreamsChannel.broadcast_prepend_to(
       @target_user,
       target: "notifications",
       partial: "notifications/notification",
       locals: { notification: }
+    )
+    Turbo::StreamsChannel.broadcast_replace_to(
+      @target_user,
+      target: "notification_bell_count",
+      partial: "notifications/bell_count",
+      locals: { count: Notification.unread.where(target_user: @target_user).count }
     )
   end
 
