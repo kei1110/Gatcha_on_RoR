@@ -217,6 +217,9 @@ RSpec.describe "ApprovalAssignments", type: :request do
   describe "producer 接続（承認/却下 → requester 通知・§5.4）" do
     include ActiveJob::TestHelper
 
+    # 正例の broadcast は .at_least(:once)：Notifier.call は同一 stream に prepend + 件数 replace の
+    # 2 件を broadcast するため（既定の have_broadcasted_to は exactly 1 を期待）。不発火の判別は
+    # 負例 not_to have_broadcasted_to が担う。
     it "終端承認（全段）で requester に request_approved 通知 + broadcast" do
       sign_in boss
       patch approve_approval_assignment_url(assignment_for(1), host: tenant_host(org)) # 中間（pos1）
@@ -254,6 +257,20 @@ RSpec.describe "ApprovalAssignments", type: :request do
         expect(n.count).to eq(1)
         expect(n.first.priority).to eq("informational")
       end
+    end
+
+    it "通知失敗は承認の成功応答を覆さない（§9.5 ログのみ・rescue 反転防止）" do
+      # Notifier が RecordInvalid を投げても、approve の rescue ActiveRecord::RecordInvalid に
+      # 落ちて「承認できませんでした」と反転しないこと（承認 tx は既に commit 済）。
+      allow(Notifier).to receive(:call).and_raise(ActiveRecord::RecordInvalid) # 承認 rescue が掴む種類
+      sign_in boss
+      patch approve_approval_assignment_url(assignment_for(1), host: tenant_host(org))
+      sign_in dept
+      patch approve_approval_assignment_url(assignment_for(2), host: tenant_host(org))
+      expect(response).to have_http_status(:see_other)
+      expect(flash[:notice]).to eq("承認しました") # 反転していない
+      expect(flash[:alert]).to be_nil
+      expect(ActsAsTenant.with_tenant(org) { leave.reload.approval_status }).to eq("approved") # 承認は commit 済
     end
   end
 

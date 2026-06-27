@@ -69,5 +69,13 @@ class ApprovalAssignmentsController < ApplicationController
       source_type:,
       subject_user: approvable.requester
     )
+  rescue StandardError => e
+    # 通知は承認/却下（commit 済）の副次効果。失敗しても主操作の応答を覆さない（§9.5 ログのみ・
+    # 通知が通知を生む自己再帰を避ける）。これが無いと Notifier の RecordInvalid 等が approve の
+    # rescue ActiveRecord::RecordInvalid に落ち「承認できませんでした」と結果反転する。
+    Rails.logger.error(
+      "[Notifier] producer 通知失敗 source_type=#{source_type} " \
+      "approvable=#{approvable.class}##{approvable.id}: #{e.class}: #{e.message}"
+    )
   end
 end
