@@ -25,12 +25,14 @@ RSpec.describe Notifier, type: :service do
       expect { call(priority: :reference) }.to change { ActsAsTenant.with_tenant(org) { Notification.count } }.by(1)
     end
 
-    it "target_user の署名 stream に broadcast する（§9⑨）" do
+    it "target_user の署名 stream に prepend broadcast する（§9⑨）" do
       # turbo-rails の broadcast_prepend_to は stream_name_from = 生 GID param へ直接 broadcast する。
       # ActionCable の broadcasting_for（チャンネル名プレフィックス付き）とは別経路のため、
       # from_channel を使わず raw stream 名で照合する（Rails 実挙動起因の微修正）。
-      # prepend + replace で 2 件 broadcast するため at_least(:once) で照合する。
-      expect { call }.to have_broadcasted_to(target.to_gid_param).at_least(:once)
+      # prepend + replace の 2 件のうち prepend を判別的に照合する（replace 単独では green に
+      # ならない＝prepend 消失を捕捉）。prepend payload は _notification の class を含む。
+      expect { call }.to have_broadcasted_to(target.to_gid_param)
+        .with(a_string_including("notification-item"))
     end
 
     it "未読件数バッジを署名 stream に replace broadcast する（§9⑨）" do
