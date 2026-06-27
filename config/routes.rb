@@ -97,5 +97,7 @@ Rails.application.routes.draw do
     end
   end
 
+  resources :notifications, only: %i[index update]
+
   root "home#show"
 end

@@ -1,4 +1,4 @@
-<%# 4-1b: broadcast 描画用の最小要素。4-1c でベルのドロップダウン項目に再整形する %>
-<li id="<%= dom_id(notification) %>" class="notification-item">
+<%# broadcast(ベル prepend) と一覧で共用する 1 項目。既読は淡色化 %>
+<li id="<%= dom_id(notification) %>" class="notification-item border-b border-gray-100 px-3 py-2 text-sm <%= notification.read_at? ? "text-gray-500" : "font-semibold text-gray-900" %>">
   <%= notification.title %>
 </li>
