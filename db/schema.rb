@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_26_024143) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_27_024200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -238,6 +238,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_26_024143) do
     t.integer "status", default: 0, null: false
     t.datetime "updated_at", null: false
     t.index ["organization_id", "id"], name: "index_notification_deliveries_on_organization_id_and_id", unique: true
+    t.index ["organization_id", "notification_id"], name: "index_notification_deliveries_on_org_notification"
     t.index ["organization_id", "status", "scheduled_at"], name: "index_notification_deliveries_sweep"
     t.index ["organization_id"], name: "index_notification_deliveries_on_organization_id"
   end
@@ -254,7 +255,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_26_024143) do
     t.string "title", null: false
     t.datetime "updated_at", null: false
     t.index ["organization_id", "id"], name: "index_notifications_on_organization_id_and_id", unique: true
+    t.index ["organization_id", "subject_user_id"], name: "index_notifications_on_org_subject_user"
     t.index ["organization_id", "target_user_id", "read_at"], name: "index_notifications_target_unread"
+    t.index ["organization_id", "target_user_id"], name: "index_notifications_on_org_target_unread", where: "(read_at IS NULL)"
     t.index ["organization_id"], name: "index_notifications_on_organization_id"
   end
 
