@@ -98,6 +98,7 @@ Rails.application.routes.draw do
   end
 
   resources :notifications, only: %i[index update]
+  resource :notification_preferences, only: %i[edit update] # singular（current_user 自身の設定）
 
   root "home#show"
 end

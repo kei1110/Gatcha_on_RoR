@@ -1,0 +1,38 @@
+<% content_for :title, "通知設定" %>
+<div class="w-full max-w-xl">
+  <h1 class="mb-4 text-lg font-bold">通知設定</h1>
+  <%= form_with url: notification_preferences_path, method: :patch do %>
+    <fieldset class="mb-6">
+      <legend class="mb-2 font-semibold">メール通知</legend>
+      <label class="flex items-center gap-2 text-sm">
+        <%= hidden_field_tag "user[email_enabled]", "0" %>
+        <%= check_box_tag "user[email_enabled]", "1", current_user.email_enabled %>
+        メール通知を受け取る（組織側も有効な場合のみ送信）
+      </label>
+    </fieldset>
+
+    <fieldset class="mb-6">
+      <legend class="mb-2 font-semibold">抑制（夜間・休日）</legend>
+      <label class="mb-2 flex items-center gap-2 text-sm">
+        <%= hidden_field_tag "notification_preference[quiet_hours_enabled]", "0" %>
+        <%= check_box_tag "notification_preference[quiet_hours_enabled]", "1", @preference.quiet_hours_enabled %>
+        夜間はメールを送らない
+      </label>
+      <div class="mb-2 flex items-center gap-2 text-sm">
+        <label>開始
+          <%= number_field_tag "notification_preference[quiet_hours_start]", @preference.quiet_hours_start,
+                in: 0..23, class: "w-16 rounded border px-1" %> 時</label>
+        <label>終了
+          <%= number_field_tag "notification_preference[quiet_hours_end]", @preference.quiet_hours_end,
+                in: 0..23, class: "w-16 rounded border px-1" %> 時</label>
+      </div>
+      <label class="flex items-center gap-2 text-sm">
+        <%= hidden_field_tag "notification_preference[holiday_block_enabled]", "0" %>
+        <%= check_box_tag "notification_preference[holiday_block_enabled]", "1", @preference.holiday_block_enabled %>
+        休日はメールを送らない
+      </label>
+    </fieldset>
+
+    <%= submit_tag "保存", class: "rounded bg-gray-800 px-4 py-2 text-sm text-white" %>
+  <% end %>
+</div>
