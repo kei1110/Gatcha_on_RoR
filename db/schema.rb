@@ -10,10 +10,23 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_29_084347) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_29_085103) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "absence_candidates", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.date "notified_on"
+    t.bigint "organization_id", null: false
+    t.date "target_date", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["organization_id", "id"], name: "index_absence_candidates_on_organization_id_and_id", unique: true
+    t.index ["organization_id", "user_id", "target_date"], name: "idx_absence_candidates_unique", unique: true
+    t.index ["organization_id", "user_id"], name: "idx_absence_candidates_org_user"
+    t.index ["organization_id"], name: "index_absence_candidates_on_organization_id"
+  end
 
   create_table "approval_assignments", force: :cascade do |t|
     t.timestamptz "acted_at"
@@ -385,6 +398,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_29_084347) do
     t.index ["organization_id"], name: "index_work_patterns_on_organization_id"
   end
 
+  add_foreign_key "absence_candidates", "organizations"
+  add_foreign_key "absence_candidates", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "approval_assignments", "organizations"
   add_foreign_key "approval_assignments", "users", column: ["organization_id", "approver_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "attendance_histories", "organizations"
