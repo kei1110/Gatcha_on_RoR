@@ -10,10 +10,23 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_27_024200) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_29_085448) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "absence_candidates", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.date "notified_on"
+    t.bigint "organization_id", null: false
+    t.date "target_date", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["organization_id", "id"], name: "index_absence_candidates_on_organization_id_and_id", unique: true
+    t.index ["organization_id", "user_id", "target_date"], name: "idx_absence_candidates_unique", unique: true
+    t.index ["organization_id", "user_id"], name: "idx_absence_candidates_org_user"
+    t.index ["organization_id"], name: "index_absence_candidates_on_organization_id"
+  end
 
   create_table "approval_assignments", force: :cascade do |t|
     t.timestamptz "acted_at"
@@ -74,6 +87,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_27_024200) do
   end
 
   create_table "attendance_records", force: :cascade do |t|
+    t.integer "absence_reason"
     t.decimal "actual_work_hours", precision: 6, scale: 2
     t.timestamptz "clock_in"
     t.timestamptz "clock_out"
@@ -208,6 +222,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_27_024200) do
     t.text "deferral_reason"
     t.integer "early_leave_days", default: 0, null: false
     t.decimal "holiday_work_hours", precision: 7, scale: 2, default: "0.0", null: false
+    t.integer "interval_violation_count", default: 0, null: false
     t.integer "late_days", default: 0, null: false
     t.bigint "organization_id", null: false
     t.decimal "overtime_hours_over_60", precision: 7, scale: 2, default: "0.0", null: false
@@ -270,6 +285,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_27_024200) do
     t.boolean "quiet_hours_enabled", default: true, null: false
     t.integer "quiet_hours_end", default: 8, null: false
     t.integer "quiet_hours_start", default: 19, null: false
+    t.integer "rest_interval_hours", default: 11, null: false
     t.integer "submit_deadline_days", default: 5, null: false
     t.datetime "updated_at", null: false
     t.index ["organization_id", "id"], name: "index_organization_settings_on_organization_id_and_id", unique: true
@@ -384,6 +400,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_27_024200) do
     t.index ["organization_id"], name: "index_work_patterns_on_organization_id"
   end
 
+  add_foreign_key "absence_candidates", "organizations"
+  add_foreign_key "absence_candidates", "users", column: ["organization_id", "user_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "approval_assignments", "organizations"
   add_foreign_key "approval_assignments", "users", column: ["organization_id", "approver_id"], primary_key: ["organization_id", "id"]
   add_foreign_key "attendance_histories", "organizations"

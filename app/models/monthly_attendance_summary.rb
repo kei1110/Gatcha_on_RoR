@@ -19,6 +19,7 @@ class MonthlyAttendanceSummary < ApplicationRecord
   validates :year_month, presence: true, format: { with: /\A\d{4}-(0[1-9]|1[0-2])\z/ }
   validates_uniqueness_to_tenant :year_month, scope: :user_id
   validates(*AGGREGATE_COLUMNS, numericality: { greater_than_or_equal_to: 0 })
+  validates :interval_violation_count, numericality: { greater_than_or_equal_to: 0 }
   validates :deferral_reason, presence: true, if: :deferred?
   validate :user_must_belong_to_same_organization
 

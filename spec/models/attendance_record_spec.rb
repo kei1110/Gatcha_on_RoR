@@ -7,7 +7,7 @@ RSpec.describe AttendanceRecord, type: :model do
     it "整数マッピングを固定する（残り 4 値は §4.8 列挙順で 2〜5 を予約 — 並べ替え事故防止）" do
       expect(described_class.statuses).to eq(
         "working" => 0, "clocked_out" => 1,
-        "morning_half" => 2, "afternoon_half" => 3, "on_leave" => 4
+        "morning_half" => 2, "afternoon_half" => 3, "on_leave" => 4, "absent" => 5
       )
     end
   end
@@ -155,6 +155,45 @@ RSpec.describe AttendanceRecord, type: :model do
           rec.update_column(:leave_type_id, leave_type.id) # validation バイパス
         end
       end.to raise_error(ActiveRecord::StatementInvalid, /leave_type_only_on_leave_status|check constraint/i)
+    end
+  end
+
+  describe "absent ステータス（4-2）" do
+    let(:org) { create(:organization) }
+
+    around { |ex| ActsAsTenant.with_tenant(org) { ex.run } }
+
+    it "absent は打刻なしで有効（clock_in presence をスキップ）" do
+      user = create(:user)
+      ar = build(:attendance_record, user:, status: :absent, absence_reason: :unauthorized,
+                                     clock_in: nil, work_date: Date.new(2026, 5, 1))
+      expect(ar).to be_valid
+    end
+
+    it "absent + absence_reason を保存できる" do
+      user = create(:user)
+      ar = create(:attendance_record, user:, status: :absent, absence_reason: :illness, clock_in: nil)
+      expect(ar.reload).to be_absent
+      expect(ar.absence_reason).to eq("illness")
+    end
+
+    it "absence_reason は absent 以外の status では設定できない" do
+      user = create(:user)
+      ar = build(:attendance_record, user:, status: :working, absence_reason: :unauthorized)
+      expect(ar).to be_invalid
+      expect(ar.errors[:absence_reason]).to be_present
+    end
+
+    it "absent でも absence_reason は null 可（理由未入力の確定を許す前に弾かない）" do
+      user = create(:user)
+      ar = build(:attendance_record, user:, status: :absent, absence_reason: nil, clock_in: nil)
+      expect(ar).to be_valid
+    end
+
+    it "absent は calculated スコープ外（計算 8 列 NULL）" do
+      user = create(:user)
+      create(:attendance_record, user:, status: :absent, absence_reason: :family, clock_in: nil)
+      expect(AttendanceRecord.calculated).to be_empty
     end
   end
 

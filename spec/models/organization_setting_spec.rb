@@ -68,4 +68,24 @@ RSpec.describe OrganizationSetting, type: :model do
       expect(setting).to be_valid
     end
   end
+
+  describe "rest_interval_hours（4-2・§10⑩）" do
+    let(:org) { create(:organization) }
+
+    it "既定は 11" do
+      ActsAsTenant.with_tenant(org) { expect(org.setting.rest_interval_hours).to eq(11) }
+    end
+
+    it "1..24 の範囲外は無効（0 はインターバル無効化ゆえ禁止）" do
+      ActsAsTenant.with_tenant(org) do
+        s = org.setting
+        s.rest_interval_hours = 0
+        expect(s).to be_invalid
+        s.rest_interval_hours = 25
+        expect(s).to be_invalid
+        s.rest_interval_hours = 11
+        expect(s).to be_valid
+      end
+    end
+  end
 end

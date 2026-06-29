@@ -62,9 +62,9 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 ### enum 値名が AR/モデルのメソッドと衝突するとクラスロード時 `ArgumentError`（`none` 等）
 
 - **WHAT**: `enum :half_day_type, { none: 0, ... }` は値ごとのスコープ/述語生成時に `none` を作ろうとし、`ActiveRecord::Base.none`（空リレーション）と衝突してクラスロード時に `ArgumentError`（"this will generate a class method 'none', which is already defined by Active Record"）で落ちる
-- **WHY**: Rails enum は値名でスコープ・述語メソッドを生成する。値名が既存メソッド（`none` / `new` / `valid` 等）と被ると衝突する
-- **HOW**: `prefix: <名前>`（例 `prefix: :half_day`）で生成メソッドを `half_day_none?` 等へ逃がす。**enum の値シンボル（`:none` 等）は不変**ゆえ DB 値・factory・代入は変わらず、述語/スコープ名だけ変わる（モデル内の `none?` 参照は `half_day_none?` へ）。`validate: true` と併用可
-- verified: Rails 8.1.3 / 2026-06-16（Phase 2-2a `LeaveRequest.half_day_type` で実踏）
+- **WHY**: Rails enum は値名でスコープ・述語メソッドを生成する。衝突先は 2 種ある — ① AR 組込メソッド（`none` / `new` / `valid` 等）、② **同一モデルの別 enum が同じ値名を持つ場合**（例: `AttendanceRecord` の `proxy_clock_reason` と `absence_reason` が共に `:other` を持ち、`other?` 述語が二重定義 → クラスロード時 `ArgumentError`）。②は「2 つ目の enum を足した瞬間」に顕在化するため、enum を増やす Phase で踏みやすい
+- **HOW**: 衝突する側の enum に `prefix: <名前>`（または `prefix: true` ＝ enum 名を接頭辞化・例 `absence_reason_other?`）で生成メソッドを逃がす。**enum の値シンボル（`:none`/`:other` 等）は不変**ゆえ DB 値・factory・getter/setter（`absence_reason=`）・代入は変わらず、述語/スコープ名だけ変わる（`other?` 参照は `absence_reason_other?` へ）。`validate: true`/`validate: { allow_nil: true }` と併用可。ID 基点 model 検証（`xxx_only_on_yyy`）は status 述語（別 enum・非接頭辞）を使えば非干渉
+- verified: Rails 8.1.3 / 2026-06-16（Phase 2-2a `LeaveRequest.half_day_type` ＝①AR 組込衝突）・2026-06-29（Phase 4-2a `AttendanceRecord.absence_reason` ＝②enum 間 `:other` 衝突を `prefix: true` で解消）
 
 ### `Date.strptime(str, "%Y-%m")` は厳格一致でない（1 桁月・末尾ゴミを黙認）
 

@@ -134,4 +134,21 @@ RSpec.describe MonthlyAttendanceSummary do
       expect(summary.total_leave_hours).to eq(0)
     end
   end
+
+  describe "interval_violation_count（4-2）" do
+    let(:org) { create(:organization) }
+
+    around { |ex| ActsAsTenant.with_tenant(org) { ex.run } }
+
+    it "既定は 0" do
+      mas = create(:monthly_attendance_summary, user: create(:user))
+      expect(mas.interval_violation_count).to eq(0)
+    end
+
+    it "負値は無効" do
+      mas = build(:monthly_attendance_summary, user: create(:user), interval_violation_count: -1)
+      expect(mas).to be_invalid
+      expect(mas.errors[:interval_violation_count]).to be_present
+    end
+  end
 end
