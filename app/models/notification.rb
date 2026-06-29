@@ -11,7 +11,9 @@ class Notification < ApplicationRecord
 
   enum :priority, { action_required: 0, informational: 1, reference: 2 }, validate: true
   # 後続 Phase が値を追加（integer enum ゆえ model 編集のみ・append-only）
-  enum :source_type, { request_approved: 0, request_rejected: 1 }, validate: true
+  enum :source_type, { request_approved: 0, request_rejected: 1,
+                       clock_out_missing: 2, absence_candidate: 3, leave_pending_no_clock: 4,
+                       proxy_clocked: 5, interval_shortage: 6, absence_confirmed: 7 }, validate: true
 
   validates :title, :body, presence: true
   validate :target_user_must_belong_to_same_organization

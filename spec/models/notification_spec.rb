@@ -17,6 +17,17 @@ RSpec.describe Notification do
     end
   end
 
+  describe "source_type 4-2 拡張" do
+    %i[clock_out_missing absence_candidate leave_pending_no_clock proxy_clocked interval_shortage absence_confirmed]
+      .each do |st|
+      it "source_type: #{st} で有効に作成できる" do
+        n = build(:notification, target_user: create(:user), source_type: st)
+        expect(n).to be_valid
+        expect(n.source_type).to eq(st.to_s)
+      end
+    end
+  end
+
   describe "scope :unread" do
     it "read_at nil のみ返す" do
       unread = create(:notification, read_at: nil)
