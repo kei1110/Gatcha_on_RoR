@@ -238,6 +238,15 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 
 ---
 
+### enum の排他検証（`X_only_on_status`）は「その status を出る遷移」で随伴列をクリアしないと上書き `save!` が RecordInvalid で親 tx を巻き戻す（4-2a・verified 2026-07-02）
+
+- **WHAT:** ある status の時だけ非 nil を許す列に「非 status ∧ 非 nil → error」の排他検証を足すと（例: AR `absence_reason_only_on_absent`）、その status から**別 status へ上書きする既存パス**が随伴列をクリアしないまま `save!` した瞬間に `RecordInvalid`。副作用 service が「内側 rescue しない」設計（§9.5・with_lock 内伝播）なら承認/主操作の tx ごと atomic に rollback する。実例: `LeaveRequests::ApplyApproval#upsert_attendance_records` が `find_or_initialize_by(user_id:, work_date:)` で既存 `absent` AR を拾い `status=:on_leave` に上書き → `absence_reason` 残留で `Approvals::Approve` の承認全体が rollback（「承認できませんでした」に反転）。
+- **WHY:** plain enum は AASM の exit フック（after_transition で随伴列を掃除する置き場）を持たない。「この status は単方向終端だから遷移後始末は不要」という前提で排他検証だけ足すと、実際には出辺のある status（SPEC §13.1 の `absent→on_leave`/`→working`）で地雷になる。検証を追加するスライスと、その status を出る遷移を起こすスライスが**別 PR**だと、追加時は全緑・consumer 出荷時に初めて live 化する dormant バグになる（4-2a 追加 → 4-2c 出荷で発火）。
+- **HOW:** 排他検証を足す前に「この status を**出る**遷移が既存/将来にあるか」を §13.1 の状態機械図で確認。出辺があるなら、遷移を起こす各 apply_approval/service が随伴列クリアの責務を負う（上書き時に `record.x = nil` を明示）か、`before_validation { self.x = nil unless status_owning_x? }` で正規化する。回帰テストは「旧 status（随伴列有）→ 新 status への遷移が成功し随伴列が nil」を突く（検証単体の positive/negative だけでは遷移の地雷を捕まえられない）。
+- verified: Rails 8.1.3 / 2026-07-02（4-2 設計 2nd-pass 多視点レビューで検出＝原則整合/労務/tx atomicity の 3 視点が独立確認。4-2a マージ後 dormant・`Absences::Confirm`(4-2c) 出荷で live 化ゆえ 4-2c merge ブロック条件。修正は 4-2c PR で apply_approval に exit クリア + `absence_to_paid` 記録 + 回帰テスト）
+
+---
+
 ## テスト / 検証プロセス
 
 ### bin/brakeman は `--ensure-latest` 注入 — 新版リリースで突然 exit 5

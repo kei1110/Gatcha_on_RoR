@@ -302,3 +302,69 @@ end
 
 ### 是認（変更不要と確認された設計判断）
 ディスパッチャ→子のテナント反復（§3.6 充足）/ AbsenceCandidate 二層 FK + unique index / tx 後 Notifier + rescue+log（§9.5・4-1c 同型）/ `source_type` 6 値（全値 consumer あり）/ interval warning 固定・打刻非ブロック（努力義務段階・§8.4）/ 既定 11h（厚労省目安と一致・法定値でない）/ `absence_reason` 分類（`investigating` 含め実務妥当）/ 猶予後も自動確定せず管理者手動（賃金控除の弁明機会）/ 欠勤候補 = カレンダー稼働日 ∧ LR 全 status 除外 / 4 サブ PR 分割と依存順。
+
+## 11. 多視点レビュー反映（2nd pass・2026-07-02・binding 追補）
+
+§10（設計時 1st pass）が対象化しなかった「**4-2a 実装 ↔ 既存/後続コードの接ぎ目**」を、マージ済み 4-2a を対象に 6 視点で再 critique（原則整合 / 実用+YAGNI / テスト網羅 / セキュリティ・テナント / 労務正確性 / tx atomicity・状態機械）。骨格（4 サブ PR・AbsenceCandidate 二層 FK・ディスパッチャ→子・tx 後 Notifier）に**越境の実害漏洩 High は無し**と再確認。潜在的欠陥はすべて接ぎ目に集中していた。**本節は §2〜§10 を上書きする**（writing-plans は §10 と本節を必須要件として扱う）。
+
+### ①【最重要・4-2c merge ブロック】absent は非終端 — exit で随伴列をクリア（§10⑫ を訂正）
+§10⑫ の「`absent` は `[*]→absent` の単方向終端」は **SPEC §13.1 と事実矛盾**（§13.1 は `absent→on_leave`・`absent→working` の出辺を明示）。この誤前提ゆえ「absent を出る時の随伴列後始末」が設計から脱落した。
+- **機序（原則整合/労務/tx atomicity の 3 視点が独立確認・Confirmed）**: 4-2c が `status:absent, absence_reason:非nil` の AR を確定 → 後日その同一 (user, work_date) に事後有給 LR が承認される → `LeaveRequests::ApplyApproval#upsert_attendance_records`（apply_approval.rb:51-56）が `find_or_initialize_by(user_id:, work_date:)` で**既存 absent AR を拾い** `status=:on_leave` に上書きするが `absence_reason` を残す → `save!` で 4-2a 新設の `absence_reason_only_on_absent`（attendance_record.rb:71-75）が発火 → `RecordInvalid` → `Approvals::Approve#call` の `with_lock`/同一 tx ごと**承認全体が rollback**（controller が「承認できませんでした」に反転）。半休（morning_half/afternoon_half）でも同じ。
+- **現状 dormant**（absent AR を作る `Absences::Confirm` が未実装）→ **4-2c 出荷で live 化**。
+- **binding 修正（4-2c で apply_approval を必ず同時修整＝merge ブロック条件）**:
+  - `upsert_attendance_records` が既存 AR を拾った際、absent からの遷移なら `record.absence_reason = nil` / `record.note = nil` を**明示クリア**してから `save!`。
+  - §10⑫ の根拠記述を訂正: 「absent は**非終端**（LR 承認で on_leave 化・§13.1）。plain enum 継続は据置だが、AASM exit フックが無いぶん**遷移を起こす各 service が随伴列クリアの責務を負う**」。
+  - 回帰テスト: `absent(absence_reason 有) → 事後有給 LR 承認 → on_leave 昇格成功 ∧ absence_reason=nil`（現状この遷移は無テスト＝apply_approval_spec は新規作成のみ）。RAILS_GOTCHAS に罠を還流済（「enum 排他検証 × 遷移随伴列クリア漏れ」）。
+
+### ② absent→on_leave は absence_to_paid を記録（§6.2 L808・監査の穴）
+`AttendanceHistory` の `absence_to_paid`(event_type 6) は **enum 予約のみで writer 皆無**。`ApplyApproval#record_history` は無条件で `leave_approved` を記録し「新規 on_leave」と「absent→on_leave 変換」を区別しない → 労基法 109 条 5 年保存の監査（§4.14）で欠勤→有給振替の痕跡が残らない。
+- **binding（4-2c）**: ①の exit クリアと同時に、拾った AR が変換前 absent だった場合は `absence_to_paid` を記録し previous_status を保持。
+
+### ③ 事後救済 remedy が揃うまで確定通知文を縮小（労基法 24 条・虚偽の約束回避）
+確定通知が挙げるもう一方の remedy「打刻変更申請」も CCR `new_entry` が明示拒否（clock_change_request.rb:20・#48 後置）ゆえ非機能。①未修整時は**有給も打刻変更も動かない＝二重の虚偽 remedy**。
+- **binding（4-2c）**: ①②が通るまで確定通知文から「事後に有給休暇/打刻変更申請を提出できます」を削り「管理者へお問い合わせください」に縮小。①②実装後に「事後に有給休暇の申請ができます」へ戻す（打刻変更は #48 まで約束しない）。
+
+### ④ 偽陽性候補の却下（dismiss）経路 — 判断 E の出口を用意（YAGNI High）
+判断 E は「非常勤の過検出は管理者が確定時にフィルタ」で許容するが、候補の消滅経路は §3.2 の 2 つ（AR/LR 出現→destroy / 欠勤確定→destroy）のみ。管理者が「これは欠勤でない」と判断した候補は、確定すると誤 AR(absent) を生む＝確定できず、`notified_on` 済のまま**永久残留**し確定一覧（§5.1 policy_scope 全件）に恒久ノイズが蓄積する。
+- **binding（4-2c）**: 「却下(dismiss)＝候補 destroy（監査に残さず消す・ephemeral 一貫）」の管理者経路を用意し、判断 E の「フィルタ」を機能させる出口とする。
+
+### ⑤ insert_all は organization_id を明示・二層防御は DB 複合 FK に縮退（§10⑨ 補強）
+§10⑨ の `insert_all(unique_by:)` は **validation・callback・acts_as_tenant の organization_id 自動注入を全 skip** → `user_must_belong_to_same_organization`（model 層）が無効化し二層防御が **DB 複合 FK `[org,user]→users` の 1 層に縮退**。org_id を明示しないと NOT NULL 違反でテナントの検知が丸ごと落ちる（repo 初出パターンゆえ踏みやすい）。
+- **binding（4-2b）**: insert_all の各 row に `organization_id: ActsAsTenant.current_tenant.id` を明示。越境拒否テストは model 検証でなく **DB 層**（`RecordNotUnique`/`InvalidForeignKey`）で assert（model 検証は factory/console 経路の防御として残す）。二層が insert_all で片肺化する旨を 4-2b PR description に明記。
+
+### ⑥ 4-2c の user/日付解決は policy_scope 経由（§10② 補強・IDOR + 500 回避）
+`AttendanceRecord` には `user_must_belong_to_same_organization` が無い（clock/leave/absence_reason 検証のみ）。4-2c が生 param の `user_id` を `AR.create!` に渡すと DB FK 違反の **500**（clean 404 でない）、候補ゲートを生クエリでやると同テナント別部下の越えを塞げない。
+- **binding（4-2c）**: (1) 対象社員は `policy_scope(User).find(params[:user_id])` で解決済みオブジェクトを `AR.create!` に渡す、(2) 日付は `policy_scope(AbsenceCandidate).where(user:, target_date: 要求)` で**実在候補のみ**確定・他は 422、(3) IDOR 2 variant（同テナント別部下→404 Pundit / 他テナント→404 acts_as_tenant）。AR にも `user_must_belong_to_same_organization` 追加を一考（attendance_record.rb:8-11 の宿題回収・二層化）。
+
+### ⑦ 確定 tx は per-day savepoint + finalized は per-date ガード（§5.2 補強）
+§5.2 の単一 tx N 日 `create!` は、並行 clock_in/CCR が同日 AR を作ると unique `[user_id,work_date]` 違反 → `PG::InFailedSqlTransaction` で**残り全日 rollback**（1 日の競合が確定バッチ全体を殺す）。finalized ガードも月境界跨ぎで per-date 判定が要る。
+- **binding（4-2c）**: HWR の既存 idiom（`holiday_work_requests/apply_approval.rb:51-64` の `transaction(requires_new: true)` savepoint + RecordNotUnique/RecordInvalid 分別 rescue）を日次ループへ再利用（既存 AR 日は skip し結果に返す）。finalized 判定は既存 `MonthlySummaries::ClosingLock`（submitted/finalized=locked）を tx 冒頭で対象全日一括、1 日でも locked なら write 前に 422。
+
+### ⑧ notify-once の atomicity — notified_on を先行（§4.3 補強）
+Notifier 自前 tx（commit 後 broadcast）と `notified_on` 記録が別 write。間で crash/per-user rescue 捕捉が起きると次 run で**二重通知**（informational→double opt-in で email 二重も）。
+- **binding（4-2b）**: 「`notified_on = org.today` を候補行に先行確定 → 同 run で Notifier」を規約化（email 二重より欠落側に倒す＝informational ベルは害小）。順序と失敗時意味論を実装コメントに明記。
+
+### ⑨ interval_violation_count は live counter か Aggregate 派生かを 4-2d 前に決定（§6.1・YAGNI Med）
+MAS は締め時に `find_or_initialize_by(year_month: AttendancePeriod.label)` で**遅延生成**。4-2d が月中 clock_in で increment すると、`AttendancePeriod.label`（closing_day 依存）を月中に正確再現しない限り別行に落ちて回数が**黙って消失/二重化**する。回数は既に `AttendanceHistory(interval_shortage)` が 1 違反=1 イベントで持つ。
+- **binding（4-2d writing-plans 前に決定）**: 第一候補は late_days 同型で **Aggregate 派生集計**（`interval_shortage` 履歴を締め時に count）にし月中行生成/ラベル一致を不要化。live counter を維持するなら「4-2d は `AttendancePeriod.label` 経由・MAS 行 find_or_create・atomic SQL increment（lost-update 防止）」を DoD 化。
+
+### ⑩ テスト追補（§7/§10⑧ に binding 追加）
+- **AbsenceCandidate の二層 model 層を固定**: 越境テストを `save!(validate:false)` **無し**で `expect(c).to be_invalid` + `errors[:user]`（Notification spec 同型）。現状は validator を削除しても全緑。
+- **enum 整数マッピング pin**: `AttendanceRecord.absence_reasons == {...}` / `Notification.source_types == {...}`（status/proxy_clock_reason 同様の並べ替え事故防止・DB 永続値保護）。
+- **境界の有効側**: `rest_interval_hours` の `[1,24]` を valid として assert（0/25 invalid だけでは `2..23` に縮めても緑）。
+- **binding 修正の判別テスト**: §10⑤ 猶予（翌営業日 16:59→422 / 17:01→成功・連休跨ぎ算出）、§10① 退勤忘れ即時発火（土曜 prev_day → 同 run で `clock_out_missing` を 1 件・稼働日ゲートを通さない）。
+- **毒入力→422**: `absence_reason = "bogus"` → `be_invalid`（proxy_clock_reason 同型）。
+
+### ⑪ 子ジョブの org 削除レース nil-guard（§4.1 補強）
+`DailyAttendanceTenantJob(org_id)` は規範 `notification_dispatch_tenant_job.rb:7-8` の `org = Organization.find_by(id:); return if org.nil?` を踏襲（dispatch→実行間に org 消滅で `with_tenant(nil)`→NoTenantSet を回避）。
+
+### corrigenda（SSOT 内部の事実誤り訂正）
+- **§9 PR 分割表**: 4-2a「Notification source_type **5 値**」→ **6 値**（§3.3・計画 Task4・実装 notification.rb と一致・clock_out_missing:2〜absence_confirmed:7）。
+- **§4.2 母集合 `User.active`**: 未実在（Organization は `scope :active` 有・User は無）→ 4-2b で `User.active` 新設 or `User.where(active: true)`。
+
+### 非 binding メモ（低・任意）
+- AbsenceCandidate の `idx_absence_candidates_org_user`（[org,user]）は unique 複合 [org,user,target_date] の左端プレフィックスで冗長・`references :organization` の単列 index も冗長（ephemeral 小テーブルに btree 4 本）。**既存 migration は改変せず**、気になれば 4-2b で drop migration。害小ゆえ据置可。
+- 「absent は calculated スコープ外」テスト（attendance_record_spec.rb:193-197）は vacuous（absent 特異を突いていない）。
+
+### 社労士確認事項（→ LABOR_LAW_REVIEW_NOTES.md に追記）
+`investigating`（調査中）確定→即賃金控除の適正手続き（事後是正パス全滅と併せ）、欠勤候補＝カレンダー稼働日による非常勤・シフト過検出の誤確定防止。労基法 24 条 <https://laws.e-gov.go.jp/law/322AC0000000049> / 労働時間等設定改善法 2 条 <https://laws.e-gov.go.jp/law/404AC0000000090>（jp-labor-evidence は BUNDLED_INDEX_AGED 警告あり・直近改正未反映の可能性）。
