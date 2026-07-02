@@ -270,6 +270,13 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **HOW**: ① まず無実確認（`git diff --stat <base>..HEAD -- Gemfile Gemfile.lock` が 0 行なら diff 起因でない）。② `bundle update <gem> --conservative` で該当 gem のみ patch 級 bump（transitive でも対象指定可・手編集は `block-gemfile-lock-edit` フックで不可ゆえ bundle 経由）。③ `bin/bundler-audit check --update` が "No vulnerabilities found" になるまで全件詰める（1 件直すと次が現れることがある）。④ feature PR に混ぜず**独立の chore PR**で出すと reviewed diff が汚れず main 全体のゲートも復旧。⑤ 恒久候補: preflight に「lock 無変更でも audit を回す」オプション or CI security の非ブロッキング/定期実行分離（運用判断）
 - verified: 2026-06-23（3-3a の PR #16 で security のみ fail。nokogiri 1.19.3→1.19.4・concurrent-ruby 1.3.6→1.3.7 の transitive 2 gem を chore PR で bump し解消＝両 gem は 3-3a の diff 外。bundler-audit "No vulnerabilities found" を実測）
 
+### `org.today` 相対ロジックを持つ service の spec は「今日」の day_type を pin しないと実行日依存で flaky（4-2b・verified 2026-07-02）
+
+- **WHAT**: 「今日が稼働日か」で分岐する service（例: `AttendanceAnomalies::Detect` の次稼働日ゲート `working_day?(org.today)`）の spec を `travel_to` も CompanyCalendar 登録もせず書くと、**テスト実行日の実曜日**で結果が変わる。2026-07-02（木・fallback で稼働日）に `notified_on == nil` を期待する例が `Thu, 02 Jul 2026` を得て落ちた。さらに、検知と通知を**同一 call の 2 パス**で回す service は、テストが「pass 2 起動の形式的トリガー」として渡した補助日付（例 `Date.new(2026,4,30)`・木）が稼働日だと、pass 1 が全 active user に対し**幽霊候補**を作り、pass 2 が同 call で即通知して通知件数を汚染する。
+- **WHY**: `org.today = Time.current.in_time_zone(tz).to_date`。`travel_to` 未使用なら実 wall-clock。CompanyCalendarResolver は未登録日を曜日 fallback（`weekday`=稼働）で埋めるため、平日に走らせると「今日」も「補助日付」も稼働日扱いになり、`org.today` 依存の副作用（同一 run 内 detect→notify）が発火する。「別の run のトリガー」のつもりの引数が pass 1 の検知対象日を兼ねている点が盲点。
+- **HOW**: ①「今日」に依存する assert は `create(:organization, time_zone: "UTC")` + `travel_to(Time.utc(Y,M,D,2))` で org.today を固定するか、**当該 org.today を `create(:company_calendar, date: org.today, day_type: :company_holiday/:weekday)` で明示登録**して day_type を pin する。②同一 call 2 パス service では、pass 2 起動用に渡す補助日付も holiday 登録して pass 1 の幽霊検知を止める。③「実行日 2026-05-01（金）等」に偶然一致すると `working_calendar(prev_day)` と二重登録で date-unique 制約に当たり得る点も留意（4-3 週次/月次バッチの spec でも同型に注意——本 service が規範実装）。
+- verified: Rails 8.1.3 / 2026-07-02（4-2b Task 3 の SDD 実装で実踏。implementer が TDD RED で 3 例 flaky を検出→spec を holiday pin で決定化・production 無改変・task-reviewer が同一 call notify を正仕様と独立確認）
+
 ---
 
 ## メタ原則
