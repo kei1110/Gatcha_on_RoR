@@ -51,9 +51,15 @@ module LeaveRequests
         record = AttendanceRecord.find_or_initialize_by(
           user_id: @leave_request.requester_id, work_date: date
         )
+        was_absent = record.absent? # §12② 遷移前 status を代入前に捕捉（silent no-op 回避）
         record.status = leave_status
         record.leave_type_id = @leave_request.leave_type_id
+        if was_absent
+          record.absence_reason = nil # §11① 随伴列クリア（DB CHECK と整合）
+          record.note = nil
+        end
         record.save!
+        record_absence_to_paid(record, date) if was_absent # §12⑥ 監査（absent→on_leave の痕跡）
         recalculate(record)
       end
     end
@@ -65,6 +71,19 @@ module LeaveRequests
         source: @leave_request,          # polymorphic
         event_type: :leave_approved,     # 既存予約 enum（整数 2）
         event_date: @leave_request.start_date   # 申請単位 1 行（per-day AR とは別粒度）
+      )
+    end
+
+    # absent→on_leave（事後有給）の監査（SPEC §6.2 L808・§12⑥）。actor 必須（Task 1）。
+    def record_absence_to_paid(record, date)
+      AttendanceHistory.create!(
+        user_id: @leave_request.requester_id,
+        actor: @acting_user,
+        source: @leave_request,
+        event_type: :absence_to_paid,
+        event_date: date,
+        previous_status: AttendanceRecord.statuses[:absent],
+        new_status: AttendanceRecord.statuses[record.status]
       )
     end
 

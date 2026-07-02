@@ -162,4 +162,37 @@ RSpec.describe LeaveRequests::ApplyApproval do
       expect(rec.leave_type_id).to eq(unpaid_type.id)
     end
   end
+
+  describe "absent→on_leave 事後有給の上書き（§11①/§12②⑥）" do
+    it "既存 absent AR を覆う承認は on_leave へ昇格し absence_reason をクリア（RecordInvalid を起こさない）" do
+      create(:attendance_record, user:, work_date: start_date, status: :absent,
+                                 absence_reason: :unauthorized, clock_in: nil, note: "調査中")
+
+      expect { apply(leave(type: unpaid_type, sd: start_date, ed: start_date)) }.not_to raise_error
+
+      ar = AttendanceRecord.find_by(user_id: user.id, work_date: start_date)
+      expect(ar.status).to eq("on_leave")
+      expect(ar.absence_reason).to be_nil
+      expect(ar.note).to be_nil
+    end
+
+    it "absent→on_leave 時に AttendanceHistory(absence_to_paid) を previous_status: absent で記録" do
+      create(:attendance_record, user:, work_date: start_date, status: :absent,
+                                 absence_reason: :illness, clock_in: nil)
+
+      apply(leave(type: unpaid_type, sd: start_date, ed: start_date))
+
+      h = AttendanceHistory.find_by(user_id: user.id, event_type: :absence_to_paid, event_date: start_date)
+      expect(h).to be_present
+      expect(h.actor_id).to eq(approver.id)
+      expect(h.previous_status).to eq(AttendanceRecord.statuses[:absent])
+      expect(h.new_status).to eq(AttendanceRecord.statuses[:on_leave])
+    end
+
+    it "absent でない日（新規 on_leave 作成）は absence_to_paid を記録しない" do
+      apply(leave(type: unpaid_type, sd: start_date, ed: start_date))
+
+      expect(AttendanceHistory.where(event_type: :absence_to_paid).count).to eq(0)
+    end
+  end
 end
