@@ -369,3 +369,53 @@ MAS は締め時に `find_or_initialize_by(year_month: AttendancePeriod.label)` 
 
 ### 社労士確認事項（→ LABOR_LAW_REVIEW_NOTES.md に追記）
 `investigating`（調査中）確定→即賃金控除の適正手続き（事後是正パス全滅と併せ）、欠勤候補＝カレンダー稼働日による非常勤・シフト過検出の誤確定防止。労基法 24 条 <https://laws.e-gov.go.jp/law/322AC0000000049> / 労働時間等設定改善法 2 条 <https://laws.e-gov.go.jp/law/404AC0000000090>（jp-labor-evidence は BUNDLED_INDEX_AGED 警告あり・直近改正未反映の可能性）。
+
+## 12. 接ぎ目レビュー反映（4-2b→4-2c・2026-07-02・focused P4 gate・binding 追補）
+
+4-2b（検知バッチ）merge 後・4-2c writing-plans 前に、**マージ済み 4-2b 実装 ↔ 未実装 4-2c 消費**の接ぎ目を 3 視点（tx atomicity・状態機械 / テナント・IDOR / 労務）で focused critique（P4 gate 条件② 発火・DEVELOPMENT_WORKFLOW「接ぎ目レビュー」）。§11 は再走せず、**4-2b の"実装済み"挙動が §11 binding と実コードで整合するか・設計時（§11）に見えなかった新規相互作用**に純化。**本節は §5 を上書きし §11 に追補する**（4-2c writing-plans は §5+§11+§12 を必須要件として扱う）。
+
+### ①【最重要・3 視点収束】notified_on: nil の候補は確定不可（422）
+候補は `AttendanceAnomalies::Detect#candidate_row` が `notified_on: nil` で生成し、`process_candidates` は「本人の今日（org.today）が稼働日」の run でしか設定しない。連休・Notifier 恒久失敗で **nil のまま §5.1 全件一覧に居座る**。§10⑤ 猶予ゲート「notified_on の翌営業日 17:00 経過後のみ確定可」は nil の扱いが未定義で、`next_business_day(nil)` を計算すると 500 or「制限なし＝無通知確定」に倒れる（労務: 弁明機会ゼロで賃金控除＝労基法 24 条抵触）。
+- **binding（4-2c）**: 確定ガードは `candidate.notified_on.nil?` を**最初に判定し 422（ineligible・crash させない）**。`next_business_day(nil)` の computed に依存させない。§11⑧ が 4-2b 実コードで正実装（本人 Notifier 成功後に notified_on 設定・失敗時 nil で次 run 再試行）ゆえ「**notified_on 非 nil ⟹ 本人通知済＝弁明機会付与済**」が担保され、presence を弁明機会 proxy に使える。**`CompanyCalendarResolver` に翌営業日 API が存在しない**（実コード確認）ため 4-2c で `day_type ∉ HOLIDAY_DAY_TYPES` を走査する専用ヘルパ新設（連休吸収）。テスト: nil 候補→422 / notified_on set・翌営業日 16:59→422・17:01→成功。
+
+### ②【High】§11① fix は「遷移前 status」を読め（silent no-op の罠）
+§11① の absent→on_leave exit クリアは、`LeaveRequests::ApplyApproval#upsert_attendance_records`（apply_approval.rb:46-59）が `record.status = leave_status` を**先に代入**してから `record.absent?` を見ると常に false → `absence_reason` クリアも `absence_to_paid` 記録も**無言で no-op** → `absence_reason_only_on_absent` が依然発火し「fix したのに RecordInvalid で承認 rollback」になる。
+- **binding（4-2c・§11① を精緻化）**: `find_or_initialize_by` 直後・status 代入**前**に `was_absent = record.absent?` / `previous_status = record.status` を捕捉。`was_absent` 時のみ `absence_reason=nil`（+ note・下 ⑤）をクリアしてから `save!`。回帰テストは**実 approve path**（stub 不可）で「absent(reason 有)→事後有給承認→on_leave 昇格成功 ∧ reason=nil ∧ 承認 tx 非 rollback」。
+
+### ③【High】確定の user 解決 `policy_scope(User).find` は load-bearing（冗長でない）
+§11⑥ の "500 not 404" は経路依存（`insert_all` 経路のみ 500・`create!` 経路は belongs_to presence で 422）。だが決定的事実: **same-tenant-cross-subordinate（同一テナントの他部下）は belongs_to presence も 複合 FK も model 検証も塞がず、`policy_scope(User).find(params[:user_id])` の解決済オブジェクトを渡すことだけが塞ぐ**（`AttendanceRecord` に `user_must_belong_to_same_organization` 無し・実コード確認）。
+- **binding（4-2c）**: 対象社員は必ず `policy_scope(User).find`。日付は `policy_scope(AbsenceCandidate).where(user:, target_date:)` で実在候補のみ（§11⑥(2)）。IDOR 2 variant（同テナント別部下→Pundit 404 / 他テナント→acts_as_tenant 404）を負例固定。`AbsenceCandidatePolicy::Scope` は既存 MAS policy（`monthly_attendance_summary_policy.rb`）同型（hr_admin→org 全体・manager→`manager_id: me` の部下）。
+
+### ④【High・cross-lens synthesis】確定は `create!` per-day を使え・`insert_all` 禁止
+§5.2 は `AttendanceRecord.create!` per-day。これを一括 `insert_all` に最適化すると **belongs_to presence（IDOR 防御・③）+ `absence_reason_only_on_absent`（毒入力防御）の 2 model 検証を skip** し DB へ侵入させる。`create!` 維持で両検証 live。
+- **binding（4-2c）**: 確定は per-day `create!`（下 ⑤ の savepoint 内）。**`insert_all`/`upsert_all` を確定 AR 生成に使わない**旨を plan 制約に明記（4-2b 候補 upsert とは別方針＝候補は検証不要 ephemeral・確定 AR は検証必須の権威データ）。
+
+### ⑤【Med】per-day savepoint は 3 write を 1 単位に束ねよ
+§11⑦ が流用を指す HWR idiom（`holiday_work_requests/apply_approval.rb:51-64`）は `create!` 1 本の savepoint。だが §5.2 の確定は 1 日あたり **AR create + `AbsenceCandidate` destroy + AttendanceHistory create の 3 write**。別 savepoint / savepoint 外だと、並行 clock_in/CCR の同日 unique 違反や history 失敗で**候補だけ destroy 済/孤児 history**という半端コミット→その日が再確定不能。
+- **binding（4-2c）**: `transaction(requires_new: true)` で {AR create → 候補 destroy → history create} を 1 ブロックに束ね、`RecordNotUnique`/`RecordInvalid` はそのブロックのみ rescue し「skip 日」として結果へ。savepoint rollback で候補が intact に戻ることを assert。
+
+### ⑥【High】absence_to_paid writer + DB backstop（§11①② を実装精緻化）
+`absence_to_paid`(event_type 6) は enum 予約のみ writer 皆無（実コード確認）。`AttendanceHistory` の actor 必須検証に `absence_to_paid?`/`absence_confirmed?` の行が無い（actor 抜け監査行を許す）。
+- **binding（4-2c）**: ②の `was_absent` 時に `event_type: :absence_to_paid`（`previous_status` 保持・`actor:`）を同 tx 記録。`AttendanceHistory` に `validates :actor_id, presence: true, if: :absence_to_paid?`（+ `:absence_confirmed?`）を追加（二層）。**`absence_reason` の DB CHECK（`absence_reason IS NULL OR status = <absent 整数>`・`leave_type` CHECK と対称・`/create-migration` idiom）を追加**し、§11① exit-clear を DB で強制（apply_approval が clear 忘れたら DB が拒否＝backstop・4-2c 申し送りの CHECK 対称化を格上げ）。
+
+### ⑦【Med】4-2b 事前通知 body の虚偽 remedy も縮小（live 不整合）
+§11③ は確定通知（4-2c）が対象だったが、**4-2b でマージ済みの事前通知**（`AttendanceAnomalies::Detect#notify_candidate` の body「打刻漏れの場合は打刻変更申請を提出してください」）も、候補は定義上 no-AR 日ゆえ CCR（`new_entry` 拒否・既存 AR 前提の検証）が全滅で非機能。
+- **binding（4-2c 同梱で 4-2b の live コード修正）**: §11③ の確定通知縮小と同時に `detect.rb` の事前通知 body も「管理者へお問い合わせください」等へ縮小（#48 CCR new_entry 解除まで「打刻変更申請」を約束しない）。
+
+### ⑧【Med】§11④ dismiss は 4-2c 必須（optional でない）
+過検出が**個人稼働日を一切参照しない**実装を確認（anomaly service 内に UserWorkPattern/個人稼働曜日の参照ゼロ・母集合 `User.active` 全員 × 会社カレンダーのみ）。非常勤・シフト者の非所定日が無制限に候補化し、`investigating` 確定で未確定事由の即控除。§11④ 「却下(dismiss)＝候補 destroy」の耐久性は OK（pass 1 は prev_day のみ走査＝過去日を再検知しない・実コード確認）。
+- **binding（4-2c）**: §11④ dismiss 経路を**必須**とし判断 E の出口を機能させる。確定 UI に「非所定日/シフト未把握」注意喚起。`manager_id: nil` の候補（トップ階層・hr_admin 自身）は hr_admin のみ確定可を確認（負例）。
+
+### ⑨【Low】却下/撤回 LR 日は候補ゲートで absent 化不能（仕様判断）
+`no_clock_anomaly` は全 status LR を「覆う」と扱う（§10 是認）。休暇が却下/取消/撤回され打刻も無い日は候補が生成/resolve され、§11② 候補ゲート確定では absent にできない（候補無→422）→ 実欠勤が欠勤トラッキングから漏れる。検知側は意図的だが 4-2c への波及は未トレース。
+- **plan 判断**: 「却下/撤回された休暇日の欠勤確定」を扱うか明記。扱うなら候補ゲート迂回の管理者手動追加経路が要る（§11② と緊張）。v1 は非対象として仕様明記が妥当。
+
+### ⑩【Low】ClosingLock は submitted も locked（§5.2 より厳格）
+既存 `MonthlySummaries::ClosingLock` の `LOCKED = %w[submitted finalized]`。§5.2「finalized 禁止・deferred 許可」は submitted の可否を無言。流用すると submitted 月の確定も 422（安全側だが仕様文言と非一致）。
+- **plan 判断**: 「submitted も遮断する」意図を plan に明記（据置なら §5.2 側を補注）。
+
+### 是認（4-2b 実コードで確認・変更不要）
+§11⑧ notify-once 順序は 4-2b 実装で正（本人 Notifier 成功→notified_on・失敗時 nil で次 run 再試行＝①の proxy 前提が成立）/ 候補 resolve vs 確定の二重 destroy は benign（`absence_candidates` に `lock_version` 無し→競合は 0 行 DELETE/UPDATE で silent・per-candidate rescue 捕捉・新規 atomicity 破綻なし）/ §11① rollback 経路は実 approve path（`Approvals::Approve#call` with_lock 内 rescue 無し）で Confirmed。
+
+### 社労士確認事項（→ LABOR_LAW_REVIEW_NOTES.md 追記・#4）
+`absence_reason` の illness/family は就業規則で有給特別休暇（病気休暇・慶弔）と定められる場合があり、確定フローが**全種別を同一の unpaid absent** に落とすと乖離し得る（労基法 24 条）。illness/family を deducting absent 既定にしてよいか・確定 UI で有給振替検討の注意喚起を要するか（就業規則依存ゆえ会社差あり）。
