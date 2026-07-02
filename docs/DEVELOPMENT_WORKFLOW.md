@@ -14,6 +14,7 @@
 | 品質レビュー（敵対的） | 独立サブエージェント（下記③④） | 著者バイアス対策の本丸。0b-4 で 4 件・1-1 で 6 件の実指摘 |
 | マージ前最終 | **CLAUDE.md トリガー表 × スライスが実際に触れた面から都度導出**（設計書のレビュアー表を転記しない）。models/jobs/migrations→tenant-isolation・calculator/compliance/OrganizationSetting→labor-law・**状態 enum/Approvable/ApplyApproval→approval-engine** | 4-2a が設計表（tenant-isolation のみ）の転記に従い、状態 enum（AR.status absent 追加）にもかかわらず approval-engine-reviewer 未起動 → dormant バグ（absence_reason×遷移）が merge を通過し 2nd-pass で発覚（PR #27/#29） |
 | マージ前 DoD（動線到達性） | 主エージェント（SPEC §1.4 ↔ git diff 突合） | Phase 3 spec-check が動線断絶を検出（PR #19/#20）。変更/新規機能は §1.4 に対応行があり起点(route+nav)が実在・状態(✅/⚠️)一致を確認、新機能は §1.4 に行追加してからマージ |
+| 接ぎ目レビュー（条件付き・スライス間） | 主エージェントが risk gate 判定 → 該当時 `/multi-perspective-review` 接ぎ目モード（下記セクション） | 4-2a merge 後の実測（PR #29）: 1st pass・per-PR レビューを通過した dormant バグ（merge-block 級 1・3 視点独立一致 + High 4）を後続実装前＝最安の修正点で捕捉 |
 
 ## 効率化 5 項目（1-1 で実証済み）
 
@@ -34,6 +35,19 @@
 ## 罠の還流（このループが本体制の利息）
 
 実装者・レビュアーが踏んだ/仕留めた罠は**同じブランチで** docs/RAILS_GOTCHAS.md へ追記する。1-1 の例: `delete_all` の nullify 化（レビュアーの実験が実踏）・`travel_to` 外 `follow_redirect!` のセッション切れ（実装者が計画の配置ミスを検出）・devise FailureApp の 302 固定（レビュアーの gem ソース確認）。
+
+## 接ぎ目レビュー（データ層スライス merge 後・条件付き）
+
+複数スライス Phase で、後続が消費する契約を作るスライス（データ層/基盤）を merge した後、**次スライスの writing-plans 前**に実施を判定する。設計時レビュー（1st pass）は実装を見られず、per-PR レビューは diff の外（既存 writer・将来 consumer）を見ない — 「実装が存在し、依存側が未着手」の一点だけが、接ぎ目を全情報かつ最安の修正点で検査できる（dormant-by-construction 対策・PR #29 で実証）。
+
+**発動条件（いずれか。どれも無ければ skip し、判定 1 行を ROADMAP 該当行に記録する）:**
+1. merge したスライスが**共有モデルに検証・制約・enum 値を追加**した（新制約 × 既存 writer/遷移の逆方向リスク — RAILS_GOTCHAS「enum 排他検証 × 遷移随伴列クリア漏れ」の型）
+2. **後続スライスが消費する列/scope/契約を新設**した
+3. 設計に**「実在を確認せよ」型の宿題**が残っている（4-2 §10⑥ 型）
+
+**実施の型**: `/multi-perspective-review` の**接ぎ目モード**。視点は「マージ前最終」と同じ導出原理（touch 面から 3±1・検証/enum 追加時は tx・状態機械レンズ必須）。
+**畳み方**: 視点間一致を最優先 → 設計書へ §binding 追補（4-2 §11 方式・後続 writing-plans の必須要件化）→ RAILS_GOTCHAS 還流 → ROADMAP へ merge-block 条件付き申し送り → 独立 docs PR で確定。
+**実測（4-2a 後・PR #29 初出）**: 6〜7 視点フル編成で subagent 約 81 万 tokens・並列 wall 約 6 分。3±1 導出で約半減見込み。検出: merge-block 級 1（3 視点独立一致）+ High 4 + Med 9。
 
 ## 改訂
 
