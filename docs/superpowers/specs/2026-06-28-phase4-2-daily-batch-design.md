@@ -273,7 +273,7 @@ end
 確定ガード: `notified_on` の**翌営業日 17:00 経過後のみ確定可**（`CompanyCalendarResolver` で翌営業日算出・列追加せず `notified_on` から computed）。猶予前確定は 422。本人事前通知 + 猶予で弁明機会を担保（労基法 24 条の趣旨）。
 
 ### ⑥ absent→on_leave 事後有給パスの検証 + 通知文の正確化（労務 Med）
-「事後の有給申請が可能」通知は Phase 2 LR 承認 service が既存 `AR(absent)` を `on_leave` へ上書きするパス（SPEC §6.2 L777・§13）の存在に依存。**writing-plans 前に当該パスの実在を実コードで確認**し、未対応なら 4-2c scope に含めるか通知文を縮小。`investigating` 確定 AR のクリア（CCR new_entry #48 後置）も踏まえ、**通知文は「事後に有給休暇または打刻変更申請を提出できます」へ正確化**。
+「事後の有給申請が可能」通知は Phase 2 LR 承認 service が既存 `AR(absent)` を `on_leave` へ上書きするパス（SPEC §6.2 L808・§13）の存在に依存。**writing-plans 前に当該パスの実在を実コードで確認**し、未対応なら 4-2c scope に含めるか通知文を縮小。`investigating` 確定 AR のクリア（CCR new_entry #48 後置）も踏まえ、**通知文は「事後に有給休暇または打刻変更申請を提出できます」へ正確化**。
 
 ### ⑦ Detect のユーザー単位 rescue（実用 High）
 `User.active.find_each` ブロック内で **per-user rescue + log（+ Sentry）**。1 ユーザーの例外でテナント全体の検知/通知が欠落しないことを DoD に追加。
@@ -308,13 +308,14 @@ end
 §10（設計時 1st pass）が対象化しなかった「**4-2a 実装 ↔ 既存/後続コードの接ぎ目**」を、マージ済み 4-2a を対象に 6 視点で再 critique（原則整合 / 実用+YAGNI / テスト網羅 / セキュリティ・テナント / 労務正確性 / tx atomicity・状態機械）。骨格（4 サブ PR・AbsenceCandidate 二層 FK・ディスパッチャ→子・tx 後 Notifier）に**越境の実害漏洩 High は無し**と再確認。潜在的欠陥はすべて接ぎ目に集中していた。**本節は §2〜§10 を上書きする**（writing-plans は §10 と本節を必須要件として扱う）。
 
 ### ①【最重要・4-2c merge ブロック】absent は非終端 — exit で随伴列をクリア（§10⑫ を訂正）
-§10⑫ の「`absent` は `[*]→absent` の単方向終端」は **SPEC §13.1 と事実矛盾**（§13.1 は `absent→on_leave`・`absent→working` の出辺を明示）。この誤前提ゆえ「absent を出る時の随伴列後始末」が設計から脱落した。
+§10⑫ の「`absent` は `[*]→absent` の単方向終端」は **SPEC §13.1 と事実矛盾**（§13.1 状態遷移図 L1261-1263 は `absent→working`・`absent→clocked_out`・`absent→on_leave` の 3 出辺を明示・原典再確認済）。この誤前提ゆえ「absent を出る時の随伴列後始末」が設計から脱落した。
 - **機序（原則整合/労務/tx atomicity の 3 視点が独立確認・Confirmed）**: 4-2c が `status:absent, absence_reason:非nil` の AR を確定 → 後日その同一 (user, work_date) に事後有給 LR が承認される → `LeaveRequests::ApplyApproval#upsert_attendance_records`（apply_approval.rb:51-56）が `find_or_initialize_by(user_id:, work_date:)` で**既存 absent AR を拾い** `status=:on_leave` に上書きするが `absence_reason` を残す → `save!` で 4-2a 新設の `absence_reason_only_on_absent`（attendance_record.rb:71-75）が発火 → `RecordInvalid` → `Approvals::Approve#call` の `with_lock`/同一 tx ごと**承認全体が rollback**（controller が「承認できませんでした」に反転）。半休（morning_half/afternoon_half）でも同じ。
 - **現状 dormant**（absent AR を作る `Absences::Confirm` が未実装）→ **4-2c 出荷で live 化**。
 - **binding 修正（4-2c で apply_approval を必ず同時修整＝merge ブロック条件）**:
   - `upsert_attendance_records` が既存 AR を拾った際、absent からの遷移なら `record.absence_reason = nil` / `record.note = nil` を**明示クリア**してから `save!`。
   - §10⑫ の根拠記述を訂正: 「absent は**非終端**（LR 承認で on_leave 化・§13.1）。plain enum 継続は据置だが、AASM exit フックが無いぶん**遷移を起こす各 service が随伴列クリアの責務を負う**」。
-  - 回帰テスト: `absent(absence_reason 有) → 事後有給 LR 承認 → on_leave 昇格成功 ∧ absence_reason=nil`（現状この遷移は無テスト＝apply_approval_spec は新規作成のみ）。RAILS_GOTCHAS に罠を還流済（「enum 排他検証 × 遷移随伴列クリア漏れ」）。
+  - 回帰テスト: `absent(absence_reason 有) → 事後有給 LR 承認 → on_leave 昇格成功 ∧ absence_reason=nil`（現状この遷移は無テスト＝apply_approval_spec は新規作成のみ）。RAILS_GOTCHAS に罠を還流済（「enum 排他検証 × 遷移随伴列クリア漏れ」）。note 一括クリアは安全（absent AR の note は §3.3 により欠勤 other 理由専用・打刻なしゆえ interval 追記等は載らない）。
+  - **レビュアー追加**: 本修正で 4-2c は `LeaveRequests::ApplyApproval`（承認副作用）に触れるため、§9 表の tenant-isolation + labor-law に **`approval-engine-reviewer` を追加**（CLAUDE.md トリガー「ApplyApproval に触れたら merge 前」準拠）。
 
 ### ② absent→on_leave は absence_to_paid を記録（§6.2 L808・監査の穴）
 `AttendanceHistory` の `absence_to_paid`(event_type 6) は **enum 予約のみで writer 皆無**。`ApplyApproval#record_history` は無条件で `leave_approved` を記録し「新規 on_leave」と「absent→on_leave 変換」を区別しない → 労基法 109 条 5 年保存の監査（§4.14）で欠勤→有給振替の痕跡が残らない。
@@ -340,9 +341,9 @@ end
 §5.2 の単一 tx N 日 `create!` は、並行 clock_in/CCR が同日 AR を作ると unique `[user_id,work_date]` 違反 → `PG::InFailedSqlTransaction` で**残り全日 rollback**（1 日の競合が確定バッチ全体を殺す）。finalized ガードも月境界跨ぎで per-date 判定が要る。
 - **binding（4-2c）**: HWR の既存 idiom（`holiday_work_requests/apply_approval.rb:51-64` の `transaction(requires_new: true)` savepoint + RecordNotUnique/RecordInvalid 分別 rescue）を日次ループへ再利用（既存 AR 日は skip し結果に返す）。finalized 判定は既存 `MonthlySummaries::ClosingLock`（submitted/finalized=locked）を tx 冒頭で対象全日一括、1 日でも locked なら write 前に 422。
 
-### ⑧ notify-once の atomicity — notified_on を先行（§4.3 補強）
-Notifier 自前 tx（commit 後 broadcast）と `notified_on` 記録が別 write。間で crash/per-user rescue 捕捉が起きると次 run で**二重通知**（informational→double opt-in で email 二重も）。
-- **binding（4-2b）**: 「`notified_on = org.today` を候補行に先行確定 → 同 run で Notifier」を規約化（email 二重より欠落側に倒す＝informational ベルは害小）。順序と失敗時意味論を実装コメントに明記。
+### ⑧ notify-once の atomicity — 本人宛 Notifier 成功後に notified_on（§4.3 補強・自己レビューで順序訂正）
+Notifier 自前 tx（commit 後 broadcast）と `notified_on` 記録が別 write ゆえ順序が意味論を決める。当初 binding は「notified_on 先行（欠落側に倒す）」としたが、**`notified_on` は §10⑤ の猶予期限（翌営業日 17:00）の起算アンカー**でもあるため誤り: 先行確定後に Notifier が失敗（per-user rescue 捕捉・§10⑦）すると**通知は実在しないのに猶予時計だけが走り**、未通知のまま確定可能＝§10⑤ の弁明機会が形骸化し、notified_on 済ゆえ再試行もされない（恒久欠落）。
+- **binding（4-2b）**: 順序は「**本人宛 Notifier 成功 → `notified_on = org.today` 確定**」。管理者宛は best-effort（notified_on の条件にしない — 管理者は §5.1 の候補一覧で pull 可視）。Notifier 失敗時は notified_on nil のまま次稼働日 run が自然に再試行。部分失敗（本人通知成功後・update 失敗）の再通知は稀な crash 窓のみで、猶予を**後ろへ延ばす方向**（本人保護側）にしか働かない。順序と失敗時意味論を実装コメントに明記。
 
 ### ⑨ interval_violation_count は live counter か Aggregate 派生かを 4-2d 前に決定（§6.1・YAGNI Med）
 MAS は締め時に `find_or_initialize_by(year_month: AttendancePeriod.label)` で**遅延生成**。4-2d が月中 clock_in で increment すると、`AttendancePeriod.label`（closing_day 依存）を月中に正確再現しない限り別行に落ちて回数が**黙って消失/二重化**する。回数は既に `AttendanceHistory(interval_shortage)` が 1 違反=1 イベントで持つ。
