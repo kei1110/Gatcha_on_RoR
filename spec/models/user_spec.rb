@@ -284,4 +284,17 @@ RSpec.describe User, type: :model do
       expect(user.valid_password?("knownpassword1!")).to be(true)
     end
   end
+
+  describe ".active スコープ（4-2b・§11 corrigenda）" do
+    let(:org) { create(:organization) }
+
+    around { |ex| ActsAsTenant.with_tenant(org) { ex.run } }
+
+    it "active: true のみ返す" do
+      active_user = create(:user, active: true)
+      inactive_user = create(:user, active: false)
+      expect(User.active).to include(active_user)
+      expect(User.active).not_to include(inactive_user)
+    end
+  end
 end
