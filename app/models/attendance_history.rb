@@ -26,6 +26,8 @@ class AttendanceHistory < ApplicationRecord
   validates :actor_id, presence: true, if: :clock_change_approved?  # 2-3（不変ゆえ事前防御）
   validates :actor_id, presence: true, if: :leave_withdrawn?          # 2-5
   validates :actor_id, presence: true, if: :clock_change_withdrawn?   # 2-5
+  validates :actor_id, presence: true, if: :absence_confirmed?  # 4-2c 欠勤確定（§12⑥・不変ゆえ事前防御）
+  validates :actor_id, presence: true, if: :absence_to_paid?    # 4-2c 事後有給振替（§12⑥）
   validate :user_must_belong_to_same_organization
   validate :actor_must_belong_to_same_organization
   validate :source_must_belong_to_same_organization
