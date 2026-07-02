@@ -16,3 +16,6 @@ production:
   notification_dispatch:
     class: NotificationDispatchJob
     schedule: every hour
+  daily_attendance:
+    class: DailyAttendanceJob
+    schedule: "at 2am every day"
