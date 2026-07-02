@@ -20,6 +20,9 @@ class User < ApplicationRecord
   has_one :notification_preference, class_name: "UserNotificationPreference", dependent: :destroy
   has_many :notifications, foreign_key: :target_user_id, inverse_of: :target_user, dependent: :destroy
 
+  # 在籍者の母集合（§4.2 日次バッチ・Organization.active と同型）
+  scope :active, -> { where(active: true) }
+
   enum :role, { employee: 0, manager: 1, hr_admin: 2 }, validate: true
 
   normalizes :email, with: ->(email) { email.strip.downcase }
