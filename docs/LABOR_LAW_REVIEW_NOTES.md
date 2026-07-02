@@ -77,6 +77,17 @@
 2. 半休 `standard_work_hours/2` 近似と、未割当パターン日 0h を素材として許容できるか
 3. **`paid_leave_days_used` を §8.6（労基法 39 条 7 項）の 5 日取得義務充足判定の source に流用しないこと** — 本列は `leave_type.paid_leave?`（**全種別**・annual 非限定）ゆえ、代休/振替に `paid_leave=true` を立てると混入し過大計上になる。§8.6 充足（39 条 8 項の参入規則・annual=`LeaveBalance#paid_annual?` 限定）は別 source とする（§8.6 実装＝Phase 4-3 への handoff）。
 
+## 追加確認事項（Phase 4-2・2026-07-02・多視点 2nd-pass 労務視点）
+
+**§6.10 欠勤確定と賃金控除の事後救済（設計 2nd-pass レビューで判明）:**
+
+1. 欠勤確定（特に `investigating`＝打刻漏れ調査中）は absent AR（計算 8 列 NULL＝no-work-no-pay）を即時生成し賃金控除に直結する一方、確定後に「有給振替（`absent→on_leave`）」「打刻変更（欠勤日への `new_entry`）」で是正する実コードパスが現状**すべて非機能**（前者は 4-2a の `absence_reason_only_on_absent` 検証が承認を rollback・後者は CCR `new_entry` が明示拒否＝#48 後置）。本人通知は両救済を約束している。労基法 24 条（全額払い）の趣旨に照らし、(a) 未確定事由（`investigating`）で確定・控除して良いか（保留扱いにすべきか）、(b) 確定を許すなら事後是正パスの実装を通知より先行させるべきか、を確認したい。※実装側は設計 §11①②③ で「remedy 実装まで通知文縮小・4-2c で apply_approval に exit クリア + `absence_to_paid` 記録」を binding 化済。
+
+2. 欠勤候補は会社カレンダーの稼働日で検出するため、非常勤・シフト勤務者の非所定日も候補化する（WorkPattern が稼働曜日を持たない・判断 E 自認）。管理者手動確定でゲートしているが、シフト未把握の管理者による誤確定・不当な欠勤控除の防止策（母数の絞り方・確認 UI での注意喚起）について実務的助言を求めたい。
+
+- 突合原典（照合済）: 労基法 24 条（賃金全額払い）<https://laws.e-gov.go.jp/law/322AC0000000049> ／ 労働時間等の設定の改善に関する特別措置法 2 条（勤務間インターバルの努力義務）<https://laws.e-gov.go.jp/law/404AC0000000090>
+- 注: jp-labor-evidence MCP は `BUNDLED_INDEX_AGED`（内蔵インデックス生成 2026-04-02・90 日超）警告あり。直近改正未反映の可能性ゆえ施行時に `diff_revision` で再照合。
+
 ## 運用メモ
 
 - 本リストの各項目は実装フェーズ（特に Phase 4 コンプラ）着手前に社労士レビューを受けること
