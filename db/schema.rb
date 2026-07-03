@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_29_085448) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_02_050719) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "pg_catalog.plpgsql"
@@ -112,6 +112,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_29_085448) do
     t.index ["organization_id", "id"], name: "index_attendance_records_on_organization_id_and_id", unique: true
     t.index ["organization_id"], name: "index_attendance_records_on_organization_id"
     t.index ["user_id", "work_date"], name: "index_attendance_records_on_user_id_and_work_date", unique: true
+    t.check_constraint "absence_reason IS NULL OR status = 5", name: "attendance_records_absence_reason_only_on_absent"
     t.check_constraint "leave_type_id IS NULL OR (status = ANY (ARRAY[2, 3, 4]))", name: "attendance_records_leave_type_only_on_leave_status"
   end
 

@@ -195,6 +195,20 @@ RSpec.describe AttendanceRecord, type: :model do
       create(:attendance_record, user:, status: :absent, absence_reason: :family, clock_in: nil)
       expect(AttendanceRecord.calculated).to be_empty
     end
+
+    it "非 absent status に absence_reason 残置は DB CHECK が拒否（model 検証を貫通・§12⑥）" do
+      user = create(:user)
+      ar = build(:attendance_record, user:, status: :on_leave, clock_in: nil,
+                                     leave_type: create(:leave_type))
+      ar.absence_reason = :unauthorized # 本来 model 検証で invalid だが save(validate:false) で DB を突く
+      expect { ar.save!(validate: false) }.to raise_error(ActiveRecord::StatementInvalid, /absence_reason/)
+    end
+
+    it "absent + absence_reason は DB CHECK を通る" do
+      user = create(:user)
+      ar = build(:attendance_record, user:, status: :absent, absence_reason: :illness, clock_in: nil)
+      expect { ar.save!(validate: false) }.not_to raise_error
+    end
   end
 
   describe "計算 8 列（1-2 設計 §1）" do

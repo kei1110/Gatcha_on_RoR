@@ -201,4 +201,33 @@ RSpec.describe AttendanceHistory do
       expect(h.errors[:actor_id]).to be_present
     end
   end
+
+  describe "actor 必須（absence_confirmed / absence_to_paid・§12⑥）" do
+    let(:org) { create(:organization) }
+
+    around { |ex| ActsAsTenant.with_tenant(org) { ex.run } }
+
+    it "absence_confirmed は actor 無しで無効" do
+      h = build(:attendance_history, user: create(:user), actor: nil,
+                                     event_type: :absence_confirmed, event_date: Date.new(2026, 5, 1))
+      expect(h).to be_invalid
+      expect(h.errors[:actor_id]).to be_present
+    end
+
+    it "absence_to_paid は actor 無しで無効" do
+      h = build(:attendance_history, user: create(:user), actor: nil,
+                                     event_type: :absence_to_paid, event_date: Date.new(2026, 5, 1))
+      expect(h).to be_invalid
+      expect(h.errors[:actor_id]).to be_present
+    end
+
+    it "actor があれば有効（absence_to_paid）" do
+      u = create(:user)
+      h = build(:attendance_history, user: u, actor: create(:user),
+                                     event_type: :absence_to_paid, event_date: Date.new(2026, 5, 1),
+                                     previous_status: AttendanceRecord.statuses[:absent],
+                                     new_status: AttendanceRecord.statuses[:on_leave])
+      expect(h).to be_valid
+    end
+  end
 end
