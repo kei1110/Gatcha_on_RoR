@@ -53,8 +53,10 @@ should_run() { [[ ",$SKIP_CSV," == *",$1,"* ]] && return 1 || return 0; }
 LOG_DIR="/tmp/preflight-$(date +%s)"; mkdir -p "$LOG_DIR"
 
 # 1. RuboCop（変更 .rb / rubocop-rails-omakase）
+# --force-exclusion 必須: ファイル明示渡しは .rubocop.yml の Exclude（db/schema.rb 等）を無視するため、
+# migration を含む diff で 200+ offenses の偽 FAIL になる（CLAUDE.md 鉄則 2・2026-07-07 実測 241 offenses）
 if should_run rubocop && [[ "$HAS_RB" -gt 0 ]]; then
-  { echo "$DIFF_FILES" | grep -E '\.rb$' | xargs bundle exec rubocop > "$LOG_DIR/rubocop.log" 2>&1; echo $? > "$LOG_DIR/rubocop.exit"; } &
+  { echo "$DIFF_FILES" | grep -E '\.rb$' | xargs bundle exec rubocop --force-exclusion > "$LOG_DIR/rubocop.log" 2>&1; echo $? > "$LOG_DIR/rubocop.exit"; } &
 fi
 
 # 2. RSpec（関連 spec。安全側は全実行）+ 3. SimpleCov coverage（rspec が出力）

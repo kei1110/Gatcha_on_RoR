@@ -2,6 +2,17 @@
 
 Salesforce 2GP 勤怠パッケージ「Gatcha」を **Ruby on Rails 8 マルチテナント SaaS** へ再設計するプロジェクト。**勤怠ドメインのみ**（工数管理 Gatcha Work は範囲外）。**現在地・進行中フェーズ・次の一歩は docs/ROADMAP.md が唯一の正**（フェーズ番号を本ファイルにベタ書きしない＝ drift 防止・後述「バージョン記法」と同方針）。
 
+## 鉄則（どのモデル・どのセッションでも遵守）
+
+1. **db/schema.rb と Gemfile.lock を手で編集しない** — 必ず migration / bundle 経由（フックが止めるが、サブエージェントはフックをすり抜けるため指示でも守る）
+2. **rubocop にファイルを明示渡しするときは必ず `--force-exclusion`** — 省くと .rubocop.yml の Exclude が無視され db/schema.rb 等で偽 FAIL（0b-3 で実踏）
+3. **スコープ付きモデルに触れる前にテナント文脈を確立する** — console/rake は `ActsAsTenant.current_tenant = Organization.find_by!(subdomain: "acme")`、ジョブ・service・seed は `ActsAsTenant.with_tenant(org) { ... }`（`require_tenant = true`。`NoTenantSet` は正しい挙動 — ガードを緩めず利用側を直す）
+4. **ユーザー参照・マスタ参照の FK は複合 FK `[organization_id, xxx_id] → table(organization_id, id)`** — 単純 FK（`→ users(id)`）はテナント越境を DB が素通しする（§3.6・型は `/create-migration`）
+5. **法定値（SPEC §8）はコード内の定数** — 36 協定上限・割増率・月 80h・有給 5 日等を OrganizationSetting から読む実装にしない（テナント設定はアラート参考値まで）
+6. **いかなる違反検知でも打刻をブロックしない**（SPEC §8 — 実労働時間の記録義務。対応は事後通知・エスカレーションのみ）
+7. **enum 整数・event_type taxonomy は append-only** — リオーダ・再利用禁止（§13・§4.14。partial index の `where` 生整数が enum マッピングに依存）
+8. **マージ前レビュアーは下記「レビュアー起動トリガー表」×実際の git diff から都度導出する** — 設計書のレビュアー表を転記しない（4-2a で転記に従い approval-engine 未起動 → dormant バグが merge 通過・PR #29）
+
 ## ドキュメント地図（SSOT）
 - [docs/SPEC.md](docs/SPEC.md) — 仕様の single source of truth（§0〜§16・多視点レビュー反映・原典照合済み・SF 知識なしで自立）
 - [docs/ROADMAP.md](docs/ROADMAP.md) — 進行管理の SSOT（フェーズ→スライス分解・現在地・1 スライス = 1 PR）
@@ -22,6 +33,17 @@ Rails 8 / PostgreSQL 18 / Hotwire(Turbo+Stimulus)+ViewComponent / Devise / acts_
 
 > **バージョン記法（drift 防止）:** 現行 Ruby 版は `.ruby-version` が SSOT。prose/docs に数字をベタ書きせずファイルを指す（CI の `setup-ruby` も無記述で追従・Dockerfile ARG だけは build 用 literal で同期コメント付き）。過去の移行記録（PR #27 の 3.3.11 → 4.0.2 等・凍結事実）は数字可。
 
+## よく使うコマンド
+
+```bash
+bundle exec rspec [path]                            # テスト（引数なし = 全件）
+bundle exec rubocop --force-exclusion <files>       # lint（鉄則 2。全体走査は引数なしで可）
+bin/brakeman --no-pager                             # セキュリティ静的解析（app/ に触れたら必須）
+bin/rails generate migration XxxYyy                 # migration は生成 → body 差し替え（/create-migration の idiom で）
+bin/rails db:migrate && bin/rails db:test:prepare   # db:test:prepare を忘れると test DB 不整合で spec が落ちる
+bin/rails console                                   # 起動後まず鉄則 3 のテナント設定を実行
+```
+
 ## Git
 - このリポジトリのコミットは **kei1110 <eoh2145@gmail.com>**（local config 済み・グローバル設定とは別）
 - gh CLI はアカウント 2 つ登録（kei1110 / sub-account）。PR 操作が collaborator エラーになったら `gh auth switch -u kei1110`
@@ -31,10 +53,16 @@ Rails 8 / PostgreSQL 18 / Hotwire(Turbo+Stimulus)+ViewComponent / Devise / acts_
 - `/legal-citation-audit` — 労務法令を jp-labor-evidence MCP で原典照合 ／ `/preflight` — push 前 CI 等価チェック
 - `/create-migration` — 複合 FK `[organization_id, id]` 標的・partial unique・acts_as_tenant 列の migration 規約参照（§3.6 の DB 最終防衛 idiom）
 
-## サブエージェント（.claude/agents/・PROACTIVELY 起動・読み取り専用）
-- `tenant-isolation-reviewer` — テナント分離（acts_as_tenant・§3.6）。models/jobs/migration に触れたら merge 前
-- `labor-law-compliance-reviewer` — 労務コンプラ（§8 法定値）。calculator/compliance/OrganizationSetting に触れたら merge 前（+ `/legal-citation-audit`）
-- `approval-engine-reviewer` — 承認エンジン（§7 自己承認・固定 2 段）/ AASM 状態機械（§13）/ 副作用 atomicity。Approvable/ApplyApproval/状態 enum/撤回/締め に触れたら merge 前
+## レビュアー起動トリガー表（.claude/agents/・読み取り専用・DEVELOPMENT_WORKFLOW「マージ前最終」の正本）
+
+スライスが**実際に触れた面**（`git diff main...HEAD --name-only`）から導出する。複数行に該当したら**該当レビュアーをすべて**起動:
+
+| 触れた面（diff で判定） | 必須アクション（merge 前） |
+|---|---|
+| app/models / app/jobs / db/migrate / Devise・テナント解決まわりの config | `tenant-isolation-reviewer`（§3.6） |
+| app/calculators / compliance / OrganizationSetting / 残業・割増・36 協定・有給・産業医面談 | `labor-law-compliance-reviewer`（§8）+ `/legal-citation-audit` |
+| 状態 enum の追加・変更 / Approvable / ApprovalAssignment / ApplyApproval / AASM / 撤回・締め | `approval-engine-reviewer`（§7・§13・副作用 atomicity） |
+| フェーズ完了時・リリース候補 merge 前 | `/spec-check`（SPEC ↔ 実装の乖離） |
 
 ## フック（.claude/settings.json → scripts/claude-hooks/）
 PreToolUse/PostToolUse の開発ガード（**Claude Code 再起動＋承認**で有効化）:
@@ -45,15 +73,15 @@ PreToolUse/PostToolUse の開発ガード（**Claude Code 再起動＋承認**�
 - `check-job-tenant-wrap`（Edit/Write）— app/jobs の perform が `ActsAsTenant.with_tenant` 未ラップ（かつ非ディスパッチャ）なら警告（§3.6・check-tenant-scope の jobs 対称版）
 - `rubocop-autoformat`（Edit/Write）— .rb を自動整形
 - `block-gemfile-lock-edit`（Edit/Write）— Gemfile.lock の手編集を禁止（bundle 経由を強制）
+- `regen-spec-index`（Edit/Write）— docs/SPEC.md 編集時に冒頭のセクション索引（行番号表）を自動補正（gate ではなく整形器・常に exit 0）
 
-## Gotchas（非自明・重要）
+## Gotchas（環境固有・非自明）
+
+> 挙動上の禁止則は冒頭「鉄則」に集約済み。ここは環境まわりの罠のみ。実装・テストの罠台帳は docs/RAILS_GOTCHAS.md。
+
 - **OpenSSL:** `~/.zshrc` に Intel 時代の openssl@1.1 設定が残存（chezmoi 管理・未修正）。Ruby ビルド時は `RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@3)"` ＋ `LDFLAGS=/CPPFLAGS=/PKG_CONFIG_PATH=` のクリアで回避。グローバル ruby 2.7.2 は openssl@1.1 欠落で壊れている（本リポジトリは `.ruby-version` 固定の Ruby ゆえ無関係）
 - **rails MCP:** `rails-mcp-server`（rbenv shim）は cwd の `.ruby-version` で Ruby を解決 → プロジェクト直下で起動されること。**Ruby アップグレード時は新 Ruby へ `gem install rails-mcp-server` で入れ直す**（Bundler 管理外の実行系ツールゆえ bundle では追従しない。怠ると `/mcp` が `Failed to reconnect: -32000` で死ぬ。詳細は docs/RAILS_GOTCHAS.md「Ruby / ツールチェーン」）
-- **マルチテナント安全（SPEC §3.6）:** SolidQueue バッチはリクエスト無 → `ActsAsTenant.with_tenant(org)` でラップ必須（全社横断漏洩を防ぐ）。自己参照 FK は同一テナント強制
-- **コンプラ判定は法定(legal)基準固定**（SPEC §8）。36 協定の上限・割増率は定数（テナント設定で改変不可）
 - 親 `/Users/Eoh/CLAUDE.md` は chezmoi dotfiles 用で本プロジェクトとは無関係（自動ロードされるが従わない）
-- **rails console / rake:** `require_tenant = true` ゆえ、最初に `ActsAsTenant.current_tenant = Organization.find_by!(subdomain: "acme")` を実行しないとスコープ付きモデルのクエリが `NoTenantSet` で失敗する
-- **rubocop にファイルを明示渡しすると .rubocop.yml の Exclude（db/schema.rb 等）が無視され偽 FAIL** — 必ず `bundle exec rubocop --force-exclusion <files>` で実行（0b-3 preflight で実踏）
 
 ## ワークフロー
 実装は SPEC §15 のフェーズを docs/ROADMAP.md のスライス（1 スライス = 1 ブランチ = 1 PR・squash マージ）で進める。各スライスは brainstorm →（大物は specs/ に設計 + 多視点レビュー）→ writing-plans → 実装 → `/preflight` → PR。**PR に ROADMAP の該当行更新（チェック + PR 番号）を含めてからマージ**。設計・計画は docs/superpowers/{specs,plans}/ に日付付きで蓄積。現在地と次の一歩は ROADMAP が正。
