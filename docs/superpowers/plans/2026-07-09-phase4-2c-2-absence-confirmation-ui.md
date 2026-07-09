@@ -71,7 +71,8 @@
 |----------|------|--------|
 | `app/services/company_calendar_resolver.rb`（変更） | `HOLIDAY_DAY_TYPES` を SSOT 化・`#next_business_day` 追加 | 1 |
 | `app/services/notifier.rb`（変更） | `HOLIDAY_DAY_TYPES` を Resolver への alias 化（重複排除） | 1 |
-| `app/models/attendance_record.rb`（変更） | `user_must_belong_to_same_organization`（§11⑥ 二層化） | 2 |
+| `app/models/attendance_record.rb`（変更） | `user_must_belong_to_same_organization`（§11⑥ 二層化）+ `.absence_reason_note`（監査 note の単一書式源） | 2 |
+| `config/locales/ja.yml`（変更） | `absence_reasons` ラベル（Task 2 で先行追加・4/5/7 が消費） | 2 |
 | `app/policies/absence_confirmation_policy.rb`（新規） | headless role ゲート + 対象社員ロスター Scope | 3 |
 | `app/policies/absence_candidate_policy.rb`（新規） | 候補の可視範囲 Scope + `destroy?` | 3 |
 | `app/services/absences.rb`（新規） | エラークラス（`IneligibleError` / `ClosingLockedError`） | 4 |
@@ -80,7 +81,6 @@
 | `config/routes.rb`（変更） | `resources :absence_confirmations` | 5 |
 | `app/views/absence_confirmations/index.html.erb`（新規） | 候補一覧・確定フォーム・却下ボタン・注意喚起 | 5 |
 | `app/components/global_nav_component.rb`（変更） | 「欠勤確定」リンク（manager\|hr_admin） | 5 |
-| `config/locales/ja.yml`（変更） | `absence_reasons` ラベル | 5 |
 | `app/services/attendance_anomalies/detect.rb`（変更） | 事前通知 body の虚偽 remedy 削除（§12⑦） | 6 |
 | `docs/SPEC.md`（変更） | §1.4 行・§6.10 制限文言・§9.1 通知行 | 8 |
 
@@ -212,15 +212,19 @@ git commit -m "feat: CompanyCalendarResolver#next_business_day と HOLIDAY_DAY_T
 
 ---
 
-## Task 2: `AttendanceRecord` の user 同一組織検証（§11⑥ 二層化）
+## Task 2: `AttendanceRecord` の補強（user 同一組織検証 §11⑥ + 監査 note の単一書式源）
 
 **Files:**
 - Modify: `app/models/attendance_record.rb`
+- Modify: `config/locales/ja.yml`
 - Test: `spec/models/attendance_record_spec.rb`
 
 **Interfaces:**
-- Consumes: 既存の複合 FK `attendance_records[organization_id, user_id] → users[organization_id, id]`（`schema.rb:413`・DB 層は既に防御済）。
-- Produces: 他テナント `user_id` の直接代入が **DB 500 でなくクリーンな `RecordInvalid`（422）** になる。`AttendanceHistory` / `AbsenceCandidate` と同型の ID 基点 fail-closed 検証。
+- Consumes: 既存の複合 FK `attendance_records[organization_id, user_id] → users[organization_id, id]`（`schema.rb:413`・DB 層は既に防御済）。既存 `enum :absence_reason`（`prefix: true`）。
+- Produces:
+  - 他テナント `user_id` の直接代入が **DB 500 でなくクリーンな `RecordInvalid`（422）** になる。`AttendanceHistory` / `AbsenceCandidate` と同型の ID 基点 fail-closed 検証。エラー種別は `:cross_tenant`（`belongs_to` presence 由来の `:blank` と判別可能）。
+  - `AttendanceRecord.absence_reason_note(reason) → String | nil` — 監査 `AttendanceHistory#note` に焼く「欠勤理由: {ラベル}」の**単一書式源**。`reason` が blank なら `nil`。**Task 4（確定）と Task 7（事後有給振替）の両方がこれを呼ぶ**（書式が両経路で食い違わないための単一化）。
+  - i18n `activerecord.attributes.attendance_record.absence_reasons.<key>`（Task 4 / 5 / 7 が消費）
 
 > §11⑥: `AttendanceRecord` にだけ `user_must_belong_to_same_organization` が無く、二層防御が DB 複合 FK の 1 層に縮退していた。**これは同一テナント別部下の越えは塞がない**（§12③ が明言・塞ぐのは `policy_scope(User).find` のみ）。本タスクは**他テナント**の越えをクリーンに落とすためのもの。
 
@@ -241,7 +245,10 @@ git commit -m "feat: CompanyCalendarResolver#next_business_day と HOLIDAY_DAY_T
       record.user_id = stranger.id
 
       expect(record).to be_invalid
-      expect(record.errors[:user]).to be_present
+      # `belongs_to` presence（"must exist"）と二重発火するため、error type で判別する。
+      # この assert が無いと validator を削除しても緑のまま（RAILS_GOTCHAS「同一組織 validator は
+      # presence と二重発火し model テストで単体検証できない」への対処）
+      expect(record.errors.details[:user]).to include(a_hash_including(error: :cross_tenant))
     end
 
     it "同一組織の user なら valid" do
@@ -254,9 +261,8 @@ git commit -m "feat: CompanyCalendarResolver#next_business_day と HOLIDAY_DAY_T
 - [ ] **Step 2: テストが失敗することを確認**
 
 Run: `bundle exec rspec spec/models/attendance_record_spec.rb -e "user の同一組織検証"`
-Expected: FAIL（1 例目。`errors[:user]` は `belongs_to` presence 由来の "must exist" が立つため `be_present` は通り得るが、`be_invalid` は通る → **もし両方通ってしまう場合は本タスクの検証追加後も緑のままなので、下の Step 3 実装後に `errors.details[:user]` が `:cross_tenant` を含むことを追加 assert して判別性を確保する**）
-
-> **RAILS_GOTCHAS 注記**: 「必須 `belongs_to` の同一組織 validator は presence と二重発火し model テストで単体検証できない」。acts_as_tenant の default_scope が他テナント user を nil 解決するため、presence 検証が先に立つ。判別性を持たせるため、実装ではカスタムエラーに `:cross_tenant` を付ける（下記）。
+Expected: FAIL — 1 例目が `errors.details[:user]` に `:blank`（presence 由来）しか含まず `:cross_tenant` が無い。
+**これが判別テストの肝**: `be_invalid` だけなら presence 検証のおかげで実装前から緑になり、validator を消しても検出できない。
 
 - [ ] **Step 3: 検証を追加**
 
@@ -280,30 +286,80 @@ Expected: FAIL（1 例目。`errors[:user]` は `belongs_to` presence 由来の 
   end
 ```
 
-- [ ] **Step 4: 判別性を持つ assert を追加**
-
-Step 1 の 1 例目に 1 行足す（実装前は `:cross_tenant` が立たないので判別テストとして機能する）:
-
-```ruby
-      expect(record.errors.details[:user]).to include(a_hash_including(error: :cross_tenant))
-```
-
-- [ ] **Step 5: テストを通す**
+- [ ] **Step 4: テストを通す**
 
 Run: `bundle exec rspec spec/models/attendance_record_spec.rb`
 Expected: 全 PASS（新規 2 例 + 既存回帰なし）
 
-- [ ] **Step 6: 全 spec で回帰が無いことを確認**
+- [ ] **Step 5: 全 spec で回帰が無いことを確認**
 
 Run: `bundle exec rspec spec/models spec/services`
 Expected: 全 PASS（既存の AR 生成経路はすべて同一組織ゆえ非回帰）
 
-- [ ] **Step 7: rubocop + Commit**
+- [ ] **Step 6: i18n に `absence_reasons` ラベルを追加**
+
+`config/locales/ja.yml` の `activerecord.attributes.attendance_record` 配下、既存 `proxy_clock_reasons:` の**直前**に追加（インデントは `proxy_clock_reasons:` と同一階層に厳密に合わせる）:
+
+```yaml
+        absence_reasons:
+          unauthorized: 無届欠勤
+          illness: 疾病・傷病
+          family: 家庭事情
+          investigating: 打刻漏れ調査中
+          other: その他
+```
+
+編集後に構文確認: `bundle exec ruby -ryaml -e 'YAML.load_file("config/locales/ja.yml"); puts "ok"'`
+Expected: `ok`
+
+- [ ] **Step 7: 監査 note の書式源に対する失敗テストを書く**
+
+`spec/models/attendance_record_spec.rb` に追加:
+
+```ruby
+  describe ".absence_reason_note（監査 note の単一書式源）" do
+    it "enum キーから「欠勤理由: {日本語ラベル}」を組み立てる" do
+      expect(described_class.absence_reason_note("illness")).to eq("欠勤理由: 疾病・傷病")
+      expect(described_class.absence_reason_note(:unauthorized)).to eq("欠勤理由: 無届欠勤")
+    end
+
+    it "blank なら nil（absent でない記録の履歴には note を焼かない）" do
+      expect(described_class.absence_reason_note(nil)).to be_nil
+      expect(described_class.absence_reason_note("")).to be_nil
+    end
+  end
+```
+
+Run: `bundle exec rspec spec/models/attendance_record_spec.rb -e "absence_reason_note"`
+Expected: FAIL（`NoMethodError: undefined method 'absence_reason_note'`）
+
+- [ ] **Step 8: `.absence_reason_note` を実装**
+
+`app/models/attendance_record.rb` の `enum :absence_reason ...` 宣言の直後（`enum :proxy_clock_reason` の手前）に追加:
+
+```ruby
+  # 監査 AttendanceHistory#note に焼く欠勤理由ラベルの単一書式源。
+  # 確定（Absences::Confirm）と事後有給振替（LeaveRequests::ApplyApproval）の両経路が呼ぶ —
+  # AR.absence_reason は absent→on_leave の上書きでクリアされるため、理由は履歴側に残す必要がある
+  # （労基法 109 条 5 年保存）。書式を 1 箇所に集約し 2 経路で食い違わせない
+  def self.absence_reason_note(reason)
+    return nil if reason.blank?
+
+    "欠勤理由: #{I18n.t("activerecord.attributes.attendance_record.absence_reasons.#{reason}")}"
+  end
+```
+
+- [ ] **Step 9: テストを通す**
+
+Run: `bundle exec rspec spec/models/attendance_record_spec.rb`
+Expected: 全 PASS（新規 4 例）
+
+- [ ] **Step 10: rubocop + Commit**
 
 ```bash
 bundle exec rubocop --force-exclusion app/models/attendance_record.rb spec/models/attendance_record_spec.rb
-git add app/models/attendance_record.rb spec/models/attendance_record_spec.rb
-git commit -m "feat: AttendanceRecord に user 同一組織検証を追加（§11⑥ 二層防御の対称化）"
+git add app/models/attendance_record.rb spec/models/attendance_record_spec.rb config/locales/ja.yml
+git commit -m "feat: AttendanceRecord に user 同一組織検証（§11⑥）と監査 note の単一書式源を追加"
 ```
 
 ---
@@ -556,7 +612,7 @@ git commit -m "feat: 欠勤確定の Policy 2 種（headless role ゲート + �
 **Interfaces:**
 - Consumes:
   - `CompanyCalendarResolver#next_business_day(date) → Date | nil`（Task 1）
-  - `AttendanceRecord` の `absent` status / `absence_reason` enum（`prefix: true`）/ `user_must_belong_to_same_organization`（Task 2）
+  - `AttendanceRecord` の `absent` status / `absence_reason` enum（`prefix: true`）/ `user_must_belong_to_same_organization` / **`.absence_reason_note(reason) → String | nil`**（Task 2）
   - `MonthlySummaries::ClosingLock.locked?(user:, dates:) → Boolean`（既存・`LOCKED = %w[submitted finalized]`）
   - `AttendanceHistory` の `absence_confirmed`（event_type 5）・`actor_id` 必須検証（4-2c-1）
 - Produces:
@@ -622,10 +678,14 @@ RSpec.describe Absences::Confirm do
                                           event_date: target_date)
       expect(history.actor_id).to eq(manager.id)
       expect(history.new_status).to eq(AttendanceRecord.statuses[:absent])
+      expect(history.note).to eq("欠勤理由: 無届欠勤") # 書式は AttendanceRecord.absence_reason_note が単一源
     end
 
-    it "複数日を一括確定する（1 社員 × N 日付・§6.10 step 3）" do
-      d2 = Date.new(2026, 5, 7)
+    it "複数日を一括確定する（1 社員 × N 日付・§6.10 step 3・月境界を跨ぐ）" do
+      # d2 は target_date の前日側（過去日）に取る — travel_to の「今日」は 2026-05-04 ゆえ、
+      # 未来日の欠勤を確定するテストにしない。4/30(木) と 5/1(金) は締め期間が分かれ得るため
+      # guard_closing! の月境界跨ぎ（§11⑦）も同時に踏む
+      d2 = Date.new(2026, 4, 30)
       cs = [candidate, candidate(date: d2)]
       result = after_grace { confirm(dates: [target_date, d2], candidates: cs) }
 
@@ -723,7 +783,7 @@ RSpec.describe Absences::Confirm do
 
   describe "per-day savepoint（§12⑤）" do
     it "既に AR がある日は skip し、他の日は確定される（1 日の競合が全体を殺さない）" do
-      d2 = Date.new(2026, 5, 7)
+      d2 = Date.new(2026, 4, 30)  # 過去日（Confirm は candidates を target_date 昇順で処理する）
       cs = [candidate, candidate(date: d2)]
       create(:attendance_record, user:, work_date: target_date, status: :working) # 並行 clock_in 相当
 
@@ -907,7 +967,9 @@ module Absences
           user: @target_user, actor: @actor,
           event_type: :absence_confirmed, event_date: candidate.target_date,
           new_status: AttendanceRecord.statuses[:absent],
-          note: history_note
+          # AR.absence_reason は事後有給（absent→on_leave）でクリアされるため、確定時点の理由を監査へ焼く。
+          # 書式は AttendanceRecord が単一源（ApplyApproval の absence_to_paid と同一書式・Task 2）
+          note: AttendanceRecord.absence_reason_note(@absence_reason)
         )
       end
     end
@@ -915,45 +977,23 @@ module Absences
     # other 選択時のみ note に理由を入れる。other 以外は note=null（SPEC §6.10）
     def note_for_reason = @absence_reason == "other" ? @note.presence : nil
 
-    # AR.absence_reason は事後有給（absent→on_leave）でクリアされるため、確定時点の理由を監査へ焼く
-    def history_note = "欠勤理由: #{reason_label}"
-
-    def reason_label
-      I18n.t("activerecord.attributes.attendance_record.absence_reasons.#{@absence_reason}")
-    end
-
     def resolver = @resolver ||= CompanyCalendarResolver.new(organization:)
   end
 end
 ```
 
-- [ ] **Step 5: i18n ラベルを先行追加（`reason_label` が参照する）**
-
-`config/locales/ja.yml` の `activerecord.attributes.attendance_record` 配下、`proxy_clock_reasons` の直前に追加:
-
-```yaml
-        absence_reasons:
-          unauthorized: 無届欠勤
-          illness: 疾病・傷病
-          family: 家庭事情
-          investigating: 打刻漏れ調査中
-          other: その他
-```
-
-> インデントは既存の `proxy_clock_reasons:` と**同一階層**に合わせること。編集後に `bundle exec ruby -ryaml -e 'YAML.load_file("config/locales/ja.yml")'` で構文確認。
-
-- [ ] **Step 6: テストを通す**
+- [ ] **Step 5: テストを通す**
 
 Run: `bundle exec rspec spec/services/absences/confirm_spec.rb`
 Expected: 全 PASS（15 例）
 
-> **落ちたら疑う点**: `monthly_attendance_summaries` factory の必須列（`year_month` のラベル形式は `AttendancePeriod#label`）／ `absence_candidate` factory の `notified_on` 既定は nil ゆえ明示指定が要る／ `travel_to` の UTC↔JST 換算（JST 17:01 = UTC 08:01）。
+> **落ちたら疑う点**: `monthly_attendance_summaries` factory の必須列（`year_month` のラベル形式は `AttendancePeriod#label`）／ `absence_candidate` factory の `notified_on` 既定は nil ゆえ明示指定が要る／ `travel_to` の UTC↔JST 換算（JST 17:01 = UTC 08:01）／ i18n ラベルと `AttendanceRecord.absence_reason_note` は Task 2 で追加済（未実装なら Task 2 が漏れている）。
 
-- [ ] **Step 7: rubocop + Commit**
+- [ ] **Step 6: rubocop + Commit**
 
 ```bash
 bundle exec rubocop --force-exclusion app/services/absences.rb app/services/absences/confirm.rb spec/services/absences/confirm_spec.rb
-git add app/services/absences.rb app/services/absences/confirm.rb spec/services/absences/confirm_spec.rb config/locales/ja.yml
+git add app/services/absences.rb app/services/absences/confirm.rb spec/services/absences/confirm_spec.rb
 git commit -m "feat: Absences::Confirm（5 ガード + per-day savepoint・§11⑥⑦/§12①③④⑤）"
 ```
 
@@ -1397,7 +1437,7 @@ git commit -m "feat: 欠勤確定 UI（一覧・一括確定・却下・GlobalNa
 
 ```ruby
     it "確定後に本人へ absence_confirmed 通知を 1 件だけ送る（N 日付を 1 件に集約・§6.10 step 5）" do
-      d2 = Date.new(2026, 5, 7)
+      d2 = Date.new(2026, 4, 30) # 過去日（travel_to の「今日」は 2026-05-04）
       candidate_for(sub)
       candidate_for(sub, date: d2)
       sign_in manager
@@ -1436,7 +1476,7 @@ git commit -m "feat: 欠勤確定 UI（一覧・一括確定・却下・GlobalNa
     end
 
     it "skip 日は flash に併記される" do
-      d2 = Date.new(2026, 5, 7)
+      d2 = Date.new(2026, 4, 30) # 過去日
       candidate_for(sub)
       candidate_for(sub, date: d2)
       ActsAsTenant.with_tenant(org) { create(:attendance_record, user: sub, work_date: target_date, status: :working) }
@@ -1559,8 +1599,8 @@ git commit -m "feat: 欠勤確定通知（集約 1 件・tx 後発火）と 4-2b
 - Test: `spec/requests/approval_assignments_spec.rb`（追記）
 
 **Interfaces:**
-- Consumes: 4-2c-1 の `was_absent` 捕捉と `record_absence_to_paid(record, date)`（既存）。Task 4 で追加した i18n `absence_reasons` ラベル。
-- Produces: `record_absence_to_paid(record, date, previous_absence_reason)` — シグネチャに第 3 引数を追加し、`AttendanceHistory#note` に「欠勤理由: {ラベル}」を焼く。
+- Consumes: 4-2c-1 の `was_absent` 捕捉と `record_absence_to_paid(record, date)`（既存）。**`AttendanceRecord.absence_reason_note(reason)`（Task 2・監査 note の単一書式源）**。
+- Produces: `record_absence_to_paid(record, date, previous_absence_reason)` — シグネチャに第 3 引数を追加し、`AttendanceHistory#note` に `AttendanceRecord.absence_reason_note` の戻り値を焼く（`Absences::Confirm` の `absence_confirmed` 履歴と同一書式）。
 
 > **W1（4-2c-1 レビュー申し送り）**: `absent → on_leave` で `absence_reason` は `nil` にクリアされるため、`previous_status: absent` だけでは「どの欠勤が有給へ振り替わったか」が労基法 109 条の証跡から落ちる。**クリア前に捕捉**して history の `note` へ退避する（capture-before-assign と同じ罠 — `record.absence_reason = nil` の**後**に読むと常に nil）。
 >
@@ -1661,12 +1701,13 @@ Expected: FAIL（W1: `history.note` が nil。W2 は 4-2c-1 の fix により大
     end
 ```
 
-`record_absence_to_paid` を差し替え、`absence_reason_note` を private に追加:
+`record_absence_to_paid` を差し替え（**note の書式は `AttendanceRecord.absence_reason_note`（Task 2）を呼ぶ — ここで文字列を組み立て直さない**）:
 
 ```ruby
     # absent→on_leave（事後有給）の監査（SPEC §6.2 L808・§12⑥）。actor 必須（4-2c-1）。
     # W1: AR.absence_reason は上書きでクリアされるため、元の理由を note へ焼いて証跡に残す
-    # （労基法 109 条 5 年保存 — 「どの欠勤が有給へ振り替わったか」が previous_status だけでは追えない）
+    # （労基法 109 条 5 年保存 — 「どの欠勤が有給へ振り替わったか」が previous_status だけでは追えない）。
+    # note の書式は AttendanceRecord が単一源（Absences::Confirm の absence_confirmed 履歴と同一書式）
     def record_absence_to_paid(record, date, previous_absence_reason)
       AttendanceHistory.create!(
         user_id: @leave_request.requester_id,
@@ -1676,14 +1717,8 @@ Expected: FAIL（W1: `history.note` が nil。W2 は 4-2c-1 の fix により大
         event_date: date,
         previous_status: AttendanceRecord.statuses[:absent],
         new_status: AttendanceRecord.statuses[record.status],
-        note: absence_reason_note(previous_absence_reason)
+        note: AttendanceRecord.absence_reason_note(previous_absence_reason)
       )
-    end
-
-    def absence_reason_note(reason)
-      return nil if reason.blank?
-
-      "欠勤理由: #{I18n.t("activerecord.attributes.attendance_record.absence_reasons.#{reason}")}"
     end
 ```
 
@@ -1854,9 +1889,10 @@ git commit -m "docs: 4-2c-2 の SPEC 動線/制限/通知・ROADMAP・社労士�
 - `AbsenceConfirmationPolicy::Scope`（over `User`）を `roster` が `policy_scope_class:` に渡す（Task 3 → 5）— 一致。
 - `AbsenceCandidatePolicy::Scope`（over `AbsenceCandidate`）を `policy_scope(AbsenceCandidate)` が自動解決（Task 3 → 5）— 命名規約一致。
 - `record_absence_to_paid(record, date, previous_absence_reason)` の 3 引数版（Task 7）は既存 2 引数版を置換。呼び出し側も同タスクで更新 — 一致。
-- i18n キー `activerecord.attributes.attendance_record.absence_reasons.<key>` を Task 4（`reason_label`）・Task 5（view の `reason_options`）・Task 7（`absence_reason_note`）の 3 箇所が共有 — 一致。Task 4 Step 5 で先行追加する。
+- i18n キー `activerecord.attributes.attendance_record.absence_reasons.<key>` は **Task 2 が唯一の追加箇所**。Task 5 の view（`reason_options`）が直接引き、Task 4 / Task 7 は `AttendanceRecord.absence_reason_note` 経由で間接的に引く。
+- **監査 note の書式は `AttendanceRecord.absence_reason_note`（Task 2）に単一化**。`Absences::Confirm#confirm_one`（Task 4・`absence_confirmed` 履歴）と `LeaveRequests::ApplyApproval#record_absence_to_paid`（Task 7・`absence_to_paid` 履歴）の両方が同じメソッドを呼ぶ — 文字列を 2 箇所で組み立てない（プレフライトで人間が裁定・逐語的重複の回避）。
 
-**4. 依存順**: Task 1（next_business_day）→ Task 2（AR 検証）→ Task 3（policy）→ Task 4（service・i18n 先行追加）→ Task 5（controller/view/nav）→ Task 6（通知）→ Task 7（W1/W2・独立だが i18n に依存）→ Task 8（docs）。Task 7 は Task 4 Step 5 の i18n に依存するため 4 より後であること。
+**4. 依存順**: Task 1（next_business_day）→ Task 2（AR 検証 + i18n + `.absence_reason_note`）→ Task 3（policy）→ Task 4（service）→ Task 5（controller/view/nav）→ Task 6（通知）→ Task 7（W1/W2）→ Task 8（docs）。**Task 4・5・7 はいずれも Task 2 の i18n と `.absence_reason_note` に依存する**ため Task 2 を先に完了させること。
 
 **5. 判別性のあるテスト（positive 素通り防止）**:
 - Task 2: `errors.details[:user]` に `:cross_tenant` を要求（`belongs_to` presence 由来のエラーと区別）
