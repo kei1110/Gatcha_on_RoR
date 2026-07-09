@@ -409,10 +409,12 @@ MAS は締め時に `find_or_initialize_by(year_month: AttendancePeriod.label)` 
 ### ⑨【Low】却下/撤回 LR 日は候補ゲートで absent 化不能（仕様判断）
 `no_clock_anomaly` は全 status LR を「覆う」と扱う（§10 是認）。休暇が却下/取消/撤回され打刻も無い日は候補が生成/resolve され、§11② 候補ゲート確定では absent にできない（候補無→422）→ 実欠勤が欠勤トラッキングから漏れる。検知側は意図的だが 4-2c への波及は未トレース。
 - **plan 判断**: 「却下/撤回された休暇日の欠勤確定」を扱うか明記。扱うなら候補ゲート迂回の管理者手動追加経路が要る（§11② と緊張）。v1 は非対象として仕様明記が妥当。
+- **plan 確定（2026-07-09・4-2c-2）**: **v1 非対象**。候補ゲート（§11②「実在候補のみ確定」）を厳守し、手動追加経路は設けない。SPEC §6.10 の「制限」に明記済み。
 
 ### ⑩【Low】ClosingLock は submitted も locked（§5.2 より厳格）
 既存 `MonthlySummaries::ClosingLock` の `LOCKED = %w[submitted finalized]`。§5.2「finalized 禁止・deferred 許可」は submitted の可否を無言。流用すると submitted 月の確定も 422（安全側だが仕様文言と非一致）。
 - **plan 判断**: 「submitted も遮断する」意図を plan に明記（据置なら §5.2 側を補注）。
+- **plan 確定（2026-07-09・4-2c-2）**: `MonthlySummaries::ClosingLock` を流用し **`submitted` も遮断**する（§5.2 の「finalized 禁止」より厳格・安全側）。SPEC §6.10 の「制限」を実装に合わせて改訂済み。
 
 ### 是認（4-2b 実コードで確認・変更不要）
 §11⑧ notify-once 順序は 4-2b 実装で正（本人 Notifier 成功→notified_on・失敗時 nil で次 run 再試行＝①の proxy 前提が成立）/ 候補 resolve vs 確定の二重 destroy は benign（`absence_candidates` に `lock_version` 無し→競合は 0 行 DELETE/UPDATE で silent・per-candidate rescue 捕捉・新規 atomicity 破綻なし）/ §11① rollback 経路は実 approve path（`Approvals::Approve#call` with_lock 内 rescue 無し）で Confirmed。
