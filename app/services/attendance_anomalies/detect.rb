@@ -100,14 +100,22 @@ module AttendanceAnomalies
     def notify_candidate(candidate, today)
       user = candidate.user
       Notifier.call(
-        target_user: user, priority: :informational, source_type: :absence_candidate,
-        title: "出勤記録がありません",
-        body: "#{candidate.target_date} の出勤記録がありません。" \
-              "心当たりがある場合は、翌営業日 17:00 までに管理者へお問い合わせください。"
+        target_user: user, priority: :action_required, source_type: :absence_candidate,
+        title: "出勤記録がありません（欠勤確定の予告）",
+        body: "#{candidate.target_date} の出勤記録がありません。#{deadline_text(today)}までに管理者へお申し出ください。" \
+              "ご連絡が無い場合、欠勤として確定され賃金控除の対象となることがあります。"
       )
       candidate.update!(notified_on: today) # §11⑧ 本人 Notifier 成功後に確定（猶予起算アンカー保護）
       notify_candidate_manager(user, candidate.target_date) # 管理者は best-effort（notified_on の条件にしない）
     end
+
+    # 猶予期限は notified_on（= today）の翌営業日 17:00。Absences::Confirm のガードと同一定義を共有する
+    def deadline_text(today)
+      due = grace.deadline(today)
+      due ? due.strftime("%Y-%m-%d %H:%M") : "翌営業日 17:00"
+    end
+
+    def grace = @grace ||= Absences::GracePeriod.new(organization: @org)
 
     def notify_candidate_manager(user, target_date)
       manager = user.manager

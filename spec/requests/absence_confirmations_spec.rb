@@ -50,6 +50,16 @@ RSpec.describe "AbsenceConfirmations", type: :request do
       get absence_confirmations_url(host: tenant_host(org))
       expect(response).to have_http_status(:forbidden)
     end
+
+    it "猶予未経過の候補は確定可能日時を表示し、チェックボックスを無効化する" do
+      candidate_for(sub)
+      sign_in manager
+
+      travel_to(Time.utc(2026, 5, 4, 7, 59)) { get absence_confirmations_url(host: tenant_host(org)) }
+
+      expect(response.body).to include("2026-05-04 17:00 以降に確定可")
+      expect(response.body).to include("disabled")
+    end
   end
 
   describe "POST create（確定）" do

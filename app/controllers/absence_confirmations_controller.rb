@@ -43,6 +43,7 @@ class AbsenceConfirmationsController < ApplicationController
 
   def load_candidates
     @candidates = policy_scope(AbsenceCandidate).includes(:user).order(:user_id, :target_date)
+    @grace = Absences::GracePeriod.new(organization: current_user.organization)
   end
 
   # policy_scope(User) は top-level UserPolicy 不在で NotDefinedError ゆえ scope class 明示（RAILS_GOTCHAS）

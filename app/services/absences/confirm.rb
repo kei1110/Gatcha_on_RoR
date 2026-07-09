@@ -18,9 +18,6 @@ module Absences
   class Confirm
     Result = Struct.new(:confirmed_dates, :skipped_dates, keyword_init: true)
 
-    # 猶予期限の時刻（組織 TZ）。SPEC §6.8「猶予: 翌営業日 17:00」
-    GRACE_DEADLINE_HOUR = 17
-
     def self.call(**) = new(**).call
 
     def initialize(target_user:, dates:, candidates:, absence_reason:, note:, actor:)
@@ -108,26 +105,20 @@ module Absences
       raise IneligibleError, "本人へ未通知の欠勤候補は確定できません（次回の日次バッチで通知されます）"
     end
 
-    # ⑦ 猶予 = notified_on の翌営業日 17:00（組織 TZ）。経過前は確定不可（§10⑤ 適正手続き）
+    # ⑦ 猶予 = notified_on の翌営業日 17:00（組織 TZ）。経過前は確定不可（適正手続き・労基法 24 条）
     def guard_grace_period!
       now = Time.current
       @candidates.each do |candidate|
-        deadline = grace_deadline(candidate.notified_on)
-        raise IneligibleError, "猶予期限を算出できません（稼働日が見つかりません）" if deadline.nil?
-        next if now > deadline
+        due = grace.deadline(candidate.notified_on)
+        raise IneligibleError, "猶予期限を算出できません（稼働日が見つかりません）" if due.nil?
+        next if now > due
 
         raise IneligibleError,
-              "猶予期限（#{deadline.strftime('%Y-%m-%d %H:%M')}）を過ぎるまで #{candidate.target_date} は確定できません"
+              "猶予期限（#{due.strftime('%Y-%m-%d %H:%M')}）を過ぎるまで #{candidate.target_date} は確定できません"
       end
     end
 
-    def grace_deadline(notified_on)
-      next_day = resolver.next_business_day(notified_on)
-      return nil if next_day.nil?
-
-      ActiveSupport::TimeZone[organization.time_zone]
-        .local(next_day.year, next_day.month, next_day.day, GRACE_DEADLINE_HOUR)
-    end
+    def grace = @grace ||= GracePeriod.new(organization:)
 
     # ⑧ 締め済み月の日付は確定不可（§11⑦）。既存 ClosingLock の LOCKED は submitted を含む＝
     #    設計 §5.2 の「finalized 禁止・deferred 許可」より厳格（§12⑩・本計画で意図的に採用）。
@@ -184,7 +175,5 @@ module Absences
 
     # other 選択時のみ note に理由を入れる。other 以外は note=null（SPEC §6.10）
     def note_for_reason = @absence_reason == "other" ? @note.presence : nil
-
-    def resolver = @resolver ||= CompanyCalendarResolver.new(organization:)
   end
 end
