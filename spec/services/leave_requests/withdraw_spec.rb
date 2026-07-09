@@ -124,5 +124,23 @@ RSpec.describe LeaveRequests::Withdraw do
       expect(AttendanceRecord.find_by(user_id: user.id, work_date: start_date)).to be_nil
       expect(AttendanceHistory.where(event_type: :absence_restored)).not_to exist
     end
+
+    it "半休の事後承認を撤回しても absent へ復元される（復元条件は status でなく absence_to_paid 履歴の実在）" do
+      create(:attendance_record, user:, work_date: start_date, status: :absent,
+                                 absence_reason: :illness, clock_in: nil)
+      lr = leave(type: unpaid_type, half: :morning)
+      LeaveRequests::ApplyApproval.call(leave_request: lr, acting_user: approver)
+      expect(AttendanceRecord.find_by(user_id: user.id, work_date: start_date).status).to eq("morning_half")
+
+      described_class.call(leave_request: lr, acting_user: approver)
+
+      restored = AttendanceRecord.find_by(user_id: user.id, work_date: start_date)
+      expect(restored).to be_present
+      expect(restored.status).to eq("absent")
+      expect(restored.absence_reason).to eq("illness")
+
+      history = AttendanceHistory.find_by(user_id: user.id, event_type: :absence_restored)
+      expect(history.previous_status).to eq(AttendanceRecord.statuses[:morning_half])
+    end
   end
 end

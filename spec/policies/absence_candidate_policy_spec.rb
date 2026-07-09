@@ -37,12 +37,17 @@ RSpec.describe AbsenceCandidatePolicy do
       expect(resolve(hr)).to include(sub_candidate, stranger_candidate)
     end
 
-    it "他テナントの候補は hr_admin にも見えない" do
+    it "他テナントの候補は hr_admin にも見えない（default_scope を外しても organization_id 明示で閉じる）" do
       outsider_candidate = ActsAsTenant.with_tenant(other_org) do
         create(:absence_candidate, user: create(:user, organization: other_org),
                                    organization: other_org, target_date: Date.new(2026, 5, 1))
       end
-      expect(resolve(hr)).not_to include(outsider_candidate)
+
+      # acts_as_tenant の default_scope を外し、policy の organization_id 明示 where だけで閉じることを確認
+      ActsAsTenant.without_tenant do
+        expect(resolve(hr)).not_to include(outsider_candidate)
+        expect(resolve(hr)).to include(sub_candidate)
+      end
     end
 
     it "一般社員は空（自分の候補も見えない）" do

@@ -50,9 +50,18 @@ RSpec.describe AbsenceConfirmationPolicy do
       expect(resolve(hr)).to include(hr, manager, sub, stranger)
     end
 
-    it "hr_admin でも他テナントの社員は含まない" do
+    it "hr_admin でも他テナントの社員は含まない（default_scope を外しても閉じる）" do
       outsider = ActsAsTenant.with_tenant(other_org) { create(:user, organization: other_org) }
-      expect(resolve(hr)).not_to include(outsider)
+      # hr/sub は without_tenant に入る前（= org のテナント文脈が有効なうち）に確定させる。
+      # 遅延 let のまま without_tenant 内で初参照すると factory の organization がテナント文脈を失い、
+      # sub の生成過程（manager: manager → manager: hr）で組織不一致エラーになる。
+      hr_admin = hr
+      subordinate = sub
+
+      ActsAsTenant.without_tenant do
+        expect(resolve(hr_admin)).not_to include(outsider)
+        expect(resolve(hr_admin)).to include(subordinate)
+      end
     end
 
     it "退職者（active: false）は含まない" do

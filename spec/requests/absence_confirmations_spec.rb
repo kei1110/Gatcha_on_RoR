@@ -286,6 +286,21 @@ RSpec.describe "AbsenceConfirmations", type: :request do
       expect(AbsenceCandidate.unscoped.count).to eq(1)
     end
 
+    it "他テナントの候補は 404（IDOR variant 2 — acts_as_tenant）" do
+      other_org = create(:organization, subdomain: "other")
+      outsider_candidate = ActsAsTenant.with_tenant(other_org) do
+        create(:absence_candidate, user: create(:user, organization: other_org),
+                                   organization: other_org, target_date: target_date,
+                                   notified_on: target_date)
+      end
+      sign_in hr
+
+      delete absence_confirmation_url(outsider_candidate, host: tenant_host(org))
+
+      expect(response).to have_http_status(:not_found)
+      expect(AbsenceCandidate.unscoped.where(id: outsider_candidate.id)).to exist
+    end
+
     it "一般社員は 403" do
       c = candidate_for(sub)
       employee = ActsAsTenant.with_tenant(org) { create(:user) }
