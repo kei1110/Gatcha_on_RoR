@@ -96,6 +96,18 @@ RSpec.describe Absences::Confirm do
         .to raise_error(Absences::IneligibleError, /選択されていません/)
     end
 
+    it "他社員の候補が混ざれば拒否する（呼び出し元の契約違反を service 単体で fail-closed）" do
+      other = create(:user, manager: manager)
+      other_candidate = create(:absence_candidate, user: other, target_date: target_date,
+                                                   notified_on: notified_on)
+
+      expect { after_grace { confirm(dates: [ target_date ], candidates: [ other_candidate ]) } }
+        .to raise_error(Absences::IneligibleError, /対象社員のものではありません/)
+
+      expect(AttendanceRecord.count).to eq(0)
+      expect(AbsenceCandidate.where(id: other_candidate.id)).to exist
+    end
+
     it "notified_on: nil の候補は確定不可（猶予計算より先に判定・§12①）" do
       c = candidate(notified: nil)
       expect { after_grace { confirm(dates: [ target_date ], candidates: [ c ]) } }
@@ -171,6 +183,19 @@ RSpec.describe Absences::Confirm do
 
       expect(AbsenceCandidate.where(id: c.id)).to exist
       expect(AttendanceHistory.where(event_type: :absence_confirmed).count).to eq(0)
+    end
+
+    it "履歴作成（3 つ目の write）が失敗しても savepoint 全体が巻き戻り、AR も作られず候補も intact" do
+      c = candidate
+      allow(AttendanceHistory).to receive(:create!)
+        .and_raise(ActiveRecord::RecordInvalid.new(AttendanceHistory.new))
+
+      result = after_grace { confirm(dates: [ target_date ], candidates: [ c ]) }
+
+      expect(result.skipped_dates).to eq([ target_date ])
+      expect(result.confirmed_dates).to be_empty
+      expect(AttendanceRecord.count).to eq(0)          # 1 つ目の write が巻き戻っている
+      expect(AbsenceCandidate.where(id: c.id)).to exist # 2 つ目の write が巻き戻っている
     end
   end
 end

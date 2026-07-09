@@ -7,10 +7,11 @@ module Absences
   # policy_scope で target_user と candidates を解決して渡す（IDOR は解決側で塞ぐ・§12③）。
   #
   # ガード順は意味論上固定:
-  #   ① 毒入力 reason → ② 候補不在日 → ③ notified_on nil → ④ 猶予前 → ⑤ 締め済み
+  #   ① 毒入力 reason → ② 候補不在日 → ③ target_user 不一致 → ④ notified_on nil
+  #     → ⑤ 猶予前 → ⑥ 締め済み
   #   ① を先頭に置くのは、per-day の rescue RecordInvalid（並行打刻の競合吸収）が毒入力を
   #     「skip 日」として握り潰し 422 を返さなくなるのを防ぐため（部分成功にしない）。
-  #   ③ を ④ より前に置くのは next_business_day(nil) を計算させないため（§12①）。
+  #   ④ を ⑤ より前に置くのは next_business_day(nil) を計算させないため（§12①）。
   class Confirm
     Result = Struct.new(:confirmed_dates, :skipped_dates, keyword_init: true)
 
@@ -31,6 +32,7 @@ module Absences
     def call
       guard_reason!
       guard_candidates_exist!
+      guard_candidates_belong_to_target!
       guard_notified!
       guard_grace_period!
       guard_closing!
@@ -57,7 +59,17 @@ module Absences
       raise IneligibleError, "欠勤候補に存在しない日付が含まれています"
     end
 
-    # ③ notified_on nil = 本人へ事前通知が届いていない → 弁明機会ゼロ（労基法 24 条・§12①）。
+    # ③ 呼び出し元の契約違反（target_user と candidates の食い違い）を write 前に拒否する。
+    #    現行 controller は policy_scope(AbsenceCandidate).where(user_id: target.id) で紐付けるため
+    #    到達しないが、食い違えば「他人の候補を destroy して target_user に absent AR を作る」腐敗になる。
+    #    サービス単体でも fail-closed に倒す（多層防御）
+    def guard_candidates_belong_to_target!
+      return if @candidates.all? { |candidate| candidate.user_id == @target_user.id }
+
+      raise IneligibleError, "欠勤候補が対象社員のものではありません"
+    end
+
+    # ④ notified_on nil = 本人へ事前通知が届いていない → 弁明機会ゼロ（労基法 24 条・§12①）。
     #    4-2b は本人宛 Notifier 成功後にのみ notified_on を立てるため presence を弁明機会の proxy にできる
     def guard_notified!
       return if @candidates.all? { |candidate| candidate.notified_on.present? }
@@ -65,7 +77,7 @@ module Absences
       raise IneligibleError, "本人へ未通知の欠勤候補は確定できません（次回の日次バッチで通知されます）"
     end
 
-    # ④ 猶予 = notified_on の翌営業日 17:00（組織 TZ）。経過前は確定不可（§10⑤ 適正手続き）
+    # ⑤ 猶予 = notified_on の翌営業日 17:00（組織 TZ）。経過前は確定不可（§10⑤ 適正手続き）
     def guard_grace_period!
       now = Time.current
       @candidates.each do |candidate|
@@ -86,7 +98,7 @@ module Absences
         .local(next_day.year, next_day.month, next_day.day, GRACE_DEADLINE_HOUR)
     end
 
-    # ⑤ 締め済み月の日付は確定不可（§11⑦）。既存 ClosingLock の LOCKED は submitted を含む＝
+    # ⑥ 締め済み月の日付は確定不可（§11⑦）。既存 ClosingLock の LOCKED は submitted を含む＝
     #    設計 §5.2 の「finalized 禁止・deferred 許可」より厳格（§12⑩・本計画で意図的に採用）。
     #    write 前に対象全日を一括評価し、1 日でも locked なら全件拒否
     def guard_closing!
