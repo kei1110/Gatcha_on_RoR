@@ -102,7 +102,8 @@ module AttendanceAnomalies
       Notifier.call(
         target_user: user, priority: :informational, source_type: :absence_candidate,
         title: "出勤記録がありません",
-        body: "#{candidate.target_date} の出勤記録がありません。打刻漏れの場合は打刻変更申請を提出してください。"
+        body: "#{candidate.target_date} の出勤記録がありません。" \
+              "心当たりがある場合は、翌営業日 17:00 までに管理者へお問い合わせください。"
       )
       candidate.update!(notified_on: today) # §11⑧ 本人 Notifier 成功後に確定（猶予起算アンカー保護）
       notify_candidate_manager(user, candidate.target_date) # 管理者は best-effort（notified_on の条件にしない）

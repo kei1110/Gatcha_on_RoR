@@ -163,6 +163,60 @@ RSpec.describe "AbsenceConfirmations", type: :request do
 
       expect(response).to have_http_status(:not_found)
     end
+
+    it "確定後に本人へ absence_confirmed 通知を 1 件だけ送る（N 日付を 1 件に集約・§6.10 step 5）" do
+      d2 = Date.new(2026, 4, 30) # 過去日（travel_to の「今日」は 2026-05-04）
+      candidate_for(sub)
+      candidate_for(sub, date: d2)
+      sign_in manager
+
+      after_grace do
+        post absence_confirmations_url(host: tenant_host(org)),
+             params: confirm_params(sub, [ target_date, d2 ])
+      end
+
+      notifications = Notification.unscoped.where(target_user_id: sub.id, source_type: :absence_confirmed)
+      expect(notifications.count).to eq(1)
+      expect(notifications.first.priority).to eq("action_required")
+      expect(notifications.first.body).to include("計 2 日", "有給休暇")
+      expect(notifications.first.body).not_to include("打刻変更") # CCR new_entry は依然拒否（#48）
+    end
+
+    it "確定できた日が 0 件なら通知しない（幻通知の防止）" do
+      candidate_for(sub)
+      ActsAsTenant.with_tenant(org) { create(:attendance_record, user: sub, work_date: target_date, status: :working) }
+      sign_in manager
+
+      after_grace { post absence_confirmations_url(host: tenant_host(org)), params: confirm_params(sub, [ target_date ]) }
+
+      expect(Notification.unscoped.where(source_type: :absence_confirmed).count).to eq(0)
+    end
+
+    it "通知が失敗しても確定は覆らない（§9.5 rescue+log）" do
+      candidate_for(sub)
+      allow(Notifier).to receive(:call).and_raise(StandardError, "boom")
+      sign_in manager
+
+      after_grace { post absence_confirmations_url(host: tenant_host(org)), params: confirm_params(sub, [ target_date ]) }
+
+      expect(response).to have_http_status(:see_other)
+      expect(AttendanceRecord.unscoped.where(status: :absent).count).to eq(1)
+    end
+
+    it "skip 日は flash に併記される" do
+      d2 = Date.new(2026, 4, 30) # 過去日
+      candidate_for(sub)
+      candidate_for(sub, date: d2)
+      ActsAsTenant.with_tenant(org) { create(:attendance_record, user: sub, work_date: target_date, status: :working) }
+      sign_in manager
+
+      after_grace do
+        post absence_confirmations_url(host: tenant_host(org)), params: confirm_params(sub, [ target_date, d2 ])
+      end
+
+      expect(flash[:notice]).to include(target_date.to_s)
+      expect(flash[:notice]).to include("スキップ")
+    end
   end
 
   describe "DELETE destroy（却下 dismiss・§11④/§12⑧）" do

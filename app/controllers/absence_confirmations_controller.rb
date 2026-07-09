@@ -14,12 +14,13 @@ class AbsenceConfirmationsController < ApplicationController
     authorize :absence_confirmation, :create?
     target = roster.find(params[:user_id])
     dates = parse_dates(params[:dates])
-    Absences::Confirm.call(
+    result = Absences::Confirm.call(
       target_user: target, dates:,
       candidates: policy_scope(AbsenceCandidate).where(user_id: target.id, target_date: dates),
       absence_reason: params[:absence_reason], note: params[:note], actor: current_user
     )
-    redirect_to absence_confirmations_path, status: :see_other, notice: "欠勤を確定しました"
+    notify_confirmed(target, result.confirmed_dates) if result.confirmed_dates.any?
+    redirect_to absence_confirmations_path, status: :see_other, notice: confirm_notice(result)
   rescue Date::Error, TypeError
     render_ineligible("日付の指定が正しくありません")
   rescue Absences::IneligibleError, Absences::ClosingLockedError => e
@@ -51,5 +52,32 @@ class AbsenceConfirmationsController < ApplicationController
     load_candidates
     flash.now[:alert] = message
     render :index, status: :unprocessable_entity
+  end
+
+  def confirm_notice(result)
+    notice = "#{result.confirmed_dates.size} 日を欠勤確定しました"
+    return notice if result.skipped_dates.empty?
+
+    "#{notice}（#{result.skipped_dates.join(', ')} は既に勤怠記録があるためスキップしました）"
+  end
+
+  # 確定 tx の commit 後に発火（§9③ 幻通知の防止）。1 社員 × N 日付を 1 件に集約（§6.10 step 5）。
+  # priority は action_required — 賃金控除に直結する不利益処分の告知で、本人に「事後の有給申請」
+  # という action がある（SPEC §9.1 の「月次差戻し」と同格）。
+  # 4-2c-1（PR #32）で absent→on_leave の事後有給パスが live 化したため有給申請を案内できる（§11③）。
+  # 打刻変更申請は CCR new_entry が拒否のまま（#48）ゆえ約束しない。
+  def notify_confirmed(target, dates)
+    Notifier.call(
+      target_user: target, subject_user: target,
+      priority: :action_required, source_type: :absence_confirmed,
+      title: "欠勤が確定されました",
+      body: "#{dates.join(', ')}（計 #{dates.size} 日）の欠勤が確定されました。" \
+            "事後に有給休暇の申請ができます。ご不明な点は管理者へお問い合わせください。"
+    )
+  rescue StandardError => e
+    # 通知は確定（commit 済）の副次効果。失敗しても主操作の応答を覆さない（§9.5・4-1c producer 同型）
+    Rails.logger.error(
+      "[Notifier] producer 通知失敗 source_type=absence_confirmed user=#{target.id}: #{e.class}: #{e.message}"
+    )
   end
 end
