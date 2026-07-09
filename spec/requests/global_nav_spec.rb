@@ -27,4 +27,18 @@ RSpec.describe "Global navigation", type: :request do
     get root_url(host: tenant_host(org))
     expect(response.body).not_to include(">管理</a>")
   end
+
+  it "manager には「欠勤確定」リンクが出る" do
+    manager = ActsAsTenant.with_tenant(org) { create(:user, :manager_role) }
+    sign_in manager
+    get root_url(host: tenant_host(org))
+    expect(response.body).to include(absence_confirmations_path)
+  end
+
+  it "一般社員には「欠勤確定」リンクが出ない" do
+    employee = ActsAsTenant.with_tenant(org) { create(:user) }
+    sign_in employee
+    get root_url(host: tenant_host(org))
+    expect(response.body).not_to include(absence_confirmations_path)
+  end
 end

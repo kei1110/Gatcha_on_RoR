@@ -23,6 +23,7 @@ class GlobalNavComponent < ViewComponent::Base
     if approver?
       items << [ "承認", helpers.approval_assignments_path, nil ]
       items << [ "代理打刻", helpers.proxy_clockings_path, nil ]
+      items << [ "欠勤確定", helpers.absence_confirmations_path, nil ]
     end
     items << [ "管理", helpers.admin_users_path, "/admin" ] if current_user.hr_admin?
     items
