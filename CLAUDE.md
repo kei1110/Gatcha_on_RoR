@@ -5,9 +5,9 @@ Salesforce 2GP 勤怠パッケージ「Gatcha」を **Ruby on Rails 8 マルチ�
 ## 鉄則（どのモデル・どのセッションでも遵守）
 
 1. **db/schema.rb と Gemfile.lock を手で編集しない** — 必ず migration / bundle 経由（フックが止めるが、サブエージェントはフックをすり抜けるため指示でも守る）
-2. **rubocop にファイルを明示渡しするときは必ず `--force-exclusion`** — 省くと .rubocop.yml の Exclude が無視され db/schema.rb 等で偽 FAIL（0b-3 で実踏）
+2. **rubocop へのファイル渡しは `--force-exclusion` ＋ xargs 経由** — `--force-exclusion` を省くと .rubocop.yml の Exclude が無視され db/schema.rb 等で偽 FAIL（0b-3）。**zsh は `cmd $FILES` を単語分割しない**ため変数展開で渡すと「0 files inspected, no offenses」と偽の緑を返す（4-2c-2 で実踏）。`git diff --name-only main...HEAD | grep '\.rb$' | xargs bundle exec rubocop --force-exclusion` とし、`Inspecting N files` の N を必ず確認する
 3. **スコープ付きモデルに触れる前にテナント文脈を確立する** — console/rake は `ActsAsTenant.current_tenant = Organization.find_by!(subdomain: "acme")`、ジョブ・service・seed は `ActsAsTenant.with_tenant(org) { ... }`（`require_tenant = true`。`NoTenantSet` は正しい挙動 — ガードを緩めず利用側を直す）
-4. **ユーザー参照・マスタ参照の FK は複合 FK `[organization_id, xxx_id] → table(organization_id, id)`** — 単純 FK（`→ users(id)`）はテナント越境を DB が素通しする（§3.6・型は `/create-migration`）
+4. **ユーザー参照・マスタ参照の FK は複合 FK `[organization_id, xxx_id] → table(organization_id, id)`** — 単純 FK（`→ users(id)`）はテナント越境を DB が素通しする（§3.6・型は `/create-migration`）。ただし **`with_tenant(信頼できない record.organization)` で自己ラップする書き込み service では複合 FK も model 検証も無力**（昇格プリミティブであって境界ではない）。昇格前に actor↔target の `organization_id` 一致を独立に検証すること（4-2c-2 で実踏・docs/RAILS_GOTCHAS.md）
 5. **法定値（SPEC §8）はコード内の定数** — 36 協定上限・割増率・月 80h・有給 5 日等を OrganizationSetting から読む実装にしない（テナント設定はアラート参考値まで）
 6. **いかなる違反検知でも打刻をブロックしない**（SPEC §8 — 実労働時間の記録義務。対応は事後通知・エスカレーションのみ）
 7. **enum 整数・event_type taxonomy は append-only** — リオーダ・再利用禁止（§13・§4.14。partial index の `where` 生整数が enum マッピングに依存）
@@ -18,7 +18,7 @@ Salesforce 2GP 勤怠パッケージ「Gatcha」を **Ruby on Rails 8 マルチ�
 - [docs/ROADMAP.md](docs/ROADMAP.md) — 進行管理の SSOT（フェーズ→スライス分解・現在地・1 スライス = 1 PR）
 - [docs/RAILS_GOTCHAS.md](docs/RAILS_GOTCHAS.md) — 実際に踏んだ/仕留めた罠台帳（WHAT/WHY/HOW・verified 日付き）。**計画とレビューのプロンプトに注入し、新しい罠は修正と同じ PR で追記**
 - [docs/DEVELOPMENT_WORKFLOW.md](docs/DEVELOPMENT_WORKFLOW.md) — スライス実行体制の規約（役割分担・haiku 転写・レビュー実挙動検証義務など。0b-5/1-1 で実測検証済み）
-- [docs/LABOR_LAW_REVIEW_NOTES.md](docs/LABOR_LAW_REVIEW_NOTES.md) — 社労士確認事項（解釈・運用判断）
+- [docs/LABOR_LAW_REVIEW_NOTES.md](docs/LABOR_LAW_REVIEW_NOTES.md) — 社労士確認事項（解釈・運用判断）。**追記前に `grep -n "^### #"` と冒頭テーブルの両方で最大番号を確認**（番号は二段構えで衝突しやすい）。条文を根拠に引くときは「その条文が実際に命じている内容」を原典で確認する（4-2c-2 で労基法 24 条を適正手続きの根拠として誤引用）
 - [docs/LABOR_LAW_REVIEW_REPORT.md](docs/LABOR_LAW_REVIEW_REPORT.md) — ChatGPT deep-research による社労士チェックリスト検証報告（2026-06-13・原典再照合の入力資料。確定結論は LABOR_LAW_REVIEW_NOTES.md が正）
 - [docs/MCP_SETUP.md](docs/MCP_SETUP.md) — MCP サーバー設定と有効化手順
 - [docs/MIGRATION_FROM_SF.md](docs/MIGRATION_FROM_SF.md) — SF 版からの移植対応表（歴史的経緯・参照任意。SF 版原典 `../Gatcha/docs/SPEC.md` が手元に無くても支障なし）
@@ -46,7 +46,7 @@ bin/rails console                                   # 起動後まず鉄則 3 �
 
 ## Git
 - このリポジトリのコミットは **kei1110 <eoh2145@gmail.com>**（local config 済み・グローバル設定とは別）
-- gh CLI はアカウント 2 つ登録（kei1110 / sub-account）。PR 操作が collaborator エラーになったら `gh auth switch -u kei1110`
+- gh CLI はアカウント 2 つ登録（kei1110 / sub-account）。**PR・API 操作の前に `gh api user --jq .login` で active を確認**し、違えば `gh auth switch -u kei1110`（エラーを待たない — 別 identity で PR を作ると 2 つの identity が公開物で結びつく）
 
 ## カスタムスキル（.claude/skills/）
 - `/spec-check` — SPEC↔実装の整合 ／ `/multi-perspective-review` — 多視点並列 critique ／ `/gen-spec` — spec 雛形生成
@@ -86,8 +86,9 @@ PreToolUse/PostToolUse の開発ガード（**Claude Code 再起動＋承認**�
 ## ワークフロー
 実装は SPEC §15 のフェーズを docs/ROADMAP.md のスライス（1 スライス = 1 ブランチ = 1 PR・squash マージ）で進める。各スライスは brainstorm →（大物は specs/ に設計 + 多視点レビュー）→ writing-plans → 実装 → `/preflight` → PR。**PR に ROADMAP の該当行更新（チェック + PR 番号）を含めてからマージ**。設計・計画は docs/superpowers/{specs,plans}/ に日付付きで蓄積。現在地と次の一歩は ROADMAP が正。
 
-**サブエージェント運用の 3 か条**（フックはサブエージェントをすり抜けるため指示で補う）:
+**サブエージェント運用の 4 か条**（フックはサブエージェントをすり抜けるため指示で補う）:
 1. ステップ完了ごとに**即コミット**（セッション上限による中断でもステージ未満の状態を残さない）
 2. 探索で触ったが不要だった編集は **revert してから報告**（デバッグ痕を成果に混ぜない）
 3. 完了条件に検証コマンドを明記 — `bundle exec rspec`・`bundle exec rubocop`、app/ に触れたら `bin/brakeman --no-pager` も
+4. **レビュアーは読み取り専用に固定**（implementer とワークツリーを共有するため）— 「編集も rspec 実行も禁止・判別性は静的読解で論証せよ」と明示する。実証が要るなら `isolation: "worktree"` で隔離。implementer には「衝突を検出したら上書きせず即報告」を指示（4-2c-2 でレビュアーが共有ツリーを mutation・implementer の報告で実害ゼロ）
 - 計画・レビューのプロンプトには docs/RAILS_GOTCHAS.md を注入する（罠の再購入防止）
