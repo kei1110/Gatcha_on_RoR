@@ -52,6 +52,7 @@ module LeaveRequests
           user_id: @leave_request.requester_id, work_date: date
         )
         was_absent = record.absent? # §12② 遷移前 status を代入前に捕捉（silent no-op 回避）
+        previous_absence_reason = record.absence_reason # W1 監査へ退避（クリア前に読む）
         record.status = leave_status
         record.leave_type_id = @leave_request.leave_type_id
         if was_absent
@@ -59,7 +60,8 @@ module LeaveRequests
           record.note = nil
         end
         record.save!
-        record_absence_to_paid(record, date) if was_absent # §12⑥ 監査（absent→on_leave の痕跡）
+        # §12⑥ 監査（absent→on_leave の痕跡）。W1: 元の欠勤理由も残す
+        record_absence_to_paid(record, date, previous_absence_reason) if was_absent
         recalculate(record)
       end
     end
@@ -74,8 +76,11 @@ module LeaveRequests
       )
     end
 
-    # absent→on_leave（事後有給）の監査（SPEC §6.2 L808・§12⑥）。actor 必須（Task 1）。
-    def record_absence_to_paid(record, date)
+    # absent→on_leave（事後有給）の監査（SPEC §6.2 L808・§12⑥）。actor 必須（4-2c-1）。
+    # W1: AR.absence_reason は上書きでクリアされるため、元の理由を note へ焼いて証跡に残す
+    # （労基法 109 条 5 年保存 — 「どの欠勤が有給へ振り替わったか」が previous_status だけでは追えない）。
+    # note の書式は AttendanceRecord が単一源（Absences::Confirm の absence_confirmed 履歴と同一書式）
+    def record_absence_to_paid(record, date, previous_absence_reason)
       AttendanceHistory.create!(
         user_id: @leave_request.requester_id,
         actor: @acting_user,
@@ -83,7 +88,8 @@ module LeaveRequests
         event_type: :absence_to_paid,
         event_date: date,
         previous_status: AttendanceRecord.statuses[:absent],
-        new_status: AttendanceRecord.statuses[record.status]
+        new_status: AttendanceRecord.statuses[record.status],
+        note: AttendanceRecord.absence_reason_note(previous_absence_reason)
       )
     end
 

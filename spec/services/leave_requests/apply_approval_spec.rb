@@ -194,5 +194,21 @@ RSpec.describe LeaveRequests::ApplyApproval do
 
       expect(AttendanceHistory.where(event_type: :absence_to_paid).count).to eq(0)
     end
+
+    it "absence_to_paid の note に元の欠勤理由を退避する（W1・労基法 109 条の証跡）" do
+      create(:attendance_record, user:, work_date: start_date, status: :absent,
+                                 absence_reason: :illness, clock_in: nil)
+
+      apply(leave(type: unpaid_type, sd: start_date, ed: start_date))
+
+      history = AttendanceHistory.find_by(user_id: user.id, event_type: :absence_to_paid,
+                                          event_date: start_date)
+      expect(history.note).to eq("欠勤理由: 疾病・傷病")
+    end
+
+    it "absent でない日の on_leave 作成では absence_to_paid を記録しない（note も生えない）" do
+      apply(leave(type: unpaid_type, sd: start_date, ed: start_date))
+      expect(AttendanceHistory.where(event_type: :absence_to_paid)).not_to exist
+    end
   end
 end
