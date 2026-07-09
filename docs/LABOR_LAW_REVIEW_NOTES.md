@@ -138,6 +138,10 @@
 
 **確認したいこと**: (a) 同一日に複数種別の休暇（例: 午前=年休 / 午後=特別休暇）を認める運用があるか。あるなら `AttendanceRecord` は 1 日複数区分を表現できる必要がある。(b) 認めない運用でよければ、申請時点で同一日の既承認申請を拒否してよいか。
 
+**実害（撤回を待たずに既に発生している）**: 後勝ちで上書きされた AR を `MonthlySummaries::LeaveAggregator` が直接読むため、**月次の有給消化日数が過少計上**される（年休・全休の LR-A と無給・午前半休の LR-B が同一日を覆うと、AR は `morning_half` / 無給となり `paid_leave_days_used` が 0.0。一方 `LeaveBalance.used_days` には年休 1.0 が消費済として残る）。§8.6 の有給 5 日取得義務の監視が過少に振れる向き。
+
+**残る TOCTOU 窓**: `LeaveRequests::Withdraw#other_live_leave_covers?` は非ロック SELECT で、`Approvals::Approve#with_lock` が掴むのは撤回中の LR 行のみ。同一 requester の重複 LR 2 件が同時に決裁されると、撤回側が他方を `applying` と読んだ直後にその承認が commit し、休暇日が消え得る（発生条件は狭い。「締め提出の TOCTOU 窓」と同根）。重複そのものを禁止 or モデリングすれば根治する。
+
 **関連条文**: 労基法 108 条（賃金台帳）/ 109 条（記録の保存・五年間）<https://laws.e-gov.go.jp/law/322AC0000000049> / 労安法 66 条の 8 の 3（労働時間の状況の把握）<https://laws.e-gov.go.jp/law/347AC0000000057>
 
 > #21（半休 LR が全日 absent を覆う）と #26 は同じデータモデル制約（1 日 1 AR・status 単一）から出ている。回答は併せて求めるのが望ましい。

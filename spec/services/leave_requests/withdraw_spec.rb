@@ -105,6 +105,32 @@ RSpec.describe LeaveRequests::Withdraw do
       expect(restored.absence_reason).to eq("illness")
     end
 
+    # LIVE_LEAVE_STATUSES の 2 つの境界判断を固定する（4-2c-2 approval-engine 再レビュー W2）
+    it "他の LR が withdrawal_requested でも AR を触らない（副作用は未反転・reject_withdrawal で approved へ戻り得る）" do
+      create(:leave_request, requester: user, leave_type: paid_type, start_date:, end_date: start_date,
+                             half_day_type: :none, days_requested: 1,
+                             approval_status: :withdrawal_requested, withdrawal_reason: "他の申請")
+      create(:attendance_record, user:, work_date: start_date, status: :on_leave, clock_in: nil)
+
+      withdraw(leave(type: unpaid_type))
+
+      record = AttendanceRecord.find_by(user_id: user.id, work_date: start_date)
+      expect(record).to be_present
+      expect(record.status).to eq("on_leave")
+    end
+
+    it "他の LR が applying なら従来どおり destroy する（ApplyApproval 未通過ゆえ AR を所有していない）" do
+      # applying を LIVE に含めると、唯一の承認済 LR を撤回した際に分岐①が誤発火し、
+      # 承認された休暇が存在しない日に on_leave の AR が残留する
+      create(:leave_request, requester: user, leave_type: paid_type, start_date:, end_date: start_date,
+                             half_day_type: :none, days_requested: 1, approval_status: :applying)
+      create(:attendance_record, user:, work_date: start_date, status: :on_leave, clock_in: nil)
+
+      withdraw(leave(type: unpaid_type))
+
+      expect(AttendanceRecord.find_by(user_id: user.id, work_date: start_date)).to be_nil
+    end
+
     it "既に absence_restored 済みの日は二重復元せず destroy する（最終状態で判定）" do
       create(:attendance_record, user:, work_date: start_date, status: :on_leave, clock_in: nil)
       old_lr = create(:leave_request, requester: user, leave_type: paid_type, start_date:, end_date: start_date,
