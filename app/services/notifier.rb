@@ -7,7 +7,7 @@
 # 自身の DB 書き込みは明示 tx で囲み、tx 確定後に in_app broadcast + job enqueue を発火
 # （rollback 時の幻通知 / 未コミット sweep 防止・§9③）。caller=producer 接続は 4-1c。
 class Notifier
-  HOLIDAY_DAY_TYPES = %i[saturday sunday holiday legal_holiday company_holiday].freeze
+  HOLIDAY_DAY_TYPES = CompanyCalendarResolver::HOLIDAY_DAY_TYPES # SSOT は Resolver（重複定義を排除）
 
   def self.call(**) = new(**).call
 

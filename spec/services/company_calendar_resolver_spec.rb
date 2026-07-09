@@ -74,4 +74,50 @@ RSpec.describe CompanyCalendarResolver do
       expect(result[Date.new(2026, 5, 2)]).to eq(day_type: :saturday, counts_as_paid_leave: false)
     end
   end
+
+  describe "#next_business_day（猶予期限の基盤・§12①）" do
+    let(:org) { create(:organization) }
+    let(:resolver) { described_class.new(organization: org) }
+
+    around { |ex| ActsAsTenant.with_tenant(org) { ex.run } }
+
+    it "翌日が稼働日ならその日を返す（2026-05-01 金 → 2026-05-02 土は休日ゆえ次の平日）" do
+      # 未登録日は曜日 fallback（土=saturday / 日=sunday / 他=weekday）
+      expect(resolver.next_business_day(Date.new(2026, 5, 1))).to eq(Date.new(2026, 5, 4)) # 月曜
+    end
+
+    it "翌日が平日ならその日を返す" do
+      expect(resolver.next_business_day(Date.new(2026, 5, 4))).to eq(Date.new(2026, 5, 5)) # 火曜
+    end
+
+    it "連休を吸収する（登録済 company_holiday を跨いで次の稼働日）" do
+      create(:company_calendar, date: Date.new(2026, 5, 4), day_type: :company_holiday, name: "連休")
+      create(:company_calendar, date: Date.new(2026, 5, 5), day_type: :company_holiday, name: "連休")
+      expect(resolver.next_business_day(Date.new(2026, 5, 1))).to eq(Date.new(2026, 5, 6)) # 水曜
+    end
+
+    it "起点日自身は稼働日でも返さない（翌日以降を探す）" do
+      expect(resolver.next_business_day(Date.new(2026, 5, 7))).to eq(Date.new(2026, 5, 8))
+    end
+
+    it "先読み上限内に稼働日が無ければ nil（呼び出し側が fail-closed に倒す）" do
+      from = Date.new(2026, 5, 2)
+      (from..(from + 30)).each_with_index do |d, i|
+        create(:company_calendar, date: d, day_type: :company_holiday, name: "長期休業#{i}")
+      end
+      expect(resolver.next_business_day(Date.new(2026, 5, 1))).to be_nil
+    end
+  end
+
+  describe "HOLIDAY_DAY_TYPES（SSOT・Notifier は alias）" do
+    it "休日 day_type の集合を凍結して公開する" do
+      expect(described_class::HOLIDAY_DAY_TYPES)
+        .to eq(%i[saturday sunday holiday legal_holiday company_holiday])
+      expect(described_class::HOLIDAY_DAY_TYPES).to be_frozen
+    end
+
+    it "Notifier::HOLIDAY_DAY_TYPES は同一オブジェクト（重複定義を排除）" do
+      expect(Notifier::HOLIDAY_DAY_TYPES).to equal(described_class::HOLIDAY_DAY_TYPES)
+    end
+  end
 end
