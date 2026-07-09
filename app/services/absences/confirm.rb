@@ -97,15 +97,18 @@ module Absences
                     .where(start_date: ..date).where(end_date: date..).exists?
     end
 
-    # ⑥ notified_on nil = 本人へ事前通知が届いていない → 弁明機会ゼロ（労基法 24 条・§12①）。
-    #    4-2b は本人宛 Notifier 成功後にのみ notified_on を立てるため presence を弁明機会の proxy にできる
+    # ⑥ notified_on nil = 本人へ事前通知が届いていない。誤確定は「実労働日の賃金不払い」に直結し
+    #    労基法 24 条（賃金全額払い）違反のリスクを生む。事前通知は誤りを本人からの申し出で是正させる
+    #    予防措置であって 24 条が予告・弁明を直接命じるものではない（§12①）。
+    #    4-2b は本人宛 Notifier 成功後にのみ notified_on を立てるため presence を「通知済」の proxy にできる
     def guard_notified!
       return if @candidates.all? { |candidate| candidate.notified_on.present? }
 
       raise IneligibleError, "本人へ未通知の欠勤候補は確定できません（次回の日次バッチで通知されます）"
     end
 
-    # ⑦ 猶予 = notified_on の翌営業日 17:00（組織 TZ）。経過前は確定不可（適正手続き・労基法 24 条）
+    # ⑦ 猶予 = notified_on の翌営業日 17:00（組織 TZ）。経過前は確定不可。
+    #    本人が申し出て誤確定を是正する時間を確保する予防措置（17:00 は運用値・法定値ではない）
     def guard_grace_period!
       now = Time.current
       @candidates.each do |candidate|
@@ -146,7 +149,7 @@ module Absences
           # 本物の検証失敗（越境・毒入力・監査行の不備）。「既に勤怠記録があるためスキップ」という
           # 事実と異なる flash に化けさせない。savepoint rollback 後に伝播させ全件やめる（fail-closed）
           Rails.logger.error("[Absences::Confirm] 検証失敗 date=#{candidate.target_date}: #{e.record.errors.full_messages}")
-          Rails.error.report(e, handled: false)
+          Rails.error.report(e, handled: true) # controller が 422 に落とす＝handled
           raise
         end
       end

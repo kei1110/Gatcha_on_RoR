@@ -246,6 +246,26 @@ RSpec.describe AttendanceHistory do
     end
   end
 
+  describe "absence_reason は欠勤 3 イベントのみ（attendance_records の DB CHECK と対称）" do
+    let(:org) { create(:organization) }
+
+    around { |ex| ActsAsTenant.with_tenant(org) { ex.run } }
+
+    it "clock_in イベントに absence_reason を持たせると無効" do
+      h = build(:attendance_history, user: create(:user), event_type: :clock_in,
+                                     event_date: Date.new(2026, 5, 1), absence_reason: :illness)
+      expect(h).to be_invalid
+      expect(h.errors[:absence_reason]).to be_present
+    end
+
+    it "absence_confirmed は absence_reason を持てる" do
+      h = build(:attendance_history, user: create(:user), actor: create(:user),
+                                     event_type: :absence_confirmed,
+                                     event_date: Date.new(2026, 5, 1), absence_reason: :illness)
+      expect(h).to be_valid
+    end
+  end
+
   describe "actor 必須（absence_restored）" do
     let(:org) { create(:organization) }
 

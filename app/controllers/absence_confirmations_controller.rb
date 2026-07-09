@@ -62,7 +62,9 @@ class AbsenceConfirmationsController < ApplicationController
     notice = "#{result.confirmed_dates.size} 日を欠勤確定しました"
     return notice if result.skipped_dates.empty?
 
-    "#{notice}（#{result.skipped_dates.join(', ')} は既に勤怠記録があるためスキップしました）"
+    # guard_not_covered! が「既に勤怠記録がある日」を write 前に 422 で弾くため、ここへ落ちるのは
+    # ガード通過後〜create! までの真の並行競合のみ（4-2c-2 labor-law レビュー W-e）
+    "#{notice}（#{result.skipped_dates.join(', ')} は他の操作と競合したため確定できませんでした。再実行してください）"
   end
 
   # 確定 tx の commit 後に発火（§9③ 幻通知の防止）。1 社員 × N 日付を 1 件に集約（§6.10 step 5）。

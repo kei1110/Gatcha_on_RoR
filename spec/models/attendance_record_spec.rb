@@ -93,6 +93,17 @@ RSpec.describe AttendanceRecord, type: :model do
     end
   end
 
+  describe "absence_reason enum" do
+    # attendance_histories.absence_reason（5 年保存・4-2c-2 で新設）が本マッピングの整数を永続化し、
+    # attendance_records の DB CHECK も生整数を使う。並べ替えると過去行が別の理由へ再デコードされる（鉄則 7）。
+    # AttendanceHistory 側は本定数から派生するため、凍結の唯一の砦がこの assert
+    it "整数マッピングは凍結（append-only・鉄則 7）" do
+      expect(AttendanceRecord.absence_reasons).to eq(
+        "unauthorized" => 0, "illness" => 1, "family" => 2, "investigating" => 3, "other" => 4
+      )
+    end
+  end
+
   describe "proxy_clock_reason enum" do
     it "整数マッピングが固定" do
       expect(AttendanceRecord.proxy_clock_reasons).to eq(

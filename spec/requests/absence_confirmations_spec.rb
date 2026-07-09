@@ -231,7 +231,7 @@ RSpec.describe "AbsenceConfirmations", type: :request do
       end
 
       expect(flash[:notice]).to include(target_date.to_s)
-      expect(flash[:notice]).to include("スキップ")
+      expect(flash[:notice]).to include("競合")
     end
 
     it "既に勤怠記録がある日を含めると 422 になる（新しい正しい挙動・部分書き込みを起こさない）" do

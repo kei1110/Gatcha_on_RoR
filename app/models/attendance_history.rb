@@ -38,6 +38,7 @@ class AttendanceHistory < ApplicationRecord
   validate :user_must_belong_to_same_organization
   validate :actor_must_belong_to_same_organization
   validate :source_must_belong_to_same_organization
+  validate :absence_reason_only_on_absence_events
 
   # 層① — 永続後の UPDATE を AR レベルで封鎖（create は new_record ゆえ通る）
   def readonly? = persisted?
@@ -46,7 +47,17 @@ class AttendanceHistory < ApplicationRecord
   before_update  { raise ActiveRecord::ReadOnlyRecord, "AttendanceHistory is append-only" }
   before_destroy { raise ActiveRecord::ReadOnlyRecord, "AttendanceHistory is append-only" }
 
+  # 欠勤に関わる 3 イベント以外は absence_reason を持たない（`attendance_records` の
+  # DB CHECK `absence_reason IS NULL OR status = 5` と対称。追記専用ゆえ create 時の検証が唯一の砦）
+  ABSENCE_EVENT_TYPES = %w[absence_confirmed absence_to_paid absence_restored].freeze
+
   private
+
+  def absence_reason_only_on_absence_events
+    return if absence_reason.nil? || ABSENCE_EVENT_TYPES.include?(event_type)
+
+    errors.add(:absence_reason, "は欠勤に関わるイベントにのみ設定できます")
+  end
 
   # 複合 FK が DB 層で弾くが、§3.6(2) はモデル検証も要求（クリーンなエラーで surface・user.rb 同型）。
   # ID 基点でガード — 他テナント ID 直接代入は acts_as_tenant が association を nil 解決するため、

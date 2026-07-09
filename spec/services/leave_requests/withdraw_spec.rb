@@ -49,6 +49,90 @@ RSpec.describe LeaveRequests::Withdraw do
     expect(rec.clock_in).to be_present
   end
 
+  # 同一日を覆う承認済 LR は複数あり得る（LeaveRequest に重複検証も DB 制約も無い）。
+  # 「範囲内 leave-status AR = この休暇の日」という前提が崩れる（4-2c-2 レビュー C1'/C-new）
+  describe "同一日を覆う他の休暇申請（重複 LR）" do
+    def conversion_history(source:, reason: :illness)
+      create(:attendance_history, user:, actor: approver, source:,
+                                  event_type: :absence_to_paid, event_date: start_date,
+                                  absence_reason: reason,
+                                  previous_status: AttendanceRecord.statuses[:absent],
+                                  new_status: AttendanceRecord.statuses[:on_leave])
+    end
+
+    def live_other_leave
+      create(:leave_request, requester: user, leave_type: paid_type, start_date:, end_date: start_date,
+                             half_day_type: :none, days_requested: 1, approval_status: :approved)
+    end
+
+    it "他に生きた LR が覆う日の AR は destroy しない（台帳から消えない）" do
+      live_other_leave
+      create(:attendance_record, user:, work_date: start_date, status: :on_leave, clock_in: nil)
+
+      withdraw(leave(type: unpaid_type))
+
+      record = AttendanceRecord.find_by(user_id: user.id, work_date: start_date)
+      expect(record).to be_present
+      expect(record.status).to eq("on_leave")
+    end
+
+    it "他に生きた LR が覆う日は absent へ復元しない（承認済の休暇日を無届欠勤に化けさせない）" do
+      live_other_leave
+      record = create(:attendance_record, user:, work_date: start_date, status: :on_leave, clock_in: nil)
+      lr = leave(type: unpaid_type)
+      conversion_history(source: lr)
+
+      withdraw(lr)
+
+      expect(record.reload.status).to eq("on_leave")
+      expect(record.absence_reason).to be_nil
+      expect(AttendanceHistory.where(event_type: :absence_restored)).not_to exist
+    end
+
+    it "自分の absence_to_paid を持たない 2 件目の撤回でも、1 件目の conversion で absent へ復元する" do
+      # 2 件目の承認は was_absent=false ゆえ absence_to_paid を書かない。source で絞ると
+      # 「自分の履歴が無い＝自分が作った AR」と誤推論して destroy し、欠勤が台帳から消える
+      create(:attendance_record, user:, work_date: start_date, status: :on_leave, clock_in: nil)
+      first_lr = create(:leave_request, requester: user, leave_type: paid_type, start_date:, end_date: start_date,
+                                        half_day_type: :none, days_requested: 1, approval_status: :withdrawn)
+      conversion_history(source: first_lr)
+
+      withdraw(leave(type: unpaid_type))
+
+      restored = AttendanceRecord.find_by(user_id: user.id, work_date: start_date)
+      expect(restored).to be_present
+      expect(restored.status).to eq("absent")
+      expect(restored.absence_reason).to eq("illness")
+    end
+
+    it "既に absence_restored 済みの日は二重復元せず destroy する（最終状態で判定）" do
+      create(:attendance_record, user:, work_date: start_date, status: :on_leave, clock_in: nil)
+      old_lr = create(:leave_request, requester: user, leave_type: paid_type, start_date:, end_date: start_date,
+                                      half_day_type: :none, days_requested: 1, approval_status: :withdrawn)
+      conversion_history(source: old_lr)
+      create(:attendance_history, user:, actor: approver, source: old_lr,
+                                  event_type: :absence_restored, event_date: start_date,
+                                  absence_reason: :illness,
+                                  previous_status: AttendanceRecord.statuses[:on_leave],
+                                  new_status: AttendanceRecord.statuses[:absent])
+
+      withdraw(leave(type: unpaid_type))
+
+      expect(AttendanceRecord.find_by(user_id: user.id, work_date: start_date)).to be_nil
+    end
+  end
+
+  describe "テナント境界（with_tenant へ入る前に操作者の組織を検証）" do
+    it "操作者が別テナントなら ArgumentError（昇格前に拒否）" do
+      other_org = create(:organization, subdomain: "other")
+      outsider = ActsAsTenant.with_tenant(other_org) { create(:user, organization: other_org) }
+      lr = leave(type: unpaid_type)
+
+      expect { described_class.call(leave_request: lr, acting_user: outsider) }
+        .to raise_error(ArgumentError, /組織が一致しません/)
+    end
+  end
+
   it "leave_withdrawn 履歴を 1 行記録" do
     create(:leave_balance, user:, leave_type: paid_type, fiscal_year:, used_days: 1)
     create(:attendance_record, user:, work_date: start_date, status: :on_leave, clock_in: nil)
