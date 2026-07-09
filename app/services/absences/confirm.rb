@@ -7,11 +7,14 @@ module Absences
   # policy_scope で target_user と candidates を解決して渡す（IDOR は解決側で塞ぐ・§12③）。
   #
   # ガード順は意味論上固定:
-  #   ① 毒入力 reason → ② 候補不在日 → ③ target_user 不一致 → ④ notified_on nil
-  #     → ⑤ 猶予前 → ⑥ 締め済み
-  #   ① を先頭に置くのは、per-day の rescue RecordInvalid（並行打刻の競合吸収）が毒入力を
-  #     「skip 日」として握り潰し 422 を返さなくなるのを防ぐため（部分成功にしない）。
-  #   ④ を ⑤ より前に置くのは next_business_day(nil) を計算させないため（§12①）。
+  #   ① 操作者の組織 → ② 毒入力 reason → ③ 候補不在日 → ④ 候補の所有者不一致
+  #   → ⑤ 弁明の行使（AR / 休暇申請が覆う日） → ⑥ 本人未通知 → ⑦ 猶予前 → ⑧ 締め済み（tx 内）
+  #   ① を with_tenant の**外**に置くのは、with_tenant がテナント文脈を「切り替える」ため内側では
+  #     複合 FK も cross_tenant 検証も越境を検出できないから（この service 単体の唯一の境界）。
+  #   ② を先頭近くに置くのは、per-day の rescue（並行打刻の競合吸収）が毒入力を「skip 日」として
+  #     握り潰し 422 を返さなくなるのを防ぐため（部分成功にしない）。
+  #   ⑥ を ⑦ より前に置くのは next_business_day(nil) を計算させないため。
+  #   ⑧ を tx 内で撃つのは、判定と write の間に締め（submitted）が commit する窓を閉じるため。
   class Confirm
     Result = Struct.new(:confirmed_dates, :skipped_dates, keyword_init: true)
 
@@ -30,27 +33,39 @@ module Absences
     end
 
     def call
-      guard_reason!
-      guard_candidates_exist!
-      guard_candidates_belong_to_target!
-      guard_notified!
-      guard_grace_period!
-      guard_closing!
-      confirm_all
+      guard_actor_same_organization! # with_tenant へ入る前（昇格前）に検証する
+      ActsAsTenant.with_tenant(organization) do
+        guard_reason!
+        guard_candidates_exist!
+        guard_candidates_belong_to_target!
+        guard_not_covered!
+        guard_notified!
+        guard_grace_period!
+        confirm_all
+      end
     end
 
     private
 
     def organization = @target_user.organization
 
-    # ① 毒入力（permit する enum ゆえ不正値は 422 に落とす・§11⑩ 同型）
+    # ① with_tenant(@target_user.organization) は文脈を切り替えるため、内側の複合 FK も
+    #    user_must_belong_to_same_organization も越境を検出できない（organization_id が引数 org 由来で
+    #    user_id と整合してしまう）。昇格前に actor と target の組織一致を検証するのが唯一の境界
+    def guard_actor_same_organization!
+      return if @actor.organization_id == @target_user.organization_id
+
+      raise IneligibleError, "操作者と対象社員の組織が一致しません"
+    end
+
+    # ② 毒入力（permit する enum ゆえ不正値は 422 に落とす・§11⑩ 同型）
     def guard_reason!
       return if AttendanceRecord.absence_reasons.key?(@absence_reason)
 
       raise IneligibleError, "欠勤理由が不正です"
     end
 
-    # ② 候補の無い日付（却下/撤回された休暇日・過去日の捏造）は確定不可。
+    # ③ 候補の無い日付（却下/撤回された休暇日・過去日の捏造）は確定不可。
     #    v1 では「候補に無い日の欠勤確定」を一切認めない（§11②・§12⑨ の plan 判断）
     def guard_candidates_exist!
       raise IneligibleError, "欠勤候補が選択されていません" if @dates.empty?
@@ -59,7 +74,7 @@ module Absences
       raise IneligibleError, "欠勤候補に存在しない日付が含まれています"
     end
 
-    # ③ 呼び出し元の契約違反（target_user と candidates の食い違い）を write 前に拒否する。
+    # ④ 呼び出し元の契約違反（target_user と candidates の食い違い）を write 前に拒否する。
     #    現行 controller は policy_scope(AbsenceCandidate).where(user_id: target.id) で紐付けるため
     #    到達しないが、食い違えば「他人の候補を destroy して target_user に absent AR を作る」腐敗になる。
     #    サービス単体でも fail-closed に倒す（多層防御）
@@ -69,7 +84,23 @@ module Absences
       raise IneligibleError, "欠勤候補が対象社員のものではありません"
     end
 
-    # ④ notified_on nil = 本人へ事前通知が届いていない → 弁明機会ゼロ（労基法 24 条・§12①）。
+    # ⑤ 候補の掃除は日次バッチのみ。バッチ実行後〜猶予期限までに本人が休暇申請を出す（＝通知に応じた
+    #    弁明そのもの）と、候補行は残ったまま確定できてしまう。write 前に候補の前提を再評価する
+    def guard_not_covered!
+      covered = @candidates.map(&:target_date).select { |date| covered?(date) }
+      return if covered.empty?
+
+      raise IneligibleError, "#{covered.join(', ')} は勤怠記録または休暇申請が存在するため確定できません"
+    end
+
+    # AttendanceAnomalies::Detect#covered? と同一条件（AR 実在 or 全 status の covering LR 実在）
+    def covered?(date)
+      AttendanceRecord.exists?(user_id: @target_user.id, work_date: date) ||
+        LeaveRequest.where(requester_id: @target_user.id)
+                    .where(start_date: ..date).where(end_date: date..).exists?
+    end
+
+    # ⑥ notified_on nil = 本人へ事前通知が届いていない → 弁明機会ゼロ（労基法 24 条・§12①）。
     #    4-2b は本人宛 Notifier 成功後にのみ notified_on を立てるため presence を弁明機会の proxy にできる
     def guard_notified!
       return if @candidates.all? { |candidate| candidate.notified_on.present? }
@@ -77,7 +108,7 @@ module Absences
       raise IneligibleError, "本人へ未通知の欠勤候補は確定できません（次回の日次バッチで通知されます）"
     end
 
-    # ⑤ 猶予 = notified_on の翌営業日 17:00（組織 TZ）。経過前は確定不可（§10⑤ 適正手続き）
+    # ⑦ 猶予 = notified_on の翌営業日 17:00（組織 TZ）。経過前は確定不可（§10⑤ 適正手続き）
     def guard_grace_period!
       now = Time.current
       @candidates.each do |candidate|
@@ -98,7 +129,7 @@ module Absences
         .local(next_day.year, next_day.month, next_day.day, GRACE_DEADLINE_HOUR)
     end
 
-    # ⑥ 締め済み月の日付は確定不可（§11⑦）。既存 ClosingLock の LOCKED は submitted を含む＝
+    # ⑧ 締め済み月の日付は確定不可（§11⑦）。既存 ClosingLock の LOCKED は submitted を含む＝
     #    設計 §5.2 の「finalized 禁止・deferred 許可」より厳格（§12⑩・本計画で意図的に採用）。
     #    write 前に対象全日を一括評価し、1 日でも locked なら全件拒否
     def guard_closing!
@@ -110,17 +141,22 @@ module Absences
     def confirm_all
       confirmed = []
       skipped = []
-      # request 文脈前提だが ApplyApproval 同型で明示ラップ（文脈喪失・将来バッチ化に fail-closed）
-      ActsAsTenant.with_tenant(organization) do
-        ActiveRecord::Base.transaction do
-          @candidates.each do |candidate|
-            confirm_one(candidate)
-            confirmed << candidate.target_date
-          rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
-            # 並行 clock_in / CCR 承認が同日 AR を先に作った等。savepoint のみ rollback され
-            # 親 tx は健全・候補は intact（再確定可能）。1 日の競合が確定バッチ全体を殺さない（§12⑤）
-            skipped << candidate.target_date
-          end
+      ActiveRecord::Base.transaction do
+        guard_closing! # ⑧ tx 内で評価（判定と write の間に締めが commit する窓を閉じる）
+        @candidates.each do |candidate|
+          confirm_one(candidate)
+          confirmed << candidate.target_date
+        rescue ActiveRecord::RecordNotUnique
+          # 真の競合（並行 clock_in / CCR 承認が同日 AR を先に作った）。AR に同日 uniqueness の
+          # モデル検証は無く unique index が一次防衛ゆえ、この経路の競合は必ず RecordNotUnique。
+          # savepoint のみ rollback され親 tx は健全・候補は intact（再確定可能）
+          skipped << candidate.target_date
+        rescue ActiveRecord::RecordInvalid => e
+          # 本物の検証失敗（越境・毒入力・監査行の不備）。「既に勤怠記録があるためスキップ」という
+          # 事実と異なる flash に化けさせない。savepoint rollback 後に伝播させ全件やめる（fail-closed）
+          Rails.logger.error("[Absences::Confirm] 検証失敗 date=#{candidate.target_date}: #{e.record.errors.full_messages}")
+          Rails.error.report(e, handled: false)
+          raise
         end
       end
       Result.new(confirmed_dates: confirmed, skipped_dates: skipped)

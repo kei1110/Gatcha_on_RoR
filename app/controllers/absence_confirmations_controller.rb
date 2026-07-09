@@ -25,6 +25,9 @@ class AbsenceConfirmationsController < ApplicationController
     render_ineligible("日付の指定が正しくありません")
   rescue Absences::IneligibleError, Absences::ClosingLockedError => e
     render_ineligible(e.message)
+  rescue ActiveRecord::RecordInvalid
+    # Absences::Confirm が握り潰さず伝播させた本物の検証失敗。500 でなく 422 で再描画する
+    render_ineligible("欠勤確定に失敗しました（記録の整合性エラー）。管理者へご連絡ください")
   end
 
   # 却下(dismiss)＝候補を削除して一覧から除く（§11④・§12⑧）。監査には残さない（候補は ephemeral）。

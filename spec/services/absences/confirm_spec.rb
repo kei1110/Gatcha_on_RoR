@@ -85,6 +85,32 @@ RSpec.describe Absences::Confirm do
   end
 
   describe "ガード（すべて write 前に 422）" do
+    it "操作者が対象社員と別テナントなら拒否する（with_tenant 昇格の前に検証・tenant-isolation W2）" do
+      other_org = create(:organization, subdomain: "other")
+      outsider = ActsAsTenant.with_tenant(other_org) { create(:user, organization: other_org) }
+      c = candidate
+
+      expect {
+        after_grace do
+          described_class.call(target_user: user, dates: [ target_date ], candidates: [ c ],
+                               absence_reason: "unauthorized", note: nil, actor: outsider)
+        end
+      }.to raise_error(Absences::IneligibleError, /組織が一致しません/)
+
+      expect(AttendanceRecord.count).to eq(0)
+    end
+
+    it "猶予中に提出された休暇申請がある日は確定できない（弁明の行使・labor-law W4）" do
+      c = candidate
+      create(:leave_request, requester: user, start_date: target_date, end_date: target_date)
+
+      expect { after_grace { confirm(dates: [ target_date ], candidates: [ c ]) } }
+        .to raise_error(Absences::IneligibleError, /休暇申請が存在する/)
+
+      expect(AttendanceRecord.count).to eq(0)
+      expect(AbsenceCandidate.where(id: c.id)).to exist
+    end
+
     it "毒入力の absence_reason は IneligibleError（per-day rescue に握り潰させない）" do
       c = candidate
       expect { after_grace { confirm(dates: [ target_date ], candidates: [ c ], reason: "bogus") } }
@@ -172,40 +198,58 @@ RSpec.describe Absences::Confirm do
   end
 
   describe "per-day savepoint（§12⑤）" do
-    it "既に AR がある日は skip し、他の日は確定される（1 日の競合が全体を殺さない）" do
-      d2 = Date.new(2026, 4, 30)  # 過去日（Confirm は candidates を target_date 昇順で処理する）
+    # guard_not_covered!（労務レビュー是正）の追加により、事前に AttendanceRecord を作っておく
+    # setup は tx に入る前のガード段階で全件事前拒否される（後続の「既に勤怠記録がある日は
+    # tx へ入る前に全件拒否する」例が検証）。savepoint が 3 write を束ねているかを検証するには
+    # ガード通過後・confirm_one 実行中に発生する真の並行性を模す必要があるため、
+    # AttendanceHistory.create! を該当日だけ RecordNotUnique / RecordInvalid で失敗させてスタブする
+    it "確定中に他プロセスが同日 AR を挿入するレース（TOCTOU）では、その日だけ skip し他の日は確定する" do
+      d2 = Date.new(2026, 4, 30)
       cs = [ candidate, candidate(date: d2) ]
-      create(:attendance_record, user:, work_date: target_date, status: :working) # 並行 clock_in 相当
+      # guard_not_covered! を通過した後、3 つ目の write（履歴）が unique 競合する状況を再現する。
+      # AR create → 候補 destroy → 履歴 create の 3 write が 1 savepoint に束ねられていれば、
+      # 失敗した日は AR も候補 destroy も巻き戻り、他の日は確定されて残る
+      allow(AttendanceHistory).to receive(:create!).and_call_original
+      allow(AttendanceHistory).to receive(:create!)
+        .with(hash_including(event_date: target_date))
+        .and_raise(ActiveRecord::RecordNotUnique.new("duplicate key"))
 
       result = after_grace { confirm(dates: [ target_date, d2 ], candidates: cs) }
 
       expect(result.skipped_dates).to eq([ target_date ])
       expect(result.confirmed_dates).to eq([ d2 ])
-      expect(AttendanceRecord.find_by(work_date: target_date).status).to eq("working") # 上書きしない
+      # skip 日: AR も候補も巻き戻っている（savepoint が 3 write を束ねている証明）
+      expect(AttendanceRecord.find_by(work_date: target_date)).to be_nil
+      expect(AbsenceCandidate.where(target_date: target_date)).to exist
+      # 他の日: 親 tx は毒されず確定が残っている（1 日の失敗が全体を殺さない証明）
       expect(AttendanceRecord.find_by(work_date: d2).status).to eq("absent")
+      expect(AbsenceCandidate.where(target_date: d2)).not_to exist
     end
 
-    it "skip 日の候補は savepoint rollback で intact に戻る（再確定可能）" do
-      c = candidate
-      create(:attendance_record, user:, work_date: target_date, status: :working)
-
-      after_grace { confirm(dates: [ target_date ], candidates: [ c ]) }
-
-      expect(AbsenceCandidate.where(id: c.id)).to exist
-      expect(AttendanceHistory.where(event_type: :absence_confirmed).count).to eq(0)
-    end
-
-    it "履歴作成（3 つ目の write）が失敗しても savepoint 全体が巻き戻り、AR も作られず候補も intact" do
+    it "履歴作成が検証失敗（RecordInvalid）なら握り潰さず伝播し、AR も候補も巻き戻る" do
       c = candidate
       allow(AttendanceHistory).to receive(:create!)
         .and_raise(ActiveRecord::RecordInvalid.new(AttendanceHistory.new))
 
-      result = after_grace { confirm(dates: [ target_date ], candidates: [ c ]) }
+      expect { after_grace { confirm(dates: [ target_date ], candidates: [ c ]) } }
+        .to raise_error(ActiveRecord::RecordInvalid)
 
-      expect(result.skipped_dates).to eq([ target_date ])
-      expect(result.confirmed_dates).to be_empty
-      expect(AttendanceRecord.count).to eq(0)          # 1 つ目の write が巻き戻っている
-      expect(AbsenceCandidate.where(id: c.id)).to exist # 2 つ目の write が巻き戻っている
+      expect(AttendanceRecord.count).to eq(0)
+      expect(AbsenceCandidate.where(id: c.id)).to exist
+    end
+
+    it "既に勤怠記録がある日は tx へ入る前に全件拒否する（部分書き込みを起こさない）" do
+      d2 = Date.new(2026, 4, 30)
+      cs = [ candidate, candidate(date: d2) ]
+      create(:attendance_record, user:, work_date: target_date, status: :working)
+
+      expect { after_grace { confirm(dates: [ target_date, d2 ], candidates: cs) } }
+        .to raise_error(Absences::IneligibleError, /勤怠記録または休暇申請が存在する/)
+
+      # 巻き添えの d2 も書かれない（全件拒否）・既存 AR は上書きされない
+      expect(AttendanceRecord.find_by(work_date: d2)).to be_nil
+      expect(AttendanceRecord.find_by(work_date: target_date).status).to eq("working")
+      expect(AbsenceCandidate.count).to eq(2)
     end
   end
 end

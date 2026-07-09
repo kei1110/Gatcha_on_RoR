@@ -204,10 +204,16 @@ RSpec.describe "AbsenceConfirmations", type: :request do
     end
 
     it "skip 日は flash に併記される" do
+      # guard_not_covered!（労務レビュー是正）の追加により、事前に AttendanceRecord を作る setup は
+      # tx へ入る前の全件事前拒否（422）に化けるため、per-day skip はガード通過後の
+      # 真の並行性（TOCTOU）としてスタブで再現する（spec/services/absences/confirm_spec.rb 同型）
       d2 = Date.new(2026, 4, 30) # 過去日
       candidate_for(sub)
       candidate_for(sub, date: d2)
-      ActsAsTenant.with_tenant(org) { create(:attendance_record, user: sub, work_date: target_date, status: :working) }
+      allow(AttendanceHistory).to receive(:create!).and_call_original
+      allow(AttendanceHistory).to receive(:create!)
+        .with(hash_including(event_date: target_date))
+        .and_raise(ActiveRecord::RecordNotUnique.new("duplicate key"))
       sign_in manager
 
       after_grace do
@@ -216,6 +222,29 @@ RSpec.describe "AbsenceConfirmations", type: :request do
 
       expect(flash[:notice]).to include(target_date.to_s)
       expect(flash[:notice]).to include("スキップ")
+    end
+
+    it "既に勤怠記録がある日を含めると 422 になる（新しい正しい挙動・部分書き込みを起こさない）" do
+      candidate_for(sub)
+      ActsAsTenant.with_tenant(org) { create(:attendance_record, user: sub, work_date: target_date, status: :working) }
+      sign_in manager
+
+      after_grace { post absence_confirmations_url(host: tenant_host(org)), params: confirm_params(sub, [ target_date ]) }
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(AttendanceRecord.unscoped.where(status: :absent).count).to eq(0)
+    end
+
+    it "記録の整合性エラーは 500 でなく 422（管理者に事実と異なる skip flash を出さない）" do
+      candidate_for(sub)
+      invalid_history = ActsAsTenant.with_tenant(org) { AttendanceHistory.new }
+      allow(AttendanceHistory).to receive(:create!).and_raise(ActiveRecord::RecordInvalid.new(invalid_history))
+      sign_in manager
+
+      after_grace { post absence_confirmations_url(host: tenant_host(org)), params: confirm_params(sub, [ target_date ]) }
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(AttendanceRecord.unscoped.count).to eq(0)
     end
   end
 
