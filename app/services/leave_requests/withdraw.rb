@@ -45,19 +45,45 @@ module LeaveRequests
 
     # counted_dates を再計算せず、範囲内で leave-status を持つ AR を直接巻き戻す（R3/R4）。
     # 1 日 1 AR（unique [user, work_date]）ゆえ範囲内 leave-status AR = この休暇の日。
+    # **absent 由来の日は destroy せず復元する**（4-2c-2 レビュー C1 — 候補は再生成されず欠勤が台帳から消える）
     def restore_attendance_records
       AttendanceRecord
         .where(user_id: @leave_request.requester_id,
                work_date: @leave_request.start_date..@leave_request.end_date,
                status: %i[on_leave morning_half afternoon_half])
         .find_each do |record|
-          if record.clock_in.blank?
+          conversion = absence_to_paid_history(record.work_date)
+          if conversion
+            restore_absence(record, conversion)
+          elsif record.clock_in.blank?
             record.destroy!
           else
             record.update!(status: record.clock_out.present? ? :clocked_out : :working, leave_type_id: nil)
             Clockings::Recalculate.call(record:) if record.clock_out.present?
           end
         end
+    end
+
+    # この休暇の承認が absent を on_leave へ昇格させた日か。昇格した AR は clock_in が nil のままなので、
+    # clock_in.blank? だけでは「休暇が新規作成した AR」と区別できない（destroy すると欠勤が消える）
+    def absence_to_paid_history(work_date)
+      AttendanceHistory.find_by(user_id: @leave_request.requester_id, source: @leave_request,
+                                event_type: :absence_to_paid, event_date: work_date)
+    end
+
+    # 欠勤へ戻す（理由・自由記述は absence_to_paid 履歴が構造化して保持している）。
+    # previous_status は update! の**前**に捕捉する（capture-before-assign）
+    def restore_absence(record, conversion)
+      previous_status = AttendanceRecord.statuses[record.status]
+      record.update!(status: :absent, absence_reason: conversion.absence_reason,
+                     note: conversion.note, leave_type_id: nil)
+      AttendanceHistory.create!(
+        user_id: @leave_request.requester_id, actor: @acting_user, source: @leave_request,
+        event_type: :absence_restored, event_date: record.work_date,
+        previous_status: previous_status,
+        new_status: AttendanceRecord.statuses[:absent],
+        absence_reason: conversion.absence_reason, note: conversion.note
+      )
     end
 
     def record_history

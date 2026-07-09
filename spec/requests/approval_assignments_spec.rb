@@ -324,7 +324,38 @@ RSpec.describe "ApprovalAssignments", type: :request do
         expect(history.previous_status).to eq(AttendanceRecord.statuses[:absent])
         expect(history.new_status).to eq(AttendanceRecord.statuses[:on_leave])
         expect(history.actor_id).to eq(dept.id)   # 最終承認者
-        expect(history.note).to eq("欠勤理由: 無届欠勤")
+        expect(history.absence_reason).to eq("unauthorized")
+        expect(history.note).to eq("調査中") # 元の自由記述が退避される（AR.note はクリアされる）
+      end
+    end
+
+    it "承認後に撤回まで通しても欠勤が台帳から消えない（実 approve/withdraw path・stub なし）" do
+      ActsAsTenant.with_tenant(org) do
+        create(:attendance_record, user: emp, work_date: Date.new(2026, 5, 1), status: :absent,
+                                   absence_reason: :illness, clock_in: nil)
+      end
+
+      sign_in boss
+      patch approve_approval_assignment_url(assignment_for(1), host: tenant_host(org))
+      sign_in dept
+      patch approve_approval_assignment_url(assignment_for(2), host: tenant_host(org))
+
+      sign_in emp
+      patch request_withdrawal_leave_request_url(leave, host: tenant_host(org)),
+            params: { leave_request: { withdrawal_reason: "誤申請のため" } }
+
+      ActsAsTenant.with_tenant(org) do
+        withdrawal = leave.approval_assignments.where(purpose: :withdrawal).order(:position)
+        sign_in boss
+        patch approve_approval_assignment_url(withdrawal.first, host: tenant_host(org))
+        sign_in dept
+        patch approve_approval_assignment_url(withdrawal.second, host: tenant_host(org))
+
+        record = AttendanceRecord.find_by(user_id: emp.id, work_date: Date.new(2026, 5, 1))
+        expect(record).to be_present                 # destroy されていない
+        expect(record.status).to eq("absent")
+        expect(record.absence_reason).to eq("illness")
+        expect(AttendanceHistory.where(event_type: :absence_restored)).to exist
       end
     end
   end

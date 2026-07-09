@@ -264,16 +264,4 @@ RSpec.describe AttendanceRecord, type: :model do
       expect(record).to be_valid
     end
   end
-
-  describe ".absence_reason_note（監査 note の単一書式源）" do
-    it "enum キーから「欠勤理由: {日本語ラベル}」を組み立てる" do
-      expect(described_class.absence_reason_note("illness")).to eq("欠勤理由: 疾病・傷病")
-      expect(described_class.absence_reason_note(:unauthorized)).to eq("欠勤理由: 無届欠勤")
-    end
-
-    it "blank なら nil（absent でない記録の履歴には note を焼かない）" do
-      expect(described_class.absence_reason_note(nil)).to be_nil
-      expect(described_class.absence_reason_note("")).to be_nil
-    end
-  end
 end

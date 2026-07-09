@@ -9,6 +9,7 @@ RSpec.describe LeaveRequests::Withdraw do
   let(:user) { create(:user, organization: org) }
   let(:paid_type) { create(:leave_type, system_type: :annual, paid_leave: true, allow_half_day: true) }
   let(:comp_type) { create(:leave_type, system_type: :compensatory_leave, paid_leave: false) }
+  let(:unpaid_type) { create(:leave_type, system_type: :other, paid_leave: false, allow_half_day: true) }
   let(:start_date) { Date.new(2026, 5, 1) }   # 金曜
   let(:fiscal_year) { org.fiscal_year_for(start_date) }
 
@@ -76,6 +77,52 @@ RSpec.describe LeaveRequests::Withdraw do
       rec.reload
       expect(rec.status).to eq("clocked_out")
       expect(rec.leave_type_id).to be_nil
+    end
+  end
+
+  describe "absent 由来の AR の復元（4-2c-2 レビュー C1）" do
+    it "事後有給の撤回で AR を destroy せず absent へ復元し、欠勤理由と自由記述を戻す" do
+      record = create(:attendance_record, user:, work_date: start_date, status: :absent,
+                                          absence_reason: :other, note: "私用のため", clock_in: nil)
+      lr = leave(type: unpaid_type)
+      LeaveRequests::ApplyApproval.call(leave_request: lr, acting_user: approver)
+      expect(record.reload.status).to eq("on_leave")
+
+      described_class.call(leave_request: lr, acting_user: approver)
+
+      restored = AttendanceRecord.find_by(user_id: user.id, work_date: start_date)
+      expect(restored).to be_present            # destroy されていない
+      expect(restored.status).to eq("absent")
+      expect(restored.absence_reason).to eq("other")
+      expect(restored.note).to eq("私用のため") # other の自由記述が戻る
+    end
+
+    it "復元を absence_restored 履歴に記録する（actor 必須・previous_status は on_leave）" do
+      create(:attendance_record, user:, work_date: start_date, status: :absent,
+                                 absence_reason: :illness, clock_in: nil)
+      lr = leave(type: unpaid_type)
+      LeaveRequests::ApplyApproval.call(leave_request: lr, acting_user: approver)
+
+      described_class.call(leave_request: lr, acting_user: approver)
+
+      history = AttendanceHistory.find_by(user_id: user.id, event_type: :absence_restored,
+                                          event_date: start_date)
+      expect(history).to be_present
+      expect(history.actor_id).to eq(approver.id)
+      expect(history.previous_status).to eq(AttendanceRecord.statuses[:on_leave])
+      expect(history.new_status).to eq(AttendanceRecord.statuses[:absent])
+      expect(history.absence_reason).to eq("illness")
+    end
+
+    it "absent 由来でない（休暇が新規作成した）AR は従来どおり destroy される" do
+      lr = leave(type: unpaid_type)
+      LeaveRequests::ApplyApproval.call(leave_request: lr, acting_user: approver)
+      expect(AttendanceRecord.find_by(user_id: user.id, work_date: start_date)).to be_present
+
+      described_class.call(leave_request: lr, acting_user: approver)
+
+      expect(AttendanceRecord.find_by(user_id: user.id, work_date: start_date)).to be_nil
+      expect(AttendanceHistory.where(event_type: :absence_restored)).not_to exist
     end
   end
 end

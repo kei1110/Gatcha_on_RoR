@@ -46,7 +46,8 @@ RSpec.describe Absences::Confirm do
                                           event_date: target_date)
       expect(history.actor_id).to eq(manager.id)
       expect(history.new_status).to eq(AttendanceRecord.statuses[:absent])
-      expect(history.note).to eq("欠勤理由: 無届欠勤") # 書式は AttendanceRecord.absence_reason_note が単一源
+      expect(history.absence_reason).to eq("unauthorized")
+      expect(history.note).to be_nil # other 以外は自由記述なし
     end
 
     it "複数日を一括確定する（1 社員 × N 日付・§6.10 step 3・月境界を跨ぐ）" do
@@ -71,6 +72,15 @@ RSpec.describe Absences::Confirm do
       c = candidate
       after_grace { confirm(dates: [ target_date ], candidates: [ c ], reason: "other", note: "私用") }
       expect(AttendanceRecord.find_by(work_date: target_date).note).to eq("私用")
+    end
+
+    it "other の自由記述を監査履歴にも残す（労基法 109 条・AR.note は事後有給でクリアされるため）" do
+      c = candidate
+      after_grace { confirm(dates: [ target_date ], candidates: [ c ], reason: "other", note: "私用") }
+
+      history = AttendanceHistory.find_by(user_id: user.id, event_type: :absence_confirmed)
+      expect(history.absence_reason).to eq("other")
+      expect(history.note).to eq("私用")
     end
   end
 

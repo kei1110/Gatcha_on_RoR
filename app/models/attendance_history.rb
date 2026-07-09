@@ -16,8 +16,14 @@ class AttendanceHistory < ApplicationRecord
   enum :event_type, {
     clock_in: 0, clock_out: 1, leave_approved: 2, leave_withdrawn: 3,
     clock_change_approved: 4, absence_confirmed: 5, absence_to_paid: 6,
-    proxy_clock: 7, interval_shortage: 8, clock_change_withdrawn: 9
+    proxy_clock: 7, interval_shortage: 8, clock_change_withdrawn: 9,
+    absence_restored: 10
   }, validate: true
+
+  # 「この履歴行が指す欠勤理由」を構造化して保存する（4-2c-2 レビュー）。
+  #   absence_confirmed = 確定した理由 / absence_to_paid = 振替前の理由 / absence_restored = 復元した理由
+  # 整数マッピングは AttendanceRecord と同一（凍結）。翻訳結果を監査へ焼かず、ラベルは読む時に解決する。
+  enum :absence_reason, AttendanceRecord.absence_reasons, prefix: true, validate: { allow_nil: true }
 
   validates :event_date, presence: true
   # proxy_clock のみ必須（残り event_type の actor 必須は各 Phase で追記）。不変ゆえ事前防御
@@ -28,6 +34,7 @@ class AttendanceHistory < ApplicationRecord
   validates :actor_id, presence: true, if: :clock_change_withdrawn?   # 2-5
   validates :actor_id, presence: true, if: :absence_confirmed?  # 4-2c 欠勤確定（§12⑥・不変ゆえ事前防御）
   validates :actor_id, presence: true, if: :absence_to_paid?    # 4-2c 事後有給振替（§12⑥）
+  validates :actor_id, presence: true, if: :absence_restored?  # 4-2c-2 撤回時の欠勤復元
   validate :user_must_belong_to_same_organization
   validate :actor_must_belong_to_same_organization
   validate :source_must_belong_to_same_organization

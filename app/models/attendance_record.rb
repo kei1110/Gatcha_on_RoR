@@ -28,16 +28,6 @@ class AttendanceRecord < ApplicationRecord
   enum :absence_reason, { unauthorized: 0, illness: 1, family: 2, investigating: 3, other: 4 },
        prefix: true, validate: { allow_nil: true }
 
-  # 監査 AttendanceHistory#note に焼く欠勤理由ラベルの単一書式源。
-  # 確定（Absences::Confirm）と事後有給振替（LeaveRequests::ApplyApproval）の両経路が呼ぶ —
-  # AR.absence_reason は absent→on_leave の上書きでクリアされるため、理由は履歴側に残す必要がある
-  # （労基法 109 条 5 年保存）。書式を 1 箇所に集約し 2 経路で食い違わせない
-  def self.absence_reason_note(reason)
-    return nil if reason.blank?
-
-    "欠勤理由: #{I18n.t("activerecord.attributes.attendance_record.absence_reasons.#{reason}")}"
-  end
-
   # 代理打刻の理由（§6.1）。NULL = 通常打刻。permit する enum ゆえ allow_nil: true で毒入力のみ 422 に
   # （NULL は一覧外だが許容する — validate: true のみだと nil が拒否される）
   enum :proxy_clock_reason,

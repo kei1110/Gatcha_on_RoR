@@ -140,9 +140,8 @@ module Absences
           user: @target_user, actor: @actor,
           event_type: :absence_confirmed, event_date: candidate.target_date,
           new_status: AttendanceRecord.statuses[:absent],
-          # AR.absence_reason は事後有給（absent→on_leave）でクリアされるため、確定時点の理由を監査へ焼く。
-          # 書式は AttendanceRecord が単一源（ApplyApproval の absence_to_paid と同一書式・Task 2）
-          note: AttendanceRecord.absence_reason_note(@absence_reason)
+          absence_reason: @absence_reason,  # 構造化（翻訳結果を監査へ焼かない）
+          note: note_for_reason             # other の自由記述のみ（他は nil）
         )
       end
     end
