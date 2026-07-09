@@ -76,6 +76,7 @@ ja:
           morning_half: 午前半休
           afternoon_half: 午後半休
           on_leave: 全休
+          absent: 欠勤
         absence_reasons:
           unauthorized: 無届欠勤
           illness: 疾病・傷病
