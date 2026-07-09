@@ -20,20 +20,20 @@ grep -nE '^#{2,3} ' docs/SPEC.md   # 見出し + 行番号を一括取得し本�
 | **§1** 製品概要 | 86–145 | 1.1 機能/社員(90)・1.2 機能/管理者(98)・1.3 本質的価値(107)・1.4 動線マップ(115) |
 | **§2** アーキテクチャ | 146–216 | 2.1 技術スタック(148)・2.2 設計原則(166)・2.3 ディレクトリ(175)・2.4 名前空間(198) |
 | **§3** マルチテナント・認証・認可 | 217–295 | 3.1 テナント(221)・3.2 認証(235)・3.3 ロール/上長(242)・3.4 認可(258)・3.5 オーナーシップ(277)・★3.6 文脈無し経路のテナント保証(281) |
-| **§4** データモデル | 296–683 | 4.1 命名規約(332)・4.2 Organization(340)・4.3 User(350)・4.4 WorkPattern(369)・4.5 LeaveType(400)・4.6 UserWorkPattern(411)・4.7 CompanyCalendar(425)・★4.8 AttendanceRecord(448)・4.9 LeaveRequest(472)・4.10 LeaveBalance(489)・4.11 ClockChangeRequest(505)・4.12 HolidayWorkRequest(523)・4.13 MonthlyAttendanceSummary(535)・4.14 AttendanceHistory(560)・4.15 OrganizationSetting(589)・4.16 ReasonTemplate(619)・4.17 UserNotificationPreference(628)・4.18 Notification(641)・4.19 Todo(668)・4.20 連携の継ぎ目(678) |
-| **§5** 労働時間計算エンジン | 684–784 | 5.1 WorkTime(692)・5.2 Overtime(702)・5.3 DeepNight(719)・5.4 LateEarly(736)・5.5 LeaveDays(754)・5.6 割増率複合(767) |
-| **§6** 機能仕様 | 785–921 | 6.1 打刻(787)・6.2 休暇申請(800)・6.3 打刻変更(816)・6.4 月次レポート(823)・6.5 残業計算(836)・6.6 締めフロー(840)・6.7 締め申請制限(858)・6.8 打刻漏れ検知(862)・6.9 インターバル(881)・6.10 欠勤確定(885)・6.11 休日出勤(902) |
-| **§7** 承認エンジン | 922–986 | 7.1 構成モデル(926)・7.2 ルート解決(936)・★7.3 自己承認防止(946)・7.4 競合チェック(956)・7.5 代理/滞留(960)・7.6 撤回(965)・7.7 初期ステータス(981) |
-| **§8** コンプライアンス監視 | 987–1094 | 8.1 月60h超(995)・8.2 36協定上限(1002)・8.3 管理監督者除外(1034)・8.4 勤務間インターバル(1049)・8.5 連続勤務日数(1053)・8.6 有給5日義務(1057)・8.7 産業医面談(1080)・8.8 年少者/妊産婦(1088) |
-| **§9** 通知設計 | 1095–1143 | 9.1 社員向け(1099)・9.2 管理者向け(1112)・9.3 抑制モード(1124)・9.4 優先度/opt-in(1128)・9.5 失敗ハンドリング(1138) |
-| **§10** バックグラウンドジョブ | 1144–1170 | recurring.yml（1137〜） |
-| **§11** 監査証跡・データ保持 | 1171–1211 | 11.1 監査証跡(1173)・11.2 法的保存(1179)・11.3 保持(1189)・11.4 アーカイブ(1201) |
-| **§12** UI（Hotwire） | 1212–1247 | 12.1 社員ホーム(1216)・12.2 管理ダッシュ(1228)・12.3 マスタ管理(1238)・12.4 モバイル/PWA(1242) |
-| **§13** 状態遷移（AASM） | 1248–1372 | 13.1 AttendanceRecord(1252)・13.2 Leave/ClockChange(1277)・13.3 HolidayWork(1300)・13.4 MonthlySummary(1315)・13.5 連携俯瞰(1329)・★13.6 after副作用(1367) |
-| **§14** Gatcha Work 連携の継ぎ目 | 1373–1384 | — |
-| **§15** 実装ロードマップ | 1385–1401 | — |
-| **§16** 非機能要件・運用 | 1402–1478 | 16.1 想定規模(1404)・16.2 性能(1415)・16.3 可用性(1427)・16.4 バックアップ(1434)・16.5 監視(1446)・16.6 セキュリティ(1453)・16.7 オンボーディング(1465) |
-| 改訂履歴 | 1479–1487 | — |
+| **§4** データモデル | 296–686 | 4.1 命名規約(332)・4.2 Organization(340)・4.3 User(350)・4.4 WorkPattern(369)・4.5 LeaveType(400)・4.6 UserWorkPattern(411)・4.7 CompanyCalendar(425)・★4.8 AttendanceRecord(448)・4.9 LeaveRequest(472)・4.10 LeaveBalance(489)・4.11 ClockChangeRequest(505)・4.12 HolidayWorkRequest(523)・4.13 MonthlyAttendanceSummary(535)・4.14 AttendanceHistory(560)・4.15 OrganizationSetting(592)・4.16 ReasonTemplate(622)・4.17 UserNotificationPreference(631)・4.18 Notification(644)・4.19 Todo(671)・4.20 連携の継ぎ目(681) |
+| **§5** 労働時間計算エンジン | 687–787 | 5.1 WorkTime(695)・5.2 Overtime(705)・5.3 DeepNight(722)・5.4 LateEarly(739)・5.5 LeaveDays(757)・5.6 割増率複合(770) |
+| **§6** 機能仕様 | 788–932 | 6.1 打刻(790)・6.2 休暇申請(803)・6.3 打刻変更(819)・6.4 月次レポート(826)・6.5 残業計算(839)・6.6 締めフロー(843)・6.7 締め申請制限(861)・6.8 打刻漏れ検知(865)・6.9 インターバル(888)・6.10 欠勤確定(892)・6.11 休日出勤(913) |
+| **§7** 承認エンジン | 933–997 | 7.1 構成モデル(937)・7.2 ルート解決(947)・★7.3 自己承認防止(957)・7.4 競合チェック(967)・7.5 代理/滞留(971)・7.6 撤回(976)・7.7 初期ステータス(992) |
+| **§8** コンプライアンス監視 | 998–1105 | 8.1 月60h超(1006)・8.2 36協定上限(1013)・8.3 管理監督者除外(1045)・8.4 勤務間インターバル(1060)・8.5 連続勤務日数(1064)・8.6 有給5日義務(1068)・8.7 産業医面談(1091)・8.8 年少者/妊産婦(1099) |
+| **§9** 通知設計 | 1106–1155 | 9.1 社員向け(1110)・9.2 管理者向け(1124)・9.3 抑制モード(1136)・9.4 優先度/opt-in(1140)・9.5 失敗ハンドリング(1150) |
+| **§10** バックグラウンドジョブ | 1156–1182 | recurring.yml（1137〜） |
+| **§11** 監査証跡・データ保持 | 1183–1223 | 11.1 監査証跡(1185)・11.2 法的保存(1191)・11.3 保持(1201)・11.4 アーカイブ(1213) |
+| **§12** UI（Hotwire） | 1224–1259 | 12.1 社員ホーム(1228)・12.2 管理ダッシュ(1240)・12.3 マスタ管理(1250)・12.4 モバイル/PWA(1254) |
+| **§13** 状態遷移（AASM） | 1260–1384 | 13.1 AttendanceRecord(1264)・13.2 Leave/ClockChange(1289)・13.3 HolidayWork(1312)・13.4 MonthlySummary(1327)・13.5 連携俯瞰(1341)・★13.6 after副作用(1379) |
+| **§14** Gatcha Work 連携の継ぎ目 | 1385–1396 | — |
+| **§15** 実装ロードマップ | 1397–1413 | — |
+| **§16** 非機能要件・運用 | 1414–1490 | 16.1 想定規模(1416)・16.2 性能(1427)・16.3 可用性(1439)・16.4 バックアップ(1446)・16.5 監視(1458)・16.6 セキュリティ(1465)・16.7 オンボーディング(1477) |
+| 改訂履歴 | 1491–1499 | — |
 
 ---
 
@@ -567,7 +567,8 @@ polymorphic 関連（`ApprovalAssignment.approvable` / `AttendanceHistory.source
 | user_id | bigint | 対象社員（オーナー＝当事者・§3.5） |
 | actor_id | bigint | 操作者（NULL=システム起因。代理打刻はオーナーと別人を記録・§3.5。`proxy_clock` では必須） |
 | event_date | date | 対象勤務日 |
-| event_type | integer (enum) | clock_in / clock_out / leave_approved / leave_withdrawn / clock_change_approved / absence_confirmed / absence_to_paid / proxy_clock / interval_shortage / clock_change_withdrawn |
+| event_type | integer (enum) | clock_in / clock_out / leave_approved / leave_withdrawn / clock_change_approved / absence_confirmed / absence_to_paid / proxy_clock / interval_shortage / clock_change_withdrawn / **absence_restored**（10・撤回で事後有給から欠勤へ戻した記録） |
+| absence_reason | integer (enum), null 可 | この履歴行が指す欠勤理由。`absence_confirmed`=確定した理由 / `absence_to_paid`=振替**前**の理由 / `absence_restored`=復元した理由 |
 | source_type / source_id | string / bigint | 起因レコード（polymorphic: LeaveRequest 等） |
 | previous_status / new_status | integer | 前後の AttendanceRecord.status |
 | previous_clock_in / new_clock_in | timestamptz | 前後の出勤時刻 |
@@ -585,6 +586,8 @@ polymorphic 関連（`ApprovalAssignment.approvable` / `AttendanceHistory.source
 > **整数マッピングの凍結:** `event_type`（および `previous_status` / `new_status` に格納する `AttendanceRecord.status` の整数）は **append-only / 凍結**。値の追加は末尾のみ・既存値のリオーダや再利用は禁止する（過去ログの誤デコードを防ぐ）。
 >
 > **計算列を source にしない契約:** §7.6 の撤回復元はこのログの**前後値スナップショット**（`previous_*` / `new_*`）を参照するが、`proxy_clock` 行の計算列（`new_is_late` / `new_late_minutes` 等）は復元・賃金算定の source にしない。`proxy_clock` は新規作成（`previous_*` = NULL）であり、その計算列は記録時点の派生スナップショットにすぎない。確定値は常に `AttendanceRecord` から解決する（§11.1）。
+>
+> **監査に翻訳結果を焼かない:** 欠勤理由は `absence_reason`（enum 整数）で構造化保存し、日本語ラベルは読む時に i18n で解決する。ローカライズ済み文字列を append-only の監査へ書くと、(a) 機械的な復元ができない（`absence_restored` は `absence_to_paid` 行の `absence_reason` を読んで欠勤を復元する）(b) `I18n.locale` の変更で過去行と書式が割れる。`note` は `other` 選択時の自由記述専用。
 
 ### 4.15 OrganizationSetting（組織設定）
 
@@ -876,7 +879,11 @@ SolidQueue 定期ジョブ（毎日 `daily_batch_hour` 時）で前日分を検�
 | 欠勤候補 | AttendanceRecord も LeaveRequest（全 status）も無 | 管理者 + **本人**へ通知 |
 | 休暇申請中・打刻なし | AR 無・LeaveRequest（申請中/進行中）有 | 管理者へ通知 |
 
-毎日実行（土日祝含む）。通知は**本人の次の稼働日**に送信。欠勤候補は本人へ事前通知:「{日付} の出勤記録がありません。打刻漏れなら打刻変更申請を（猶予: 翌営業日 17:00）」。猶予内に申請なければ管理者の「欠勤確定待ち」に表示。
+毎日実行（土日祝含む）。通知は**本人の次の稼働日**に送信。欠勤候補は本人へ**必須対応**（ベル + メール）で事前通知:「{日付} の出勤記録がありません。{猶予期限日時}までに管理者へお申し出ください。ご連絡が無い場合、欠勤として確定され賃金控除の対象となることがあります」。猶予内に申し出が無ければ管理者の「欠勤確定待ち」に表示。
+
+> **打刻変更申請は案内しない。** 候補は定義上 `AttendanceRecord` 不在日であり、`ClockChangeRequest` の `new_entry` は拒否されるため機能しない（動かない救済手段を約束しない）。一方 §9.1 の「退勤打刻忘れ」は AR が実在するため打刻変更申請が機能し、案内してよい。
+>
+> **予告としての要件（労基法 24 条）:** 猶予期限は `notified_on` の翌営業日 17:00（組織 TZ・`Absences::GracePeriod` が単一定義）を**具体的な日時として**本文に埋める（「翌営業日」は会社カレンダー依存で本人に自明でない）。沈黙の帰結（欠勤確定・賃金控除）も告知する。事前通知の優先度が確定通知より低いと「処分の告知だけが確実に届く」逆転が起きるため、両者とも必須対応とする。
 
 ### 6.9 勤務間インターバルチェック（§8.4 と連動）
 
@@ -887,13 +894,17 @@ SolidQueue 定期ジョブ（毎日 `daily_batch_hour` 時）で前日分を検�
 1. 日次バッチが欠勤候補を検知 → 管理者 + 本人へ通知
 2. 猶予（翌営業日 17:00）経過後、管理者がダッシュボードの「欠勤候補一覧」を確認
 3. 管理者が対象社員 × **1 件以上の日付**を選び、**欠勤理由**を入力して「欠勤確定」（1 操作 = 1 社員 × N 日付の一括確定）
-4. `AttendanceRecord`（status: absent）を一括作成・`absence_reason` 記録、`AttendanceHistory`（absence_confirmed）を N 件記録
-5. 対象社員へ通知（1 社員 × N 日付を 1 件に集約。複数日は「{日付列}（計 N 日）の欠勤が確定されました。事後の有給申請が可能です」）
+4. `AttendanceRecord`（status: absent）を per-day 作成（`create!`・一括 insert は検証を skip するため使わない）・`absence_reason` 記録、`AttendanceHistory`（absence_confirmed）を N 件記録。1 日あたり {AR 作成 → 候補削除 → 履歴作成} の 3 write を 1 savepoint に束ね、1 日の競合が確定バッチ全体を殺さないようにする
+5. 対象社員へ通知（**必須対応**・1 社員 × N 日付を 1 件に集約。複数日は「{日付列}（計 N 日）の欠勤が確定されました。事後に有給休暇の申請ができます」）
+
+**事後の有給申請による是正（`absent → on_leave`）:** 承認時に `absence_reason` / `note` をクリアし `AttendanceHistory`（absence_to_paid）へ**構造化した理由と自由記述を退避**する。その休暇申請が**撤回**された場合、`absence_to_paid` 行の実在をもって「欠勤から昇格した記録」と判定し、`AttendanceRecord` を destroy せず `absent` へ**復元**して `AttendanceHistory`（absence_restored）を記録する。復元しないと欠勤候補は再生成されず（検知バッチの covering LeaveRequest 判定は status を問わない）、欠勤が労働時間台帳から消える。
 
 **absence_reason（enum）:** unauthorized（無届）/ illness（疾病・傷病）/ family（家庭事情）/ investigating（打刻漏れ調査中）/ other。**other 選択時のみ** `note` 入力欄を表示（任意・空可）。other 以外は note=null。
 
 **制限:**
-- **締め済み月（`submitted` / `finalized`）**への欠勤確定は禁止（差戻し → 欠勤確定 → 再提出）。`deferred` 月は許可。判定は `MonthlySummaries::ClosingLock` を流用（`submitted` も遮断＝安全側）
+- **操作者と対象社員の組織が一致しない確定は拒否**（`ActsAsTenant.with_tenant` はテナント文脈を「切り替える」昇格プリミティブであり境界ではない。内側では複合 FK も `user_must_belong_to_same_organization` も `organization_id` が引数 org 由来で `user_id` と整合するため越境を検出できない。昇格前の検証がサービス単体の唯一の境界）
+- **対象日を勤怠記録または休暇申請（全 status）が覆う場合は確定不可**。候補の掃除は日次バッチのみのため、バッチ実行後〜猶予期限の間に本人が休暇申請を出した場合（＝通知に応じた弁明そのもの）を確定させないよう、write 前に候補の前提を再評価する
+- **締め済み月（`submitted` / `finalized`）**への欠勤確定は禁止（差戻し → 欠勤確定 → 再提出）。`deferred` 月は許可。判定は `MonthlySummaries::ClosingLock` を流用（`submitted` も遮断＝安全側）。**判定は書き込みと同一トランザクション内**で行う（判定と `create!` の間に締めが commit する窓を閉じる）
 - **本人未通知（`notified_on` が nil）の候補は確定不可**（弁明機会の担保・労基法 24 条）
 - **猶予（`notified_on` の翌営業日 17:00）経過前は確定不可**。バックエンドで強制する
 - **確定できるのは欠勤候補が実在する日付のみ**。候補は「AttendanceRecord も LeaveRequest（全 status）も無い稼働日」に生成されるため、**却下・撤回された休暇申請の日は候補が生まれず、v1 では欠勤確定できない**（実欠勤の追跡漏れを許容する仕様判断。候補ゲートを迂回する手動追加経路は設けない）
@@ -1102,6 +1113,7 @@ CCR 承認時、`original_clock_in/out` と現在の `AttendanceRecord` 値を�
 |---------|--------|------|-----------|
 | 月次提出期限 | 必須対応 | ベル + メール | 期限 3 日前・1 日前 |
 | 月次差戻し | 必須対応 | ベル + メール | 即時 |
+| 欠勤候補（欠勤確定の予告） | 必須対応 | ベル + メール | 本人の次の稼働日バッチ |
 | 欠勤確定 | 必須対応 | ベル + メール | 即時（確定操作後） |
 | 過重労働 100h 超（本人通知義務） | 必須対応 | ベル + メール | 即時（退勤時） |
 | 申請の承認/却下 | 情報提供 | ベル | 即時 |
