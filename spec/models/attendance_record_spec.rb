@@ -240,4 +240,40 @@ RSpec.describe AttendanceRecord, type: :model do
       end
     end
   end
+
+  describe "user の同一組織検証（§11⑥・二層防御の model 層）" do
+    let(:org) { create(:organization) }
+    let(:other_org) { create(:organization, subdomain: "other") }
+
+    around { |ex| ActsAsTenant.with_tenant(org) { ex.run } }
+
+    it "他テナントの user_id を直接代入した記録は invalid（DB FK 500 でなく 422 に落とす）" do
+      stranger = ActsAsTenant.with_tenant(other_org) { create(:user, organization: other_org) }
+      record = build(:attendance_record, work_date: Date.new(2026, 6, 2))
+      record.user_id = stranger.id
+
+      expect(record).to be_invalid
+      # `belongs_to` presence（"must exist"）と二重発火するため、error type で判別する。
+      # この assert が無いと validator を削除しても緑のまま（RAILS_GOTCHAS「同一組織 validator は
+      # presence と二重発火し model テストで単体検証できない」への対処）
+      expect(record.errors.details[:user]).to include(a_hash_including(error: :cross_tenant))
+    end
+
+    it "同一組織の user なら valid" do
+      record = build(:attendance_record, user: create(:user), work_date: Date.new(2026, 6, 2))
+      expect(record).to be_valid
+    end
+  end
+
+  describe ".absence_reason_note（監査 note の単一書式源）" do
+    it "enum キーから「欠勤理由: {日本語ラベル}」を組み立てる" do
+      expect(described_class.absence_reason_note("illness")).to eq("欠勤理由: 疾病・傷病")
+      expect(described_class.absence_reason_note(:unauthorized)).to eq("欠勤理由: 無届欠勤")
+    end
+
+    it "blank なら nil（absent でない記録の履歴には note を焼かない）" do
+      expect(described_class.absence_reason_note(nil)).to be_nil
+      expect(described_class.absence_reason_note("")).to be_nil
+    end
+  end
 end

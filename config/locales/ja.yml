@@ -76,6 +76,12 @@ ja:
           morning_half: 午前半休
           afternoon_half: 午後半休
           on_leave: 全休
+        absence_reasons:
+          unauthorized: 無届欠勤
+          illness: 疾病・傷病
+          family: 家庭事情
+          investigating: 打刻漏れ調査中
+          other: その他
         proxy_clock_reasons:
           system_failure: システム障害
           unreachable: 連絡不能
