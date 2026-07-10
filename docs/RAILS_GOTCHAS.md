@@ -184,12 +184,12 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 
 ---
 
-### `connection.truncate_tables` は失敗すると FK・追記専用トリガーを**無効のまま**残す（テスト DB のサイレント汚染）
+### `disable_referential_integrity` は非トランザクション文脈で raise すると FK・追記専用トリガーを**無効のまま**残す
 
-- **WHAT**: spec の後片付けに `ActiveRecord::Base.connection.truncate_tables("a", "b")` を呼び、FK で参照されているテーブルを取りこぼすと `PG::FeatureNotSupported: cannot truncate a table referenced in a foreign key constraint` で落ちる。**その瞬間から test DB の全 FK と全ユーザートリガーが無効化されたまま残る**（実測: 20 テーブル・170 トリガーが `pg_trigger.tgenabled='D'`）。以後の run では複合 FK の越境が素通しになり、`attendance_histories_no_mutate` / `no_truncate`（追記専用の真の backstop）まで黙って外れる
-- **WHY**: `truncate_tables` は内部で `disable_referential_integrity` を呼び、PostgreSQL では `ALTER TABLE ... DISABLE TRIGGER ALL` を全テーブルへ発行する。これは**セッションではなくテーブルに永続する** DDL で、`TRUNCATE` 本体が例外を投げると再有効化の `ensure` が中断済みトランザクション上で不発に終わる。`pg_constraint` は `convalidated='t'` のままなので、制約定義を眺めても異常に見えない
-- **HOW**: 非トランザクションテストの後片付けは `truncate_tables` を使わず**生 SQL** で一括する: `TRUNCATE TABLE <全テーブル> RESTART IDENTITY CASCADE`（`connection.tables - %w[schema_migrations ar_internal_metadata]`）。踏んでしまったら `bin/rails db:test:prepare` でスキーマごと作り直す。**症状は「FK を検証しているテストだけが赤くなる」**ため、防衛ではなくテストの方を疑いがちなのが最大の罠
-- verified: Rails 8.1.3 / PostgreSQL 18 / 2026-07-10（4-2c-3a の並行テスト足場を試作中に実踏。`pg_trigger.tgenabled` で確認 → `db:test:prepare` で復旧）
+- **WHAT**: ブロックが例外を投げると、test DB の全 FK と全ユーザートリガーが無効化されたまま残る（実測: 20 テーブル・170 トリガーが `pg_trigger.tgenabled='D'`）。以後の run では複合 FK の越境が素通しになり、`attendance_histories_no_mutate` / `no_truncate`（§4.14 追記専用の**真の backstop**）まで黙って外れる。`connection.truncate_tables` は内部でこれを呼ぶため同じ罠を持つ（FK で参照されているテーブルを引数から取りこぼすと `PG::FeatureNotSupported` で落ちる）
+- **WHY**: PostgreSQL アダプタの実装（activerecord-8.1.3 `postgresql/referential_integrity.rb:33-38`）は `ALTER TABLE ... DISABLE TRIGGER ALL` → `yield` → `ENABLE TRIGGER ALL` の 3 段だが、**`ensure` が無い**。`yield` が raise すると再有効化に到達しない。`ALTER TABLE ... DISABLE TRIGGER` は**セッションではなくテーブルに効く DDL** で、`pg_constraint.convalidated` は `'t'` のままゆえ制約定義を眺めても異常に見えない
+- **HOW**: **`use_transactional_tests = true` の中でなら安全**（DDL もトランザクショナルなので example 末尾の ROLLBACK で巻き戻る。既存の `spec/services/approvals/route_resolver_spec.rb` が越境データを植えるのに使えているのはこの構造による）。**`self.use_transactional_tests = false` の文脈でだけ危険**。非トランザクションの後片付けは `truncate_tables` を避け生 SQL で一括する: `TRUNCATE TABLE <全テーブル> RESTART IDENTITY CASCADE`（`connection.tables - %w[schema_migrations ar_internal_metadata]`）。検知は `SELECT count(*) FROM pg_trigger WHERE tgenabled='D'`、復旧は `bin/rails db:test:prepare`。**症状は「FK を検証しているテストだけが赤くなる」**ため、防衛ではなくテストの方を疑いがちなのが最大の罠
+- verified: Rails 8.1.3 / PostgreSQL 18 / 2026-07-10（4-2c-3a の並行テスト足場を試作中に実踏。transactional な `route_resolver_spec` 実行後は無効トリガー 0 件・非トランザクションで `disable_referential_integrity { raise }` 後は 170 件を実測。`db:test:prepare` で復旧）
 
 ### 行ロックの競合テストは 2 接続が要る（バグの再現は 1 接続で足りる）
 
