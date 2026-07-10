@@ -139,6 +139,22 @@ RSpec.describe AttendanceAnomalies::Detect, type: :service do
       expect(notifications_for(manager, :absence_candidate).count).to eq(1)
     end
 
+    it "事前通知は必須対応（メール常時）で、具体期限日と処分予告を含み打刻変更申請を約束しない" do
+      # 既存の「本人稼働日 run で candidate を通知する」例と同じ setup を用いる
+      working_calendar(org.today)
+      manager = create(:user)
+      user = create(:user, manager:)
+      create(:absence_candidate, user:, target_date: target, notified_on: nil)
+
+      described_class.call(date: Date.new(2026, 4, 30))
+
+      notification = notifications_for(user, :absence_candidate).first
+      expect(notification.priority).to eq("action_required")
+      expect(notification.body).to include("賃金控除")
+      expect(notification.body).to match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/) # 具体的な期限日時
+      expect(notification.body).not_to include("打刻変更申請")
+    end
+
     it "本人の今日が非稼働日 → 通知せず notified_on は nil のまま（次稼働日 deferral）" do
       holiday_calendar(org.today)
       user = create(:user)

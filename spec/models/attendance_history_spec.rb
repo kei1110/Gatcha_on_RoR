@@ -230,4 +230,52 @@ RSpec.describe AttendanceHistory do
       expect(h).to be_valid
     end
   end
+
+  describe "enum マッピングの凍結（append-only・鉄則 7）" do
+    it "event_type は既存 0〜9 を保持し absence_restored を 10 で append する" do
+      expect(described_class.event_types).to eq(
+        "clock_in" => 0, "clock_out" => 1, "leave_approved" => 2, "leave_withdrawn" => 3,
+        "clock_change_approved" => 4, "absence_confirmed" => 5, "absence_to_paid" => 6,
+        "proxy_clock" => 7, "interval_shortage" => 8, "clock_change_withdrawn" => 9,
+        "absence_restored" => 10
+      )
+    end
+
+    it "absence_reason は AttendanceRecord と同一マッピング（drift 防止）" do
+      expect(described_class.absence_reasons).to eq(AttendanceRecord.absence_reasons)
+    end
+  end
+
+  describe "absence_reason は欠勤 3 イベントのみ（attendance_records の DB CHECK と対称）" do
+    let(:org) { create(:organization) }
+
+    around { |ex| ActsAsTenant.with_tenant(org) { ex.run } }
+
+    it "clock_in イベントに absence_reason を持たせると無効" do
+      h = build(:attendance_history, user: create(:user), event_type: :clock_in,
+                                     event_date: Date.new(2026, 5, 1), absence_reason: :illness)
+      expect(h).to be_invalid
+      expect(h.errors[:absence_reason]).to be_present
+    end
+
+    it "absence_confirmed は absence_reason を持てる" do
+      h = build(:attendance_history, user: create(:user), actor: create(:user),
+                                     event_type: :absence_confirmed,
+                                     event_date: Date.new(2026, 5, 1), absence_reason: :illness)
+      expect(h).to be_valid
+    end
+  end
+
+  describe "actor 必須（absence_restored）" do
+    let(:org) { create(:organization) }
+
+    around { |ex| ActsAsTenant.with_tenant(org) { ex.run } }
+
+    it "absence_restored は actor 無しで無効" do
+      h = build(:attendance_history, user: create(:user), actor: nil,
+                                     event_type: :absence_restored, event_date: Date.new(2026, 5, 1))
+      expect(h).to be_invalid
+      expect(h.errors[:actor_id]).to be_present
+    end
+  end
 end

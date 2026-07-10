@@ -16,8 +16,14 @@ class AttendanceHistory < ApplicationRecord
   enum :event_type, {
     clock_in: 0, clock_out: 1, leave_approved: 2, leave_withdrawn: 3,
     clock_change_approved: 4, absence_confirmed: 5, absence_to_paid: 6,
-    proxy_clock: 7, interval_shortage: 8, clock_change_withdrawn: 9
+    proxy_clock: 7, interval_shortage: 8, clock_change_withdrawn: 9,
+    absence_restored: 10
   }, validate: true
+
+  # 「この履歴行が指す欠勤理由」を構造化して保存する（4-2c-2 レビュー）。
+  #   absence_confirmed = 確定した理由 / absence_to_paid = 振替前の理由 / absence_restored = 復元した理由
+  # 整数マッピングは AttendanceRecord と同一（凍結）。翻訳結果を監査へ焼かず、ラベルは読む時に解決する。
+  enum :absence_reason, AttendanceRecord.absence_reasons, prefix: true, validate: { allow_nil: true }
 
   validates :event_date, presence: true
   # proxy_clock のみ必須（残り event_type の actor 必須は各 Phase で追記）。不変ゆえ事前防御
@@ -28,9 +34,11 @@ class AttendanceHistory < ApplicationRecord
   validates :actor_id, presence: true, if: :clock_change_withdrawn?   # 2-5
   validates :actor_id, presence: true, if: :absence_confirmed?  # 4-2c 欠勤確定（§12⑥・不変ゆえ事前防御）
   validates :actor_id, presence: true, if: :absence_to_paid?    # 4-2c 事後有給振替（§12⑥）
+  validates :actor_id, presence: true, if: :absence_restored?  # 4-2c-2 撤回時の欠勤復元
   validate :user_must_belong_to_same_organization
   validate :actor_must_belong_to_same_organization
   validate :source_must_belong_to_same_organization
+  validate :absence_reason_only_on_absence_events
 
   # 層① — 永続後の UPDATE を AR レベルで封鎖（create は new_record ゆえ通る）
   def readonly? = persisted?
@@ -39,7 +47,17 @@ class AttendanceHistory < ApplicationRecord
   before_update  { raise ActiveRecord::ReadOnlyRecord, "AttendanceHistory is append-only" }
   before_destroy { raise ActiveRecord::ReadOnlyRecord, "AttendanceHistory is append-only" }
 
+  # 欠勤に関わる 3 イベント以外は absence_reason を持たない（`attendance_records` の
+  # DB CHECK `absence_reason IS NULL OR status = 5` と対称。追記専用ゆえ create 時の検証が唯一の砦）
+  ABSENCE_EVENT_TYPES = %w[absence_confirmed absence_to_paid absence_restored].freeze
+
   private
+
+  def absence_reason_only_on_absence_events
+    return if absence_reason.nil? || ABSENCE_EVENT_TYPES.include?(event_type)
+
+    errors.add(:absence_reason, "は欠勤に関わるイベントにのみ設定できます")
+  end
 
   # 複合 FK が DB 層で弾くが、§3.6(2) はモデル検証も要求（クリーンなエラーで surface・user.rb 同型）。
   # ID 基点でガード — 他テナント ID 直接代入は acts_as_tenant が association を nil 解決するため、

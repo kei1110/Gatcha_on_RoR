@@ -1,0 +1,63 @@
+<main class="mx-auto w-full max-w-4xl p-4">
+  <h1 class="text-2xl font-bold">欠勤確定</h1>
+
+  <p class="mt-3 rounded bg-yellow-50 p-3 text-sm text-yellow-900">
+    候補は<strong>会社カレンダーの稼働日</strong>から検出しています。非常勤・シフト勤務者の
+    <strong>所定労働日でない日</strong>が含まれることがあります。所定労働日かを確認し、
+    欠勤でない候補は「却下」してください。
+  </p>
+
+  <% if @candidates.empty? %>
+    <p class="mt-6 text-gray-600">欠勤候補はありません。</p>
+  <% else %>
+    <% reason_options = AttendanceRecord.absence_reasons.keys.map { |key|
+         [t("activerecord.attributes.attendance_record.absence_reasons.#{key}"), key] } %>
+
+    <% @candidates.group_by(&:user).each do |user, candidates| %>
+      <section class="mt-8 rounded border border-gray-300 p-4">
+        <h2 class="text-lg font-bold"><%= user.name %>（<%= user.employee_code %>）</h2>
+
+        <ul class="mt-3 divide-y divide-gray-100">
+          <% candidates.each do |candidate| %>
+            <li class="flex flex-wrap items-center justify-between gap-3 py-2 text-sm">
+              <% confirmable = candidate.notified_on.present? && @grace.elapsed?(candidate.notified_on) %>
+              <label class="flex items-center gap-2">
+                <%# HTML5 の form 属性で、DOM 上は外にあるチェックボックスを下の form に紐付ける
+                    （button_to が生成する form との入れ子を避ける） %>
+                <%= check_box_tag "dates[]", candidate.target_date.iso8601, false,
+                      id: "candidate_#{candidate.id}", form: "confirm_#{user.id}",
+                      disabled: !confirmable %>
+                <span><%= candidate.target_date %></span>
+              </label>
+
+              <div class="flex items-center gap-3">
+                <span class="text-xs <%= confirmable ? 'text-gray-500' : 'text-red-600' %>">
+                  <% if candidate.notified_on.nil? %>
+                    本人未通知（確定不可）
+                  <% elsif confirmable %>
+                    本人通知済（<%= candidate.notified_on %>）
+                  <% else %>
+                    <%= @grace.deadline(candidate.notified_on)&.strftime("%Y-%m-%d %H:%M") %> 以降に確定可
+                  <% end %>
+                </span>
+                <%= button_to "却下", absence_confirmation_path(candidate), method: :delete,
+                      class: "rounded border border-gray-300 px-3 py-1 text-gray-700 hover:bg-gray-100",
+                      form: { data: { turbo_confirm: "#{candidate.target_date} の欠勤候補を却下します。よろしいですか？" } } %>
+              </div>
+            </li>
+          <% end %>
+        </ul>
+
+        <%= form_with url: absence_confirmations_path, method: :post, id: "confirm_#{user.id}",
+                      class: "mt-4 flex flex-wrap items-center gap-2" do %>
+          <%= hidden_field_tag :user_id, user.id %>
+          <%= select_tag :absence_reason, options_for_select(reason_options),
+                class: "rounded border-gray-300 text-sm", "aria-label": "欠勤理由" %>
+          <%= text_field_tag :note, nil, placeholder: "「その他」の場合のみ理由を入力",
+                class: "grow rounded border-gray-300 text-sm" %>
+          <%= submit_tag "選択した日を欠勤確定", class: "rounded bg-blue-600 px-4 py-2 text-white" %>
+        <% end %>
+      </section>
+    <% end %>
+  <% end %>
+</main>

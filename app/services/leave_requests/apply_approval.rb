@@ -52,6 +52,8 @@ module LeaveRequests
           user_id: @leave_request.requester_id, work_date: date
         )
         was_absent = record.absent? # §12② 遷移前 status を代入前に捕捉（silent no-op 回避）
+        previous_absence_reason = record.absence_reason # 監査へ退避（クリア前に読む）
+        previous_note = record.note                     # other の自由記述（クリア前に読む）
         record.status = leave_status
         record.leave_type_id = @leave_request.leave_type_id
         if was_absent
@@ -59,7 +61,8 @@ module LeaveRequests
           record.note = nil
         end
         record.save!
-        record_absence_to_paid(record, date) if was_absent # §12⑥ 監査（absent→on_leave の痕跡）
+        # §12⑥ 監査（absent→on_leave の痕跡）。Withdraw の復元元でもある（4-2c-2 レビュー C1）
+        record_absence_to_paid(record, date, previous_absence_reason, previous_note) if was_absent
         recalculate(record)
       end
     end
@@ -74,8 +77,10 @@ module LeaveRequests
       )
     end
 
-    # absent→on_leave（事後有給）の監査（SPEC §6.2 L808・§12⑥）。actor 必須（Task 1）。
-    def record_absence_to_paid(record, date)
+    # absent→on_leave（事後有給）の監査（SPEC §6.2 L808・§12⑥）。actor 必須。
+    # AR.absence_reason / note は上書きでクリアされるため、構造化した理由と自由記述を履歴へ退避する
+    # （労基法 109 条 5 年保存 — かつ LeaveRequests::Withdraw がこの行を読んで absent を復元する）
+    def record_absence_to_paid(record, date, previous_absence_reason, previous_note)
       AttendanceHistory.create!(
         user_id: @leave_request.requester_id,
         actor: @acting_user,
@@ -83,7 +88,9 @@ module LeaveRequests
         event_type: :absence_to_paid,
         event_date: date,
         previous_status: AttendanceRecord.statuses[:absent],
-        new_status: AttendanceRecord.statuses[record.status]
+        new_status: AttendanceRecord.statuses[record.status],
+        absence_reason: previous_absence_reason,
+        note: previous_note
       )
     end
 

@@ -56,6 +56,7 @@ class AttendanceRecord < ApplicationRecord
   validate :clock_out_not_before_clock_in
   validate :leave_type_only_on_leave_status
   validate :absence_reason_only_on_absent
+  validate :user_must_belong_to_same_organization
 
   private
 
@@ -72,6 +73,16 @@ class AttendanceRecord < ApplicationRecord
     return if absence_reason.nil? || absent?
 
     errors.add(:absence_reason, "は欠勤ステータスの記録にのみ設定できます")
+  end
+
+  # ID 基点 fail-closed（§3.6・複合 FK と二層）。他テナント ID の直接代入は acts_as_tenant が
+  # association を nil 解決するため、user.nil? early return では fail-open になる。
+  # attendance_history.rb / absence_candidate.rb と同型。:cross_tenant で presence 由来と判別可能にする
+  def user_must_belong_to_same_organization
+    return if user_id.nil?
+    return if user&.organization_id == organization_id
+
+    errors.add(:user, :cross_tenant, message: "は同一組織でなければなりません")
   end
 
   def clock_out_not_before_clock_in

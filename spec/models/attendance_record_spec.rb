@@ -93,6 +93,17 @@ RSpec.describe AttendanceRecord, type: :model do
     end
   end
 
+  describe "absence_reason enum" do
+    # attendance_histories.absence_reason（5 年保存・4-2c-2 で新設）が本マッピングの整数を永続化し、
+    # attendance_records の DB CHECK も生整数を使う。並べ替えると過去行が別の理由へ再デコードされる（鉄則 7）。
+    # AttendanceHistory 側は本定数から派生するため、凍結の唯一の砦がこの assert
+    it "整数マッピングは凍結（append-only・鉄則 7）" do
+      expect(AttendanceRecord.absence_reasons).to eq(
+        "unauthorized" => 0, "illness" => 1, "family" => 2, "investigating" => 3, "other" => 4
+      )
+    end
+  end
+
   describe "proxy_clock_reason enum" do
     it "整数マッピングが固定" do
       expect(AttendanceRecord.proxy_clock_reasons).to eq(
@@ -238,6 +249,30 @@ RSpec.describe AttendanceRecord, type: :model do
         expect(AttendanceRecord.calculated).to contain_exactly(calc)
         expect(AttendanceRecord.calculated).not_to include(raw)
       end
+    end
+  end
+
+  describe "user の同一組織検証（§11⑥・二層防御の model 層）" do
+    let(:org) { create(:organization) }
+    let(:other_org) { create(:organization, subdomain: "other") }
+
+    around { |ex| ActsAsTenant.with_tenant(org) { ex.run } }
+
+    it "他テナントの user_id を直接代入した記録は invalid（DB FK 500 でなく 422 に落とす）" do
+      stranger = ActsAsTenant.with_tenant(other_org) { create(:user, organization: other_org) }
+      record = build(:attendance_record, work_date: Date.new(2026, 6, 2))
+      record.user_id = stranger.id
+
+      expect(record).to be_invalid
+      # `belongs_to` presence（"must exist"）と二重発火するため、error type で判別する。
+      # この assert が無いと validator を削除しても緑のまま（RAILS_GOTCHAS「同一組織 validator は
+      # presence と二重発火し model テストで単体検証できない」への対処）
+      expect(record.errors.details[:user]).to include(a_hash_including(error: :cross_tenant))
+    end
+
+    it "同一組織の user なら valid" do
+      record = build(:attendance_record, user: create(:user), work_date: Date.new(2026, 6, 2))
+      expect(record).to be_valid
     end
   end
 end

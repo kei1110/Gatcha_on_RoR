@@ -7,6 +7,13 @@ class CompanyCalendarResolver
   # 未登録日の ISO 曜日フォールバック（ロケール非依存・SPEC §4.7）: 1〜5=weekday / 6=saturday / 7=sunday
   FALLBACK_DAY_TYPES = { 6 => :saturday, 7 => :sunday }.freeze
 
+  # 休日 day_type の集合（SSOT）。稼働日 = day_type ∉ この集合。
+  # Notifier / AttendanceAnomalies::Detect は本定数を参照する（day_type 意味論はカレンダー領域が所有）
+  HOLIDAY_DAY_TYPES = %i[saturday sunday holiday legal_holiday company_holiday].freeze
+
+  # next_business_day の先読み上限（日）。これを超える連休は運用ミスとみなし nil を返す
+  NEXT_BUSINESS_DAY_LOOKAHEAD = 30
+
   # organization 明示必須 — without_tenant 文脈の fail-open 遮断（0b-3 設計 §3）
   def initialize(organization:)
     raise ArgumentError, "organization は必須です" if organization.nil?
@@ -39,6 +46,15 @@ class CompanyCalendarResolver
     (from..to).index_with do |d|
       registered[d] || { day_type: fallback(d), counts_as_paid_leave: false }
     end
+  end
+
+  # date の**翌日以降**で最初の稼働日を返す（連休を吸収・4-2c 猶予期限の起算・設計 §12①）。
+  # 見つからなければ nil — 例外にせず呼び出し側に fail-closed（422）を委ねる。
+  # day_types で 1 クエリに畳む（per-day ループで N 回引かない）
+  def next_business_day(date)
+    day_types(date + 1, date + NEXT_BUSINESS_DAY_LOOKAHEAD)
+      .find { |_d, type| !type.in?(HOLIDAY_DAY_TYPES) }
+      &.first
   end
 
   private

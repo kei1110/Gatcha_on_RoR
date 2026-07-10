@@ -28,4 +28,12 @@ RSpec.describe MonthlySummaries::Csv::DailyDetailExporter do
     row = csv([ rec ]).split("\r\n").last
     expect(row).to eq("2026-03-06,,,,,,,,全休")
   end
+
+  it "確定した欠勤日の「状態」列に「欠勤」を出力する（i18n 欠落で Translation missing を出さない）" do
+    rec = create(:attendance_record, user:, work_date: Date.new(2026, 5, 1), status: :absent,
+                 absence_reason: :unauthorized, clock_in: nil)
+    row = csv([ rec ]).split("\r\n").last
+    expect(row).to include("欠勤")
+    expect(row).not_to include("Translation missing")
+  end
 end

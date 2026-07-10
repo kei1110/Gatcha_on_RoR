@@ -102,6 +102,15 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **HOW**: 必須参照の検証可能な防衛線は**複合 FK**。`save!(validate: false)` で `ActiveRecord::InvalidForeignKey` を確認（model 層を貫通して DB 制約だけを露出）。model validator は §3.6-(2) 二層防御の belt-and-suspenders として残すが、テストの判別性は DB 層で担保する。spec 作法は `.claude/skills/gen-spec` 規約 4a/4b 参照
 - verified: 2026-06-26（4-1a whole-branch review〔opus〕で顕在化・gen-spec 規約 #4 を二層化して還流）
 
+---
+
+### `ActsAsTenant.with_tenant(信頼できない record.organization)` はテナント境界ではなく昇格プリミティブ（4-2c-2・verified 2026-07-09）
+
+- **WHAT**: 書き込みを伴う service が `with_tenant(@target_user.organization)` で自己ラップしていると、他テナントの `target_user` を渡された瞬間にテナント文脈がその org へ切り替わる。内側で作られるレコードは `organization_id`（`with_tenant` 由来）も `user_id`（引数由来）も侵入先 org のもので**整合する**ため、複合 FK `[organization_id, user_id] → users` も model 検証 `user_must_belong_to_same_organization` も**通過する**。二層防御が両層とも素通りする
+- **WHY**: `with_tenant` は「現在の文脈と一致するか」を検証せず、引数のテナントへ無条件に切り替える。§3.6 の二層防御は「`organization_id` が現在のテナントから来る」ことを暗黙の前提にしており、その前提を service 自身が壊す。読み取り専用の利用（`ClosingLock`・`CompanyCalendarResolver`）では無害だが、**書き込み service では「その service 自身がテナント境界になれない」**ことを意味する
+- **HOW**: 書き込み service は `with_tenant` へ入る**前**に、操作者（actor）と対象（target）の `organization_id` 一致を独立に検証する（`Absences::Confirm#guard_actor_same_organization!`）。controller の `policy_scope` が一次防衛だが、service 単体でも fail-closed に倒すこと。「複合 FK が最終防衛」と書かれたコメントを、`with_tenant` で自己ラップする service に対して信用しない
+- verified: Rails 8.1.3 / 2026-07-09（4-2c-2 の tenant-isolation レビューで検出。実害到達経路は controller の `policy_scope(User)` と `warden_tenant_guard` により塞がれていたが、service 単体では素通りだった）
+
 ## Pundit / 認可
 
 ### `policy_scope(Model)` の Scope 解決規則（top-level Policy 不在で `NotDefinedError`）
@@ -248,6 +257,15 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 
 ---
 
+### `rescue RecordInvalid` で「並行レース」を吸収したつもりが本物の検証失敗を握り潰す（4-2c-2・verified 2026-07-09）
+
+- **WHAT**: per-day savepoint の `rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid` に「並行 clock_in が同日 AR を先に作った等」というコメントを付けて skip 扱いにしていた。しかし `AttendanceRecord` は**同日 uniqueness のモデル検証を意図的に置いていない**（`attendance_record.rb` のコメントが明言・一次防衛は unique index）。したがってその競合は**必ず `RecordNotUnique`** で来る。`RecordInvalid` の arm が拾うのは越境検証・毒入力・監査行の不備といった**本物の失敗のみ**で、それが「既に勤怠記録があるためスキップしました」という事実と異なる flash に化け、ログにも残らなかった
+- **WHY**: 「レースを吸収する」意図で例外クラスを 2 つ並べると、片方が実際には別の意味を持つことに気付けない。**モデルに uniqueness 検証があるかどうかで `RecordNotUnique` / `RecordInvalid` のどちらが飛ぶかが変わる**ため、モデル側の検証方針を読まずに rescue の広さを決めてはならない
+- **HOW**: rescue する例外は「その経路で実際に飛び得るもの」だけに絞る。`RecordNotUnique` = DB unique index の競合（吸収してよい）／`RecordInvalid` = model 検証の失敗（ログ + `Rails.error.report` して再 raise・fail-closed・controller で 422 に落とす）。既存の正しい idiom は `HolidayWorkRequests::ApplyApproval#lock_or_create_balance`（`e.record.errors.details[:x]` で `:taken` 由来のみを握り潰し、他は再 raise）
+- verified: Rails 8.1.3 / 2026-07-09（4-2c-2 で tenant-isolation と approval-engine の 2 レビュアーが独立に検出。mutation testing で「re-raise を skip に戻すと当該テストが落ちる」ことも実証）
+
+---
+
 ## テスト / 検証プロセス
 
 ### bin/brakeman は `--ensure-latest` 注入 — 新版リリースで突然 exit 5
@@ -277,6 +295,20 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **WHY**: `org.today = Time.current.in_time_zone(tz).to_date`。`travel_to` 未使用なら実 wall-clock。CompanyCalendarResolver は未登録日を曜日 fallback（`weekday`=稼働）で埋めるため、平日に走らせると「今日」も「補助日付」も稼働日扱いになり、`org.today` 依存の副作用（同一 run 内 detect→notify）が発火する。「別の run のトリガー」のつもりの引数が pass 1 の検知対象日を兼ねている点が盲点。
 - **HOW**: ①「今日」に依存する assert は `create(:organization, time_zone: "UTC")` + `travel_to(Time.utc(Y,M,D,2))` で org.today を固定するか、**当該 org.today を `create(:company_calendar, date: org.today, day_type: :company_holiday/:weekday)` で明示登録**して day_type を pin する。②同一 call 2 パス service では、pass 2 起動用に渡す補助日付も holiday 登録して pass 1 の幽霊検知を止める。③「実行日 2026-05-01（金）等」に偶然一致すると `working_calendar(prev_day)` と二重登録で date-unique 制約に当たり得る点も留意（4-3 週次/月次バッチの spec でも同型に注意——本 service が規範実装）。
 - verified: Rails 8.1.3 / 2026-07-02（4-2b Task 3 の SDD 実装で実踏。implementer が TDD RED で 3 例 flaky を検出→spec を holiday pin で決定化・production 無改変・task-reviewer が同一 call notify を正仕様と独立確認）
+
+### zsh では `cmd $FILES` が単語分割されず、rubocop は「0 files inspected」で緑を返す（4-2c-2・verified 2026-07-09）
+
+- **WHAT**: `FILES=$(git diff --name-only main...HEAD | grep '\.rb$' | tr '\n' ' ')` の後に `bundle exec rubocop --force-exclusion $FILES` と書くと、rubocop は `Inspecting 0 files` / `no offenses detected` と表示して **exit 0（緑）** を返す。実際には 1 ファイルも検査していない
+- **WHY**: zsh は既定で `SH_WORD_SPLIT` が off であり、unquoted な変数展開を単語分割しない（bash とここが違う）。22 個のパスが結合された 1 個の巨大な引数として渡り、rubocop は存在しないパスを黙って無視する。**「lint が緑」と「lint が何かを検査した」は別の命題**
+- **HOW**: `git diff --name-only main...HEAD | grep '\.rb$' | xargs bundle exec rubocop --force-exclusion` とパイプで渡す（`/preflight` skill の Phase 1 は既にこの形で正しい）。実行結果の `Inspecting N files` の N が期待どおりか毎回確認する。鉄則 2（`--force-exclusion` を付けろ）と同根で、**付けても検査対象が 0 なら意味がない**
+- verified: zsh 5.9 / rubocop / 2026-07-09（4-2c-2 の仕上げで実踏。22 ファイル渡したつもりが 0 ファイル検査だった）
+
+### 読み取り専用のはずのレビュアーが共有ワークツリーでプロダクションコードを mutation する（4-2c-2・verified 2026-07-09）
+
+- **WHAT**: サブエージェントのレビュアーに「テストの判別性を確認せよ（ガードを削除したら実際に落ちるか）」と指示すると、全ツールを持つ汎用エージェントは素直に **mutation testing**（実装を壊して spec を回す）を始める。共有チェックアウトで走ると、並行する implementer が「File has been modified since read」でブロックされ、レビュアーが途中終了すればプロダクションコードが壊れたまま残る。実例: `guard_actor_same_organization!` の中身が `# MUTATION-TEST: disabled` に一時置換された状態を、別 implementer が検出して報告した
+- **WHY**: dispatch prompt に「コードは変更しないこと」と書いても、`general-purpose` エージェントは `Edit`/`Write`/`Bash` を持つ。「判別性を確認せよ」という要求と「編集するな」という制約が矛盾するため、前者が優先される。SDD は 1 つのワークツリーを implementer とレビュアーで共有するため、レビュアーの一時的な編集が他者の作業と衝突する
+- **HOW**: ①レビュアーに判別性の**実証**を求めるなら `isolation: "worktree"` で隔離する ②あるいは「編集も rspec 実行も禁止・判別性は静的読解で論証せよ」と明示的に禁じる（実測より確度は落ちるが安全）③implementer 側には「衝突を検出したら上書きせず即報告せよ」と指示しておく（本件はこれが機能して実害ゼロで済んだ）
+- verified: 2026-07-09（4-2c-2 の R3/R4 で実踏。mutation 自体は 4 つの kill を実証して有用だったが、走らせた場所が誤りだった）
 
 ---
 

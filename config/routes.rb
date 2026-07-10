@@ -97,6 +97,9 @@ Rails.application.routes.draw do
     end
   end
 
+  # 欠勤確定（§6.10）。destroy = 却下(dismiss)・:id は AbsenceCandidate#id（候補は ephemeral・§11④）
+  resources :absence_confirmations, only: %i[index create destroy]
+
   resources :notifications, only: %i[index update]
   resource :notification_preferences, only: %i[edit update] # singular（current_user 自身の設定）
 
