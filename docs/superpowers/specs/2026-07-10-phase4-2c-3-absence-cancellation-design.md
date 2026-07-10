@@ -83,10 +83,31 @@ record = AttendanceRecord.lock.find_by(user_id: @leave_request.requester_id, wor
 
 `AttendanceRecord` は常に最後に取る。`Cancel` は `LeaveBalance` を取らない。よって循環待ちは生じない。
 
-### 3.4 テスト
+### 3.4 テスト（足場を実測済み・2026-07-10）
 
-- 並行 2 トランザクション（`ActiveRecord::Base.connection_pool.with_connection` で 2 接続）で「承認が AR を読む → 別 tx が destroy して commit → 承認が save!」を再現し、修正前は AR 消失、修正後は新規 AR が INSERT されることを固定する
-- 上記の**修正前が本当に落ちる**ことを一度確認してから修正を入れる（非判別テストにしない）
+このリポジトリに並行テストの前例は無いため足場から作る。ただし**バグの証明と修正の証明では必要な足場が違う**（RAILS_GOTCHAS 追記済み）。
+
+**(a) バグの証明 — 1 接続・スレッド不要。** 「消えた行への read-modify-write」は SQL と Rails の性質であって並行性の性質ではない。
+
+```ruby
+rec = create(:attendance_record, ...)
+AttendanceRecord.where(id: rec.id).delete_all   # stale read の後に行が消える
+rec.status = :clocked_out
+expect(rec.save!).to be(true)                   # ← 0 行 UPDATE を黙認する（実測で確認）
+```
+
+これは既存の `spec/services/holiday_work_requests/apply_approval_spec.rb` の流儀（読み取りだけを過去に置き、下流は実挙動を走らせる）と同型。
+
+**(b) 修正の証明 — 2 接続が要る。** `SELECT ... FOR UPDATE` の効果は「他 tx を待たせること」で、待ち手のいない 1 接続では観測できない。
+
+- 対象 example group に `self.use_transactional_tests = false`
+- 保持スレッドは `ActiveRecord::Base.connection_pool.with_connection` で自前の接続を取る
+- **`ActsAsTenant.test_tenant` は `Thread.current` 局所**なのでスレッド内で改めて `with_tenant(org)` で包む
+- 待ちは sleep で測らず `SET lock_timeout = '300ms'` を撃ち `ActiveRecord::LockWaitTimeout` を期待する（決定的になる）
+- 後片付けに **`connection.truncate_tables` を使わない**（失敗すると FK と追記専用トリガーを無効のまま残す）。生 SQL の `TRUNCATE TABLE <全テーブル> RESTART IDENTITY CASCADE` にする
+- `config/database.yml` の `max_connections: 5` でスレッド 2 本は収まる
+
+**修正前が本当に落ちることを確認してから修正を入れる**（非判別テストにしない）。
 
 ## 4. 4-2c-3b — 取消と却下
 
@@ -217,6 +238,6 @@ Phase 4-2 の完了条件でもあるため、4-2c-3b の merge 前に `/spec-ch
 
 ## 8. テスト方針
 
-- **3a**: 並行 2 接続の競合テスト（修正前に落ちることを確認してから修正を入れる）
-- **3b**: `guard_still_absent!` を消すと落ちるテスト（`with_lock` 内で status が変わる状況を stub で作る）／取消 → 候補再生成 → バッチ通知 → 再確定の往復／却下の履歴と候補 destroy が同一 tx（履歴 create! を raise させて候補が残ることを固定）／§5 の不変条件（`absence_to_paid` が最新なら取消は 422）
+- **3a**: §3.4 のとおり（a）1 接続でバグを固定、（b）2 接続で FOR UPDATE の待ちを固定
+- **3b**: `guard_still_absent!` を消すと落ちるテスト（`with_lock` 内で status が変わる状況を stub で作る）／取消 → 候補再生成 → バッチ通知 → 再確定の往復／却下の履歴と候補 destroy が同一 tx（履歴 `create!` を raise させて候補が残ることを固定）／§5 の不変条件（`absence_to_paid` が最新なら取消は 422）／§7-a の限界（撤回済 LR が覆う日では候補が通知前に消える）を**現状挙動として固定**する
 - 監査行の `absence_reason` は**整数**で保存されることを固定（翻訳結果を焼かない・4-2c-2 の教訓）
