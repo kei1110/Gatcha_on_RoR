@@ -13,7 +13,7 @@ CI で実行する静的検証群を push 前に local 並列実行し、CI 往�
 - **既存 gem / コマンドを orchestration するのみ**（新規 logic を書かない）
 - **diff scope で自動 skip**（`app/` 無変更 → brakeman skip 等）
 - **fail-fast せず全件実行**（1 つの fail で他を止めると往復が増える）
-- **escape hatch**: `GATCHA_PREFLIGHT_SKIP=rubocop,rspec,brakeman,coverage,audit,erblint`
+- **escape hatch**: `GATCHA_PREFLIGHT_SKIP=rubocop,rspec,brakeman,coverage,audit,erblint,importmap,schemadrift`
 - **Self-exclusion**: Phase 0 で本 skill の Last verified 鮮度と、cite 先（`Gemfile` / `bin/rubocop` 等）の実在を確認
 
 ## 入力
@@ -79,6 +79,21 @@ if should_run erblint && [[ "$HAS_VIEW" -gt 0 ]]; then
   { bundle exec erb_lint --lint-all > "$LOG_DIR/erblint.log" 2>&1; echo $? > "$LOG_DIR/erblint.exit"; } &
 fi
 
+# 7. importmap audit（CI は恒常実行。local は JS 依存が動く時のみで足りる）
+HAS_JS_DEP=$(echo "$DIFF_FILES" | grep -cE '^(Gemfile\.lock|config/importmap\.rb|vendor/javascript/)' || true)
+if should_run importmap && [[ "$HAS_JS_DEP" -gt 0 ]]; then
+  { bin/importmap audit > "$LOG_DIR/importmap.log" 2>&1; echo $? > "$LOG_DIR/importmap.exit"; } &
+fi
+
+# 8. schema drift（db/ 変更時。CI と同一コマンド。dump が schema.rb を書き換えるので rubocop(1) と競合しない
+#    — 対象が交わらない — が、drift 検出時は git diff の内容を必ず報告してから復旧を判断する）
+HAS_DB=$(echo "$DIFF_FILES" | grep -cE '^db/' || true)
+if should_run schemadrift && [[ "$HAS_DB" -gt 0 ]]; then
+  { bin/rails db:schema:dump > "$LOG_DIR/schemadrift.log" 2>&1 \
+      && git diff --exit-code db/schema.rb >> "$LOG_DIR/schemadrift.log" 2>&1
+    echo $? > "$LOG_DIR/schemadrift.exit"; } &
+fi
+
 wait
 ```
 
@@ -93,15 +108,27 @@ wait
 ✅ brakeman         (0 warnings)
 ⏭️  bundle-audit    (Gemfile.lock 無変更)
 ⏭️  erb_lint        (views 無変更)
+⏭️  importmap       (JS 依存 無変更)
+✅ schema drift     (schema.rb 一致)
 ```
 
-## グリーンフィールド時
+## CI との対応（`.github/workflows/ci.yml` が正・変えたら本表を同期）
 
-`rails new` 前は Gemfile / bin が無いため Phase 0 ガードで即 skip。`rails new` 後に有効化する。CI（`.github/workflows`）を整備したら、本 skill の検証群が CI と**等価**になるよう同期すること（本 skill PASS = CI PASS を保証はしない）。
+| CI step | 本 skill | 差分 |
+|---|---|---|
+| `bin/rubocop` | 1（diff scope） | CI は全件 |
+| `bin/brakeman` | 4 | app/ 変更時のみ |
+| `bin/bundler-audit check --update` | 5 | Gemfile.lock 変更時のみ（CI は恒常） |
+| `bin/importmap audit` | 7 | JS 依存変更時のみ（CI は恒常） |
+| `db:schema:dump && git diff --exit-code` | 8 | db/ 変更時のみ |
+| `bundle exec rspec` | 2+3 | 同等 |
+| erb_lint | 6 | **CI に無い local 追加検査** |
+
+diff scope skip ゆえ**本 skill PASS = CI PASS の保証ではない**（怪しければ `--all`）。
 
 ## 関連
 
 - `docs/SPEC.md` §2.1（スタック）/ §15（フェーズ）
 - `/spec-check`（SPEC ↔ 実装）/ `/legal-citation-audit`（SPEC ↔ 法令）と直交
 
-<!-- Last verified: 2026-06-09 -->
+<!-- Last verified: 2026-07-13（ci.yml と突合し 7 importmap / 8 schema drift を追加・CI 対応表を新設） -->
