@@ -75,7 +75,7 @@ bin/rails console                                   # 起動後まず鉄則 3 �
 
 > 挙動上の禁止則は冒頭「鉄則」に集約済み。ここは環境まわりの罠のみ。実装・テストの罠台帳は docs/RAILS_GOTCHAS.md。
 
-- **OpenSSL:** `~/.zshrc` に Intel 時代の openssl@1.1 設定が残存（chezmoi 管理・未修正）。Ruby **ビルド時のみ** `RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@3)"` ＋ `LDFLAGS=/CPPFLAGS=/PKG_CONFIG_PATH=` のクリアで回避（通常作業は `.ruby-version` 固定ゆえ影響なし）
+- **OpenSSL:** 旧記述「`~/.zshrc` に Intel 時代の openssl@1.1 残存」は**解消済み**（2026-07-13 実測: ログインシェル環境に OPENSSL/LDFLAGS 等の汚染なし・brew は openssl@3 のみ）。Ruby ビルドは素の `rbenv install` で可。万一他環境で openssl エラーが出たら `docs/superpowers/plans/2026-06-14-ruby-4-0-2-upgrade.md` の回避策を参照
 - **rails MCP:** `rails-mcp-server`（rbenv shim）は cwd の `.ruby-version` で Ruby を解決 → プロジェクト直下で起動されること。**Ruby アップグレード時は新 Ruby へ `gem install rails-mcp-server` で入れ直す**（Bundler 管理外の実行系ツールゆえ bundle では追従しない。怠ると `/mcp` が `Failed to reconnect: -32000` で死ぬ。詳細は docs/RAILS_GOTCHAS.md「Ruby / ツールチェーン」）
 - 親 `/Users/Eoh/CLAUDE.md` は chezmoi dotfiles 用で本プロジェクトとは無関係（自動ロードされるが従わない）
 
