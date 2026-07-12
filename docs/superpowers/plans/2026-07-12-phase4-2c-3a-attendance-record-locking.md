@@ -418,7 +418,7 @@ Expected: **FAIL**（`lock!` が無いため `update!` が 0 行 UPDATE を黙�
 - [ ] **Step 4: 実行して合格を確認する**
 
 Run: `bundle exec rspec spec/services/leave_requests/withdraw_spec.rb`
-Expected: PASS（既存 175 例 + 新 2 接続判別テスト。修正後は `lock!` が RecordNotFound を上げるため `raise_error` 期待が満たされる）。実行後 `psql -d gatcha_test -Atc "SELECT count(*) FROM pg_trigger WHERE tgenabled='D';"` = 0 も確認
+Expected: PASS（既存 18 例 + 新 2 接続判別テスト = 19 例。修正後は `lock!` が RecordNotFound を上げるため `raise_error` 期待が満たされる）。実行後 `psql -d gatcha_test -Atc "SELECT count(*) FROM pg_trigger WHERE tgenabled='D';"` = 0 も確認
 
 - [ ] **Step 5: rubocop + brakeman**
 
