@@ -212,6 +212,13 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **HOW**: 「保持スレッドが握る行を、別スレッドが待つ」構図で競合を作るなら 2 通り。① 待つ側に `lock_timeout` を設定し `LockWaitTimeout` を期待する（Task 1 helper spec の型）。② **保持を hold_row_lock に任せず**、deleter（未コミット DELETE を短時間保持）と approver（実サービス呼び出し）を別スレッド・別接続で並走させ、deleter が commit する前に approver をロック待ちへ入れる（Task 2 `apply_approval_spec.rb` の 2 接続テストの型 — `hold_row_lock` は「読み取り FOR UPDATE を保持して別 tx の write を待たせる」用途に向き、「実サービスの内部 write を競合させる」用途には deleter/approver 並走が要る）
 - verified: Rails 8.1.3 / PostgreSQL 18 / 2026-07-12（Task 2 実装者が brief の hold_row_lock 流用コードでハングを実測 → deleter/approver 並走へ再設計。修正前 `rows.count=0` で判別性を確認）
 
+### `find_each` はカスタム `order` を無視して id 昇順を強制する
+
+- **WHAT**: `scope.order(:work_date).find_each { ... }` と書いても **work_date 順にならず id 昇順**で回る（Rails が警告を出しつつ order を捨てる）。行ロックを「特定の列順で取りたい」意図が黙って id 順にすり替わる
+- **WHY**: `find_each` / `find_in_batches` はカーソルを主キー（id）で分割してバッチングするため、任意の order と両立しない。設計上 id 順が強制される
+- **HOW**: ロック取得順を制御したい・件数が小さい（1 リクエストの日数ぶん等）なら `find_each` をやめて **`.order(:col).each`** にする（全件ロードするがバッチング不要な規模なら問題ない）。4-2c-3a では `Withdraw#restore_attendance_records` を `find_each`（id 順）→ `.order(:work_date).each` にして `ApplyApproval`（work_date 昇順でロック）と同一テーブル内のロック取得順を揃え、循環待ちを構造的に消した（設計書 §3.3 の同一テーブル内順序規約）。「find_each + order」は id 順に落ちるため**順序を揃えたつもりで揃っていない**罠になる
+- verified: Rails 8.1.3 / 2026-07-12（4-2c-3a Task 3 レビューで実踏。`AttendanceRecord` は `[user_id, work_date]` unique ゆえ work_date が決定的な全順序キー）
+
 ## 生成物・設定
 
 ### 生成された initializer の placeholder はレビュー網をすり抜ける
