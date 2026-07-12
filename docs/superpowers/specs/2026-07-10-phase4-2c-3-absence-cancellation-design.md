@@ -81,7 +81,9 @@ record = AttendanceRecord.lock.find_by(user_id: @leave_request.requester_id, wor
 | `LeaveRequests::Withdraw` | `LeaveBalance` 行 → `AttendanceRecord` 行 |
 | `Absences::Cancel`（3b） | `AttendanceRecord` 行のみ |
 
-`AttendanceRecord` は常に最後に取る。`Cancel` は `LeaveBalance` を取らない。よって循環待ちは生じない。
+**モデル間順序:** `AttendanceRecord` は常に最後に取る。`Cancel` は `LeaveBalance` を取らない。よってモデル間の循環待ちは生じない。
+
+**同一テーブル内順序（4-2c-3a Task 3 レビューで補強）:** 上表はモデル間順序を揃えるだけで、**同一トランザクションが複数の `AttendanceRecord` 行を掴む順序**までは規定していなかった。`ApplyApproval#upsert_attendance_records` は `counted_dates`（`day_classifications` の `(from..to).index_with` 由来＝**work_date 昇順**）でロックし、`Withdraw#restore_attendance_records` は当初 `find_each`（**id 昇順**）だった。`AttendanceRecord` は `[user_id, work_date]` が unique だが、branch④ の `destroy!` → 後日の再作成で「早い日付の行が大きい id」になり得るため、id 順と work_date 順は逆転し得る。同一ユーザーの重複する休暇期間を `ApplyApproval` と `Withdraw` が同時処理すると、2 行を逆順に掴んで循環待ち（`ActiveRecord::Deadlocked`・データ破損はしないが想定外エラー）になる余地があった。**規約: 同一ユーザーの複数 `AttendanceRecord` 行を掴む処理はすべて work_date 昇順でロックする**（`Withdraw` は `find_each` → `order(:work_date).each` へ・`ApplyApproval` は既に work_date 昇順・`Cancel`(3b) も 1 日 1 行だが複数日を扱うなら work_date 昇順に従う）。
 
 ### 3.4 テスト（足場を実測済み・2026-07-10）
 
