@@ -74,10 +74,13 @@ module LeaveRequests
         .where(user_id: @leave_request.requester_id,
                work_date: @leave_request.start_date..@leave_request.end_date,
                status: %i[on_leave morning_half afternoon_half])
-        .find_each do |record|
+        .order(:work_date).each do |record|
           # 判定に使う前に FOR UPDATE で掴み直す（4-2c-3a）。branch ④ の destroy! が DELETE 側に
           # なり得るため ApplyApproval と同一規約に揃える。呼び出し元 with_lock 内ゆえ保持される。
-          # lock! はロック取得と同時に DB から属性を再読込するので、以降の clock_in/status は最新
+          # lock! はロック取得と同時に DB から属性を再読込するので、以降の clock_in/status は最新。
+          # work_date 昇順で回すのは ApplyApproval#upsert_attendance_records（counted_dates=日付昇順）と
+          # 同一テーブル内のロック取得順を揃えるため（id 昇順の find_each だと id と work_date の相対順序が
+          # branch④ destroy+再作成で逆転し循環待ちの余地が残る・設計書 §3.3 の同一テーブル内順序規約）。
           record.lock!
           if other_live_leave_covers?(record.work_date)
             report_covered_by_other_leave(record)

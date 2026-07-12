@@ -288,17 +288,22 @@ RSpec.describe LeaveRequests::Withdraw do
             AttendanceRecord.transaction do
               AttendanceRecord.where(id: rec.id).delete_all
               locked << :ok
-              sleep 0.3 # 未コミットのまま保持し、Withdraw の lock! をロック待ちへ入れる
+              sleep 0.3 # 未コミットのまま保持する。この窓が Withdraw の初回 SELECT を
+              # deleter commit 前に確実に走らせ、後続の lock! をロック待ちへ入れる
             end
           end
         end
       end
       locked.pop
 
-      # 修正後: restore_attendance_records の record.lock! が deleter のロックを待ち、
-      #   deleter commit 後は行が無いため RecordNotFound（Withdraw は Approve の with_lock 内で
-      #   走る前提ゆえ、例外伝播で撤回承認ごと atomic rollback＝fail-closed が正しい）。
-      # 修正前: lock! が無く record.update! が 0 行 UPDATE を黙認し例外を上げない（RAILS_GOTCHAS）。
+      # sleep 0.3 の保持窓は「lock! がどちらのタイミングで発行されても RecordNotFound に収束する」
+      # ことを保証するものではない。厳密には restore_attendance_records の対象 AR を取る初回 SELECT
+      # （remove_from_balance → 本クエリ、いずれも数 ms）が deleter commit 前に走ることが前提。
+      # 初回 SELECT がその窓に収まって走れば、削除済み予定の行がまだ結果セットに含まれた状態で
+      # lock!（SELECT ... FOR UPDATE）が発行され、deleter commit を境に「行はもう無い」と判明して
+      # RecordNotFound で fail-closed になる（逆に初回 SELECT 自体が deleter commit 後にずれ込むと、
+      # 削除済み行はそもそも結果セットに現れず lock! が呼ばれないため、この判別は成立しない）。
+      # 修正前: lock! が無く record.update! が削除済み行への 0 行 UPDATE を黙認し例外を上げない（RAILS_GOTCHAS）。
       expect do
         ActsAsTenant.with_tenant(org2) do
           LeaveRequests::Withdraw.call(leave_request: lr, acting_user: mgr)
