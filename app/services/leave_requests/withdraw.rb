@@ -75,6 +75,10 @@ module LeaveRequests
                work_date: @leave_request.start_date..@leave_request.end_date,
                status: %i[on_leave morning_half afternoon_half])
         .find_each do |record|
+          # 判定に使う前に FOR UPDATE で掴み直す（4-2c-3a）。branch ④ の destroy! が DELETE 側に
+          # なり得るため ApplyApproval と同一規約に揃える。呼び出し元 with_lock 内ゆえ保持される。
+          # lock! はロック取得と同時に DB から属性を再読込するので、以降の clock_in/status は最新
+          record.lock!
           if other_live_leave_covers?(record.work_date)
             report_covered_by_other_leave(record)
           elsif record.clock_in.present?

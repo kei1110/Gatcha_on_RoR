@@ -253,4 +253,59 @@ RSpec.describe LeaveRequests::Withdraw do
       expect(history.previous_status).to eq(AttendanceRecord.statuses[:morning_half])
     end
   end
+
+  describe "行ロック（4-2c-3a・判定に使う AR を lock! で掴む・2 接続判別）" do
+    include ConcurrencyHelpers
+    self.use_transactional_tests = false
+
+    # Withdraw は leave_withdrawn（§4.14 追記専用）を書くため truncate では片付かない。
+    # Task 2 で集約した purge_append_only_and_truncate! を使う（安全性は helper spec が固定）。
+    after { purge_append_only_and_truncate! }
+
+    it "復元対象 AR を別 tx が削除中に撤回すると、lock! が RecordNotFound で fail-closed（0 行 UPDATE を踏まない）" do
+      org2 = create(:organization, subdomain: "wd-lock-#{SecureRandom.hex(4)}")
+      u = mgr = ptype = rec = lr = nil
+      ActsAsTenant.with_tenant(org2) do
+        mgr   = create(:user, :manager_role)
+        u     = create(:user)
+        ptype = create(:leave_type, system_type: :annual, paid_leave: true)
+        create(:leave_balance, user: u, leave_type: ptype,
+               fiscal_year: org2.fiscal_year_for(Date.new(2026, 5, 1)), granted_days: 20, used_days: 1)
+        # branch ②: 実打刻のある on_leave 日
+        rec = create(:attendance_record, user: u, work_date: Date.new(2026, 5, 1),
+                     status: :on_leave, leave_type: ptype,
+                     clock_in: Time.utc(2026, 5, 1, 0), clock_out: Time.utc(2026, 5, 1, 9))
+        lr  = create(:leave_request, requester: u, leave_type: ptype,
+                     start_date: Date.new(2026, 5, 1), end_date: Date.new(2026, 5, 1),
+                     half_day_type: :none, days_requested: 1,
+                     approval_status: :withdrawal_requested, withdrawal_reason: "誤申請")
+      end
+
+      locked = Queue.new
+      deleter = Thread.new do
+        ActiveRecord::Base.connection_pool.with_connection do
+          ActsAsTenant.with_tenant(org2) do
+            AttendanceRecord.transaction do
+              AttendanceRecord.where(id: rec.id).delete_all
+              locked << :ok
+              sleep 0.3 # 未コミットのまま保持し、Withdraw の lock! をロック待ちへ入れる
+            end
+          end
+        end
+      end
+      locked.pop
+
+      # 修正後: restore_attendance_records の record.lock! が deleter のロックを待ち、
+      #   deleter commit 後は行が無いため RecordNotFound（Withdraw は Approve の with_lock 内で
+      #   走る前提ゆえ、例外伝播で撤回承認ごと atomic rollback＝fail-closed が正しい）。
+      # 修正前: lock! が無く record.update! が 0 行 UPDATE を黙認し例外を上げない（RAILS_GOTCHAS）。
+      expect do
+        ActsAsTenant.with_tenant(org2) do
+          LeaveRequests::Withdraw.call(leave_request: lr, acting_user: mgr)
+        end
+      end.to raise_error(ActiveRecord::RecordNotFound)
+
+      deleter.join
+    end
+  end
 end
