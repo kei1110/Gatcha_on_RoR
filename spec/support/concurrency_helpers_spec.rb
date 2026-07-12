@@ -125,5 +125,23 @@ RSpec.describe ConcurrencyHelpers do
 
       expect(Organization.where(id: ambient.id)).not_to exist
     end
+
+    it "DELETE が途中失敗してもトリガーを無効化したまま残さない（安全性の核心）" do
+      # このメソッドの安全性の根拠＝「DISABLE→DELETE→ENABLE を単一 transaction に収め、
+      # 例外時は DISABLE ごと ROLLBACK される」。DISABLE 後・ENABLE 前に DELETE を失敗させ、
+      # 事後にトリガーが再有効化（tgenabled='O'）されていることを固定する。将来 DISABLE/DELETE/
+      # ENABLE を別 transaction へ分離する等で安全性を壊すと、この example だけが赤くなる。
+      conn = ActiveRecord::Base.connection
+      allow(conn).to receive(:execute).and_call_original
+      allow(conn).to receive(:execute)
+        .with("DELETE FROM attendance_histories").and_raise(StandardError, "boom")
+
+      expect { purge_append_only_and_truncate! }.to raise_error(StandardError, "boom")
+
+      tgenabled = conn.select_value(
+        "SELECT tgenabled FROM pg_trigger WHERE tgname = 'attendance_histories_no_mutate'"
+      )
+      expect(tgenabled).to eq("O")
+    end
   end
 end
