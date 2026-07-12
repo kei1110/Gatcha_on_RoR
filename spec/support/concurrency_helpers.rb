@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
 # 2 接続の並行テスト足場（4-2c-3a・RAILS_GOTCHAS「行ロックの競合テストは 2 接続が要る」）。
-# 使う側の example group は `self.use_transactional_tests = false` を宣言し、after で `truncate_all_tables!` する。
+# hold_row_lock は別接続が「未コミットのロック」を取る都合上、使う側の example group で
+# `self.use_transactional_tests = false` を宣言し、after で `truncate_all_tables!` する必要がある。
+# truncate_all_tables! 単体は SAVEPOINT で個別 DELETE を守るため transactional test（既定）でも
+# 安全に呼べる（外側 tx を汚さない・#truncate_all_tables! の raise 系テストで実証）。
 module ConcurrencyHelpers
   # 別スレッド・別接続で model_class#id の行を FOR UPDATE で掴んだまま yield する。
   # yield 中はロックが保持され、yield 復帰後に解放してスレッドを join する。
@@ -53,6 +56,15 @@ module ConcurrencyHelpers
   #
   # 依存順（子 → 親）は固定リストにせず、削除できたテーブルから外す総当たりで解決する
   # （schema 変更や migration 追加順に依存させない）。
+  #
+  # 各 DELETE は `conn.transaction(requires_new: true)`（SAVEPOINT）で個別に包む。PostgreSQL は
+  # 1 文が失敗すると「囲む transaction 全体」を abort 済みにし、以後の文は ROLLBACK まで
+  # 全滅する。SAVEPOINT 無しだと、削除できない行（attendance_histories 等）に当たった時点で
+  # 後続のテーブルも「たまたま同じ tx にいた」だけで巻き添えを食い、raise 時の一覧が不正確に
+  # なる。加えて、この helper が transactional test（既定の use_transactional_tests = true）の
+  # 中で呼ばれた場合、SAVEPOINT 無しでは外側の transaction そのものが汚染され、以降の
+  # assertion が軒並み PG::InFailedSqlTransaction で壊れる（実測済み）。SAVEPOINT で失敗を
+  # そのテーブルの DELETE だけに閉じ込め、外側 tx を無傷に保つ。
   def truncate_all_tables!
     conn = ActiveRecord::Base.connection
     remaining = conn.tables - %w[schema_migrations ar_internal_metadata]
@@ -61,7 +73,9 @@ module ConcurrencyHelpers
       deleted_any = false
 
       remaining = remaining.reject do |table|
-        conn.execute("DELETE FROM #{conn.quote_table_name(table)}")
+        conn.transaction(requires_new: true) do
+          conn.execute("DELETE FROM #{conn.quote_table_name(table)}")
+        end
         deleted_any = true
         true
       rescue ActiveRecord::StatementInvalid

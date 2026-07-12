@@ -50,4 +50,42 @@ RSpec.describe ConcurrencyHelpers do
       expect(elapsed).to be < 1 # 秒。修正前は locked.pop が Timeout(2s) までハングする
     end
   end
+
+  describe "#truncate_all_tables!" do
+    context "非トランザクションの後片付け（本来の使い方）" do
+      self.use_transactional_tests = false
+
+      it "対象の複数テーブルの行を実際に空にする" do
+        org = FactoryBot.create(:organization)
+        ActsAsTenant.with_tenant(org) { FactoryBot.create(:user) }
+
+        # User は acts_as_tenant スコープ対象（既定 scope は現在の tenant のみを見る）ため、
+        # truncate_all_tables! が全 org 横断で消したことを見るには unscoped で数える。
+        expect { truncate_all_tables! }
+          .to change(Organization, :count).to(0)
+          .and change { User.unscoped.count }.to(0)
+      end
+    end
+
+    context "行が実在し削除不能なテーブルが残る場合" do
+      # attendance_histories は §4.14 の追記専用トリガーで DELETE も TRUNCATE も恒久的に
+      # 拒否する。ここで作る行はテスト後も物理的に消せないため、恒久的にテスト DB へ
+      # 残さないようあえて transactional test（既定の use_transactional_tests = true）の
+      # ままにし、example 終了時の自動 ROLLBACK で後片付けする。
+      it "attendance_histories に行がある場合は raise し、外側の transaction を汚さない" do
+        org  = FactoryBot.create(:organization)
+        user = ActsAsTenant.with_tenant(org) { FactoryBot.create(:user) }
+        ActsAsTenant.with_tenant(org) do
+          AttendanceHistory.create!(user:, event_date: Date.new(2026, 7, 1), event_type: :clock_in)
+        end
+
+        expect { truncate_all_tables! }
+          .to raise_error(/truncate_all_tables!: 削除できないテーブルが残っています/)
+
+        # transaction がまだ生きている（poison されていない）ことの証明。
+        # ここで例外が飛ぶようだと外側の transaction が汚染されている。
+        expect(Organization.count).to be >= 1
+      end
+    end
+  end
 end
