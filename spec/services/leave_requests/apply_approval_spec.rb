@@ -260,31 +260,12 @@ RSpec.describe LeaveRequests::ApplyApproval do
       # 連番 subdomain を避け、次回実行時の衝突要因を作らないようにしておく。
       let(:org) { create(:organization, subdomain: "aa-lock-unused-#{SecureRandom.hex(4)}") }
 
-      # ApplyApproval は実処理として必ず AttendanceHistory（§4.14 追記専用）を書く。これを
-      # 素の truncate_all_tables!（DELETE 総当たり）だけで片付けようとすると、attendance_histories
-      # 自体が削除不能なため、それを参照する organizations/users も巻き添えで永久に残り、
-      # 連番 subdomain の他 spec と衝突し得る（実測: 別 spec の let(:org) が同じ連番で偽 FAIL した）。
-      #
-      # 本テストが書く attendance_histories 行はこの example 専用のテスト用データで法的保存対象
-      # ではない（§4.14 の対象は本番データ）。1 つの transaction 内で
-      # DISABLE TRIGGER → DELETE → ENABLE TRIGGER を行い、成功時のみ commit する。例外発生時は
-      # transaction 全体が ROLLBACK され、DISABLE も含めて巻き戻る（DDL も transactional）ため、
-      # 「無効化したまま残る」（docs/RAILS_GOTCHAS.md 187〜191 行の危険パターン）は起こらない。
-      # 接続断（kill 等）で COMMIT に到達しなかった場合も同様に未コミットのまま破棄される。
-      # これにより organizations/users/attendance_histories を含め毎回完全にクリーンな状態へ戻る
-      # （実測: 3 回連続実行 + concurrency_helpers_spec.rb との同時実行で残留 0 件・disabled trigger 0 件を確認）。
-      after do
-        Organization.where(id: ActsAsTenant.test_tenant&.id).delete_all
-
-        conn = ActiveRecord::Base.connection
-        conn.transaction do
-          conn.execute("ALTER TABLE attendance_histories DISABLE TRIGGER attendance_histories_no_mutate")
-          conn.execute("DELETE FROM attendance_histories")
-          conn.execute("ALTER TABLE attendance_histories ENABLE TRIGGER attendance_histories_no_mutate")
-        end
-
-        truncate_all_tables!
-      end
+      # ApplyApproval は実処理として必ず AttendanceHistory（§4.14 追記専用）を書くため、素の
+      # truncate_all_tables! では attendance_histories が削除不能で organizations/users も巻き添えで
+      # 残り、連番 subdomain の他 spec と衝突し得る。追記専用トリガーを単一 tx 内で安全に外して
+      # 片付ける共有 helper（Task 2 レビュー Important で集約）を使う。詳細・安全性の根拠は
+      # ConcurrencyHelpers#purge_append_only_and_truncate! のコメントと concurrency_helpers_spec.rb を参照。
+      after { purge_append_only_and_truncate! }
 
       # brief 記載の `hold_row_lock(...) { AttendanceRecord.where(id: rec.id).delete_all }` は
       # 採用しない。hold_row_lock は「yield が返ってから release する」設計（yield 中はロック保持・
