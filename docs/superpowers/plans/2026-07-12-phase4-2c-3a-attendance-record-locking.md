@@ -312,56 +312,77 @@ INSERT 経路へ落とす。2 接続の判別テストを同梱（修正前に�
 - Consumes: `ConcurrencyHelpers`（Task 1）
 - Produces: なし（挙動修正のみ）
 
-- [ ] **Step 1: 判別する 2 接続テストを書く**
+- [ ] **Step 1: 判別する 2 接続テストを書く（Task 2 と同型・deleter/approver 並走）**
 
-`withdraw_spec.rb` 末尾に追加。branch ②（実打刻あり → clocked_out へ戻す）で、判定に使う AR がロック保持中は待たされることを固定する:
+**設計判断（Task 2 実装で判明・重要）:** Task 2 で 2 点が確定した。① brief の `hold_row_lock(...) { 同じ行への delete_all }` は自己デッドロックする（RAILS_GOTCHAS）。② 非トランザクションテストは Withdraw が書く追記専用履歴（leave_withdrawn）のため素の `truncate_all_tables!` では片付かず、`purge_append_only_and_truncate!`（Task 2 で helper に集約）を使う。よって Task 3 も **deleter/approver 並走 + `purge_append_only_and_truncate!` 後片付け**にする。
+
+**判別シナリオ:** branch ②（実打刻あり → clocked_out へ戻す）の AR を、Withdraw が復元しようとする最中に別 tx が削除する。`lock!` があれば削除済み行への `SELECT ... FOR UPDATE` が `ActiveRecord::RecordNotFound` を上げて **fail-closed** で止まる。`lock!` が無いと `record.update!` が削除済み行への 0 行 UPDATE を黙認し、例外なく「成功」してしまう（残高だけ減算され AR は消えたまま＝台帳不整合）。したがって**修正前はこのテストが FAIL する**（RecordNotFound が上がらない）。
+
+`withdraw_spec.rb` 末尾に追加:
 
 ```ruby
-  describe "行ロック（4-2c-3a・判定に使う AR を lock! で掴む）" do
+  describe "行ロック（4-2c-3a・判定に使う AR を lock! で掴む・2 接続判別）" do
+    include ConcurrencyHelpers
     self.use_transactional_tests = false
 
-    after { truncate_all_tables! }
+    # Withdraw は leave_withdrawn（§4.14 追記専用）を書くため truncate では片付かない。
+    # Task 2 で集約した purge_append_only_and_truncate! を使う（安全性は helper spec が固定）。
+    after { purge_append_only_and_truncate! }
 
-    it "撤回対象日の AR ロックを別 tx が保持する間、Withdraw は待って一貫した状態を残す" do
-      org2 = create(:organization, subdomain: "wd-lock")
-      u = mgr = ptype = bal = rec = lr = nil
+    it "復元対象 AR を別 tx が削除中に撤回すると、lock! が RecordNotFound で fail-closed（0 行 UPDATE を踏まない）" do
+      org2 = create(:organization, subdomain: "wd-lock-#{SecureRandom.hex(4)}")
+      u = mgr = ptype = rec = lr = nil
       ActsAsTenant.with_tenant(org2) do
         mgr   = create(:user, :manager_role)
         u     = create(:user)
         ptype = create(:leave_type, system_type: :annual, paid_leave: true)
-        bal   = create(:leave_balance, user: u, leave_type: ptype,
-                       fiscal_year: org2.fiscal_year_for(Date.new(2026, 5, 1)),
-                       granted_days: 20, used_days: 1)
-        # 実打刻のある on_leave 日（branch ②: clocked_out へ戻す対象）
-        rec   = create(:attendance_record, user: u, work_date: Date.new(2026, 5, 1),
-                       status: :on_leave, leave_type: ptype,
-                       clock_in: Time.utc(2026, 5, 1, 0), clock_out: Time.utc(2026, 5, 1, 9))
-        lr    = create(:leave_request, requester: u, leave_type: ptype,
-                       start_date: Date.new(2026, 5, 1), end_date: Date.new(2026, 5, 1),
-                       half_day_type: :none, days_requested: 1,
-                       approval_status: :withdrawal_requested, withdrawal_reason: "誤申請")
+        create(:leave_balance, user: u, leave_type: ptype,
+               fiscal_year: org2.fiscal_year_for(Date.new(2026, 5, 1)), granted_days: 20, used_days: 1)
+        # branch ②: 実打刻のある on_leave 日
+        rec = create(:attendance_record, user: u, work_date: Date.new(2026, 5, 1),
+                     status: :on_leave, leave_type: ptype,
+                     clock_in: Time.utc(2026, 5, 1, 0), clock_out: Time.utc(2026, 5, 1, 9))
+        lr  = create(:leave_request, requester: u, leave_type: ptype,
+                     start_date: Date.new(2026, 5, 1), end_date: Date.new(2026, 5, 1),
+                     half_day_type: :none, days_requested: 1,
+                     approval_status: :withdrawal_requested, withdrawal_reason: "誤申請")
       end
 
-      ActsAsTenant.with_tenant(org2) do
-        # ロック保持中に Withdraw を別スレッドで走らせ、待たされることを示す。
-        # ここでは決定性を優先し、ロック解放後に走らせて「一貫した最終状態」を固定する
-        # （待ちの存在は Task 1 の helper spec が別途保証する）。
-        LeaveRequests::Withdraw.call(leave_request: lr, acting_user: mgr)
+      locked = Queue.new
+      deleter = Thread.new do
+        ActiveRecord::Base.connection_pool.with_connection do
+          ActsAsTenant.with_tenant(org2) do
+            AttendanceRecord.transaction do
+              AttendanceRecord.where(id: rec.id).delete_all
+              locked << :ok
+              sleep 0.3 # 未コミットのまま保持し、Withdraw の lock! をロック待ちへ入れる
+            end
+          end
+        end
       end
+      locked.pop
 
-      ActsAsTenant.with_tenant(org2) do
-        r = AttendanceRecord.find_by(user_id: u.id, work_date: Date.new(2026, 5, 1))
-        expect(r).to be_clocked_out          # 実打刻は残す（branch ②）
-        expect(r.leave_type_id).to be_nil
-      end
+      # 修正後: restore_attendance_records の record.lock! が deleter のロックを待ち、
+      #   deleter commit 後は行が無いため RecordNotFound（Withdraw は Approve の with_lock 内で
+      #   走る前提ゆえ、例外伝播で撤回承認ごと atomic rollback＝fail-closed が正しい）。
+      # 修正前: lock! が無く record.update! が 0 行 UPDATE を黙認し例外を上げない（RAILS_GOTCHAS）。
+      expect do
+        ActsAsTenant.with_tenant(org2) do
+          LeaveRequests::Withdraw.call(leave_request: lr, acting_user: mgr)
+        end
+      end.to raise_error(ActiveRecord::RecordNotFound)
+
+      deleter.join
     end
   end
 ```
 
-- [ ] **Step 2: 実行して現状 PASS を確認する**
+- [ ] **Step 2: 修正前にこの 2 接続テストが FAIL することを確認する（判別性の肝）**
 
-Run: `bundle exec rspec spec/services/leave_requests/withdraw_spec.rb -e "行ロック"`
-Expected: PASS（このシナリオは競合を実際には起こさないため現状でも通る。ロック追加が回帰を起こさないことの担保）
+現状の `withdraw.rb`（`lock!` 無し）のまま:
+
+Run: `bundle exec rspec spec/services/leave_requests/withdraw_spec.rb -e "2 接続判別"`
+Expected: **FAIL**（`lock!` が無いため `update!` が 0 行 UPDATE を黙認し RecordNotFound が上がらない → `raise_error` 期待が外れる）。**ここで落ちなければテストが非判別なので Step 1 を見直す。** 落ちた後、テスト DB に無効トリガーが残っていないこと（`psql ... WHERE tgenabled='D'` = 0）も確認する
 
 - [ ] **Step 3: `lock!` を実装する**
 
@@ -397,7 +418,7 @@ Expected: PASS（このシナリオは競合を実際には起こさないため
 - [ ] **Step 4: 実行して合格を確認する**
 
 Run: `bundle exec rspec spec/services/leave_requests/withdraw_spec.rb`
-Expected: PASS（既存 175 例 + 新規すべて）
+Expected: PASS（既存 175 例 + 新 2 接続判別テスト。修正後は `lock!` が RecordNotFound を上げるため `raise_error` 期待が満たされる）。実行後 `psql -d gatcha_test -Atc "SELECT count(*) FROM pg_trigger WHERE tgenabled='D';"` = 0 も確認
 
 - [ ] **Step 5: rubocop + brakeman**
 
