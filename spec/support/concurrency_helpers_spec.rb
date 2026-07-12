@@ -88,4 +88,42 @@ RSpec.describe ConcurrencyHelpers do
       end
     end
   end
+
+  describe "#purge_append_only_and_truncate!" do
+    self.use_transactional_tests = false
+
+    it "attendance_histories を含め全テーブルを空にし、トリガーを再有効化した状態で終える" do
+      org  = FactoryBot.create(:organization)
+      user = ActsAsTenant.with_tenant(org) { FactoryBot.create(:user) }
+      ActsAsTenant.with_tenant(org) do
+        AttendanceHistory.create!(user:, event_date: Date.new(2026, 7, 1), event_type: :clock_in)
+      end
+
+      purge_append_only_and_truncate!
+
+      expect(AttendanceHistory.count).to eq(0)
+      expect(Organization.count).to eq(0)
+      expect(User.unscoped.count).to eq(0)
+
+      conn = ActiveRecord::Base.connection
+      tgenabled = conn.select_value(
+        "SELECT tgenabled FROM pg_trigger WHERE tgname = 'attendance_histories_no_mutate'"
+      )
+      expect(tgenabled).to eq("O")
+      disabled_count = conn.select_value("SELECT count(*) FROM pg_trigger WHERE tgenabled = 'D'").to_i
+      expect(disabled_count).to eq(0)
+    end
+
+    it "spec/support/tenant.rb の環境 tenant（本 helper の呼び出し元では通常未使用）も片付ける" do
+      # 環境 tenant は何にも参照されないため truncate_all_tables! の一括 DELETE で本来
+      # 消せるはずだが、追記専用テーブルを参照する他の org が同居すると organizations
+      # テーブルごと削除不能になり巻き添えを食う（4-2c-3a で実測）。個別削除で防ぐ。
+      ambient = FactoryBot.create(:organization)
+      ActsAsTenant.test_tenant = ambient
+
+      purge_append_only_and_truncate!
+
+      expect(Organization.where(id: ambient.id)).not_to exist
+    end
+  end
 end
