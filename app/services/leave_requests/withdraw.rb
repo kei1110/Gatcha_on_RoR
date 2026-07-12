@@ -105,7 +105,14 @@ module LeaveRequests
     end
 
     # その日の欠勤 conversion の最終状態（source を問わない）。absence_to_paid が最後なら未復元。
-    # absence_restored が後に来ていれば既に欠勤へ戻しており、二重復元しない
+    # absence_restored が後に来ていれば既に欠勤へ戻しており、二重復元しない。
+    #
+    # 【不変条件・4-2c-3a】ここに absence_canceled を足す必要はない。status: :absent を書く経路は
+    #   app/ 全体で 2 つ（Absences::Confirm#confirm_one = AR 不在日に create!／本 restore_absence =
+    #   absence_restored を必ず同時記録）だけで、「AR が absent ⟹ {absence_to_paid, absence_restored}
+    #   の最新は absence_to_paid ではない」が帰納的に成立する。取消側の guard_still_absent! がこれを使う。
+    #   この帰納は ApplyApproval の read-modify-write が原子的であることに依存し、それは 4-2c-3a の行ロックが担保する
+    #   （spec: "不変条件: absence_to_paid が最新なら AR は absent ではない"）
     def unrestored_absence_conversion(work_date)
       latest = AttendanceHistory
                .where(user_id: @leave_request.requester_id, event_date: work_date,
