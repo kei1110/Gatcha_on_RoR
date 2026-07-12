@@ -18,15 +18,10 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Write",
-        "hooks": [
-          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/claude-hooks/check-tenant-scope.sh" }
-        ]
-      },
-      {
         "matcher": "Edit|Write",
         "hooks": [
           { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/claude-hooks/rubocop-autoformat.sh" },
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/claude-hooks/check-tenant-scope.sh" },
           { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/claude-hooks/check-job-tenant-wrap.sh" },
           { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/claude-hooks/regen-spec-index.sh" }
         ]

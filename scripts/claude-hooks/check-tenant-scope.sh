@@ -1,6 +1,7 @@
 #!/bin/bash
-# PostToolUse(Write) hook: 新規 app/models の ActiveRecord モデルに acts_as_tenant が
+# PostToolUse(Edit|Write) hook: app/models の ActiveRecord モデルに acts_as_tenant が
 # 無ければ Claude へ警告（exit 2 = フィードバック）。SPEC §3.6 のクロステナント漏洩防止。
+# Edit も対象（既存モデルから acts_as_tenant を外す変更もすり抜けさせない）。
 # rails new 前は app/models が無く no-op。
 set -uo pipefail
 

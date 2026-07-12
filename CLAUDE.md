@@ -64,22 +64,18 @@ bin/rails console                                   # 起動後まず鉄則 3 �
 | 状態 enum の追加・変更 / Approvable / ApprovalAssignment / ApplyApproval / AASM / 撤回・締め | `approval-engine-reviewer`（§7・§13・副作用 atomicity） |
 | フェーズ完了時・リリース候補 merge 前 | `/spec-check`（SPEC ↔ 実装の乖離） |
 
-## フック（.claude/settings.json → scripts/claude-hooks/）
-PreToolUse/PostToolUse の開発ガード（**Claude Code 再起動＋承認**で有効化）:
-- `guard-git-identity`（Bash）— commit/push を kei1110(eoh2145@gmail.com) identity・`github-kei1110` remote 以外で中断
-- `block-secrets`（Edit/Write）— master.key・credentials の鍵・.env を保護
-- `block-schema-edit`（Edit/Write）— db/schema.rb の手編集を禁止（migration 経由を強制）
-- `check-tenant-scope`（Write）— app/models の `acts_as_tenant` 欠落を警告（§3.6）
-- `check-job-tenant-wrap`（Edit/Write）— app/jobs の perform が `ActsAsTenant.with_tenant` 未ラップ（かつ非ディスパッチャ）なら警告（§3.6・check-tenant-scope の jobs 対称版）
-- `rubocop-autoformat`（Edit/Write）— .rb を自動整形
-- `block-gemfile-lock-edit`（Edit/Write）— Gemfile.lock の手編集を禁止（bundle 経由を強制）
-- `regen-spec-index`（Edit/Write）— docs/SPEC.md 編集時に冒頭のセクション索引（行番号表）を自動補正（gate ではなく整形器・常に exit 0）
+## フック（.claude/settings.json → scripts/claude-hooks/・有効）
+
+挙動の正は各スクリプト冒頭コメント。BLOCKED / TENANT-SAFETY メッセージが出たら**メッセージの指示に従う**（回避策を探さない）:
+- **block 系（PreToolUse・中断）**: `guard-git-identity`（kei1110/`github-kei1110` remote 以外の commit/push）・`block-secrets`（master.key/credentials 鍵/.env）・`block-schema-edit`（db/schema.rb）・`block-gemfile-lock-edit`（Gemfile.lock）
+- **警告系（PostToolUse・フィードバック）**: `check-tenant-scope`（models の `acts_as_tenant` 欠落）・`check-job-tenant-wrap`（jobs の `with_tenant` 未ラップ・非ディスパッチャのみ）— いずれも §3.6
+- **整形系（PostToolUse・常に exit 0）**: `rubocop-autoformat`（.rb 自動整形）・`regen-spec-index`（SPEC.md 冒頭索引の行番号補正）
 
 ## Gotchas（環境固有・非自明）
 
 > 挙動上の禁止則は冒頭「鉄則」に集約済み。ここは環境まわりの罠のみ。実装・テストの罠台帳は docs/RAILS_GOTCHAS.md。
 
-- **OpenSSL:** `~/.zshrc` に Intel 時代の openssl@1.1 設定が残存（chezmoi 管理・未修正）。Ruby ビルド時は `RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@3)"` ＋ `LDFLAGS=/CPPFLAGS=/PKG_CONFIG_PATH=` のクリアで回避。グローバル ruby 2.7.2 は openssl@1.1 欠落で壊れている（本リポジトリは `.ruby-version` 固定の Ruby ゆえ無関係）
+- **OpenSSL:** `~/.zshrc` に Intel 時代の openssl@1.1 設定が残存（chezmoi 管理・未修正）。Ruby **ビルド時のみ** `RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@3)"` ＋ `LDFLAGS=/CPPFLAGS=/PKG_CONFIG_PATH=` のクリアで回避（通常作業は `.ruby-version` 固定ゆえ影響なし）
 - **rails MCP:** `rails-mcp-server`（rbenv shim）は cwd の `.ruby-version` で Ruby を解決 → プロジェクト直下で起動されること。**Ruby アップグレード時は新 Ruby へ `gem install rails-mcp-server` で入れ直す**（Bundler 管理外の実行系ツールゆえ bundle では追従しない。怠ると `/mcp` が `Failed to reconnect: -32000` で死ぬ。詳細は docs/RAILS_GOTCHAS.md「Ruby / ツールチェーン」）
 - 親 `/Users/Eoh/CLAUDE.md` は chezmoi dotfiles 用で本プロジェクトとは無関係（自動ロードされるが従わない）
 
