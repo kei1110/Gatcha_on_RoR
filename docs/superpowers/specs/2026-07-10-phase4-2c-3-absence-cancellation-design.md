@@ -104,7 +104,7 @@ expect(rec.save!).to be(true)                   # ← 0 行 UPDATE を黙認す�
 - 保持スレッドは `ActiveRecord::Base.connection_pool.with_connection` で自前の接続を取る
 - **`ActsAsTenant.test_tenant` は `Thread.current` 局所**なのでスレッド内で改めて `with_tenant(org)` で包む
 - 待ちは sleep で測らず `SET lock_timeout = '300ms'` を撃ち `ActiveRecord::LockWaitTimeout` を期待する（決定的になる）
-- 後片付けに **`connection.truncate_tables` を使わない**（失敗すると FK と追記専用トリガーを無効のまま残す）。生 SQL の `TRUNCATE TABLE <全テーブル> RESTART IDENTITY CASCADE` にする
+- 後片付けに **`connection.truncate_tables` / `TRUNCATE` を使わない**（前者は失敗時に FK と追記専用トリガーを無効のまま残す・後者は `attendance_histories` の `BEFORE TRUNCATE` トリガーに無条件で阻まれる）。`spec/support/concurrency_helpers.rb#truncate_all_tables!` の **DELETE 総当たり**を使う（Task 1 実装で判明・RAILS_GOTCHAS）
 - `config/database.yml` の `max_connections: 5` でスレッド 2 本は収まる
 
 **修正前が本当に落ちることを確認してから修正を入れる**（非判別テストにしない）。
