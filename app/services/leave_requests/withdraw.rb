@@ -74,7 +74,14 @@ module LeaveRequests
         .where(user_id: @leave_request.requester_id,
                work_date: @leave_request.start_date..@leave_request.end_date,
                status: %i[on_leave morning_half afternoon_half])
-        .find_each do |record|
+        .order(:work_date).each do |record|
+          # 判定に使う前に FOR UPDATE で掴み直す（4-2c-3a）。branch ④ の destroy! が DELETE 側に
+          # なり得るため ApplyApproval と同一規約に揃える。呼び出し元 with_lock 内ゆえ保持される。
+          # lock! はロック取得と同時に DB から属性を再読込するので、以降の clock_in/status は最新。
+          # work_date 昇順で回すのは ApplyApproval#upsert_attendance_records（counted_dates=日付昇順）と
+          # 同一テーブル内のロック取得順を揃えるため（id 昇順の find_each だと id と work_date の相対順序が
+          # branch④ destroy+再作成で逆転し循環待ちの余地が残る・設計書 §3.3 の同一テーブル内順序規約）。
+          record.lock!
           if other_live_leave_covers?(record.work_date)
             report_covered_by_other_leave(record)
           elsif record.clock_in.present?
@@ -98,7 +105,14 @@ module LeaveRequests
     end
 
     # その日の欠勤 conversion の最終状態（source を問わない）。absence_to_paid が最後なら未復元。
-    # absence_restored が後に来ていれば既に欠勤へ戻しており、二重復元しない
+    # absence_restored が後に来ていれば既に欠勤へ戻しており、二重復元しない。
+    #
+    # 【不変条件・4-2c-3a】ここに absence_canceled を足す必要はない。status: :absent を書く経路は
+    #   app/ 全体で 2 つ（Absences::Confirm#confirm_one = AR 不在日に create!／本 restore_absence =
+    #   absence_restored を必ず同時記録）だけで、「AR が absent ⟹ {absence_to_paid, absence_restored}
+    #   の最新は absence_to_paid ではない」が帰納的に成立する。取消側の guard_still_absent! がこれを使う。
+    #   この帰納は ApplyApproval の read-modify-write が原子的であることに依存し、それは 4-2c-3a の行ロックが担保する
+    #   （spec: "不変条件: absence_to_paid が最新なら AR は absent ではない"）
     def unrestored_absence_conversion(work_date)
       latest = AttendanceHistory
                .where(user_id: @leave_request.requester_id, event_date: work_date,

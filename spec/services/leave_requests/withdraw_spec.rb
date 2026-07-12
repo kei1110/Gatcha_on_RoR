@@ -253,4 +253,112 @@ RSpec.describe LeaveRequests::Withdraw do
       expect(history.previous_status).to eq(AttendanceRecord.statuses[:morning_half])
     end
   end
+
+  describe "不変条件: absence_to_paid が最新なら AR は absent ではない（設計書 §5・4-2c-3a 前提）" do
+    let(:org) { create(:organization) }
+    around { |ex| ActsAsTenant.with_tenant(org) { ex.run } }
+    let(:mgr) { create(:user, :manager_role) }
+    let(:u) { create(:user) }
+    let(:ptype) { create(:leave_type, system_type: :annual, paid_leave: true) }
+
+    it "absent→on_leave（事後有給）の日は AR が on_leave で、その撤回は absent へ復元する" do
+      create(:leave_balance, user: u, leave_type: ptype,
+             fiscal_year: org.fiscal_year_for(Date.new(2026, 5, 1)), granted_days: 20, used_days: 0)
+      # absent の AR を用意
+      create(:attendance_record, user: u, work_date: Date.new(2026, 5, 1),
+             status: :absent, absence_reason: :illness, clock_in: nil)
+      lr = create(:leave_request, requester: u, leave_type: ptype,
+                  start_date: Date.new(2026, 5, 1), end_date: Date.new(2026, 5, 1),
+                  half_day_type: :none, days_requested: 1)
+
+      # 承認: absent→on_leave（absence_to_paid が記録される）
+      LeaveRequests::ApplyApproval.call(leave_request: lr, acting_user: mgr)
+      rec = AttendanceRecord.find_by(user_id: u.id, work_date: Date.new(2026, 5, 1))
+      expect(rec).to be_on_leave # ← absence_to_paid が最新のとき AR は absent ではない
+      latest = AttendanceHistory.where(user_id: u.id, event_date: Date.new(2026, 5, 1),
+                                       event_type: %i[absence_to_paid absence_restored]).order(:id).last
+      expect(latest).to be_absence_to_paid
+
+      # 撤回: absence_to_paid の実在で absent へ復元し absence_restored を積む
+      lr.update!(approval_status: :withdrawal_requested, withdrawal_reason: "誤申請")
+      LeaveRequests::Withdraw.call(leave_request: lr, acting_user: mgr)
+      expect(rec.reload).to be_absent
+      latest2 = AttendanceHistory.where(user_id: u.id, event_date: Date.new(2026, 5, 1),
+                                        event_type: %i[absence_to_paid absence_restored]).order(:id).last
+      expect(latest2).to be_absence_restored # ← 復元後は absence_to_paid が最新ではない
+    end
+
+    it "absent の AR が存在する日は absence_to_paid を最新に持たない（帰納の観測）" do
+      # Confirm 経由の absent（absence_confirmed のみ・conversion 履歴なし）
+      create(:attendance_record, user: u, work_date: Date.new(2026, 6, 2),
+             status: :absent, absence_reason: :unauthorized, clock_in: nil)
+      create(:attendance_history, user: u, actor: mgr, event_type: :absence_confirmed,
+             event_date: Date.new(2026, 6, 2), new_status: AttendanceRecord.statuses[:absent],
+             absence_reason: :unauthorized)
+
+      latest = AttendanceHistory.where(user_id: u.id, event_date: Date.new(2026, 6, 2),
+                                       event_type: %i[absence_to_paid absence_restored]).order(:id).last
+      expect(latest).to be_nil # absence_to_paid も absence_restored も無い＝取消側 guard_still_absent! が効く前提
+    end
+  end
+
+  describe "行ロック（4-2c-3a・判定に使う AR を lock! で掴む・2 接続判別）" do
+    include ConcurrencyHelpers
+    self.use_transactional_tests = false
+
+    # Withdraw は leave_withdrawn（§4.14 追記専用）を書くため truncate では片付かない。
+    # Task 2 で集約した purge_append_only_and_truncate! を使う（安全性は helper spec が固定）。
+    after { purge_append_only_and_truncate! }
+
+    it "復元対象 AR を別 tx が削除中に撤回すると、lock! が RecordNotFound で fail-closed（0 行 UPDATE を踏まない）" do
+      org2 = create(:organization, subdomain: "wd-lock-#{SecureRandom.hex(4)}")
+      u = mgr = ptype = rec = lr = nil
+      ActsAsTenant.with_tenant(org2) do
+        mgr   = create(:user, :manager_role)
+        u     = create(:user)
+        ptype = create(:leave_type, system_type: :annual, paid_leave: true)
+        create(:leave_balance, user: u, leave_type: ptype,
+               fiscal_year: org2.fiscal_year_for(Date.new(2026, 5, 1)), granted_days: 20, used_days: 1)
+        # branch ②: 実打刻のある on_leave 日
+        rec = create(:attendance_record, user: u, work_date: Date.new(2026, 5, 1),
+                     status: :on_leave, leave_type: ptype,
+                     clock_in: Time.utc(2026, 5, 1, 0), clock_out: Time.utc(2026, 5, 1, 9))
+        lr  = create(:leave_request, requester: u, leave_type: ptype,
+                     start_date: Date.new(2026, 5, 1), end_date: Date.new(2026, 5, 1),
+                     half_day_type: :none, days_requested: 1,
+                     approval_status: :withdrawal_requested, withdrawal_reason: "誤申請")
+      end
+
+      locked = Queue.new
+      deleter = Thread.new do
+        ActiveRecord::Base.connection_pool.with_connection do
+          ActsAsTenant.with_tenant(org2) do
+            AttendanceRecord.transaction do
+              AttendanceRecord.where(id: rec.id).delete_all
+              locked << :ok
+              sleep 0.3 # 未コミットのまま保持する。この窓が Withdraw の初回 SELECT を
+              # deleter commit 前に確実に走らせ、後続の lock! をロック待ちへ入れる
+            end
+          end
+        end
+      end
+      locked.pop
+
+      # sleep 0.3 の保持窓は「lock! がどちらのタイミングで発行されても RecordNotFound に収束する」
+      # ことを保証するものではない。厳密には restore_attendance_records の対象 AR を取る初回 SELECT
+      # （remove_from_balance → 本クエリ、いずれも数 ms）が deleter commit 前に走ることが前提。
+      # 初回 SELECT がその窓に収まって走れば、削除済み予定の行がまだ結果セットに含まれた状態で
+      # lock!（SELECT ... FOR UPDATE）が発行され、deleter commit を境に「行はもう無い」と判明して
+      # RecordNotFound で fail-closed になる（逆に初回 SELECT 自体が deleter commit 後にずれ込むと、
+      # 削除済み行はそもそも結果セットに現れず lock! が呼ばれないため、この判別は成立しない）。
+      # 修正前: lock! が無く record.update! が削除済み行への 0 行 UPDATE を黙認し例外を上げない（RAILS_GOTCHAS）。
+      expect do
+        ActsAsTenant.with_tenant(org2) do
+          LeaveRequests::Withdraw.call(leave_request: lr, acting_user: mgr)
+        end
+      end.to raise_error(ActiveRecord::RecordNotFound)
+
+      deleter.join
+    end
+  end
 end

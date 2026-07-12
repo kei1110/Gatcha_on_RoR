@@ -73,6 +73,13 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **HOW**: パース前に regex で形を固定する。本リポジトリの "YYYY-MM" は `AttendancePeriod::YEAR_MONTH_FORMAT`（`/\A\d{4}-(0[1-9]|1[0-2])\z/`・`MonthlyAttendanceSummary` の format バリデーションと同一）で `match?` してから `strptime` する
 - verified: Ruby 4.0.2 / 2026-06-20（3-1 値オブジェクトのレビュー P3 で実踏）
 
+### 削除済み行への `save!` は 0 行 UPDATE で成功し、例外を上げない（`lock_version` 不在時）
+
+- **WHAT**: `record = Model.find_by(...)`（ロックなし）→ 別トランザクションが同じ行を DELETE して commit → `record.save!` が **`true` を返す**。UPDATE は 0 行に当たるが `ActiveRecord::StaleObjectError` も `RecordNotFound` も出ない。呼び出し側は「保存できた」と信じて後続の副作用（残高消費・監査行の追記）を確定させる
+- **WHY**: `StaleObjectError` は optimistic locking（`lock_version` 列）が有る時にのみ 0 行 UPDATE を検出する。列が無ければ Rails は `affected_rows` を捨てる。READ COMMITTED では「ロックなし SELECT → UPDATE」の間に他 tx の DELETE が commit でき、この窓は Rails 側からは不可視
+- **HOW**: 既存行の read-modify-write は **`Model.lock.find_by(...)` で FOR UPDATE を取ってから読む**。削除済み行に対する `SELECT ... FOR UPDATE` は READ COMMITTED で 0 行を返すため、`find_by` が nil になり `Model.new` の INSERT 経路へ落ちる（0 行 UPDATE が構造的に到達不能になる）。`find_or_initialize_by` は**ロックを取らない**ので、この用途には使えない
+- verified: Rails 8.1.3 / PostgreSQL 18 / 2026-07-10（`attendance_records` に `lock_version` 無し。`Organization` で `delete_all` → `save!` が `true` を返すことを rails runner で実測。`LeaveRequests::ApplyApproval#upsert_attendance_records` が実際にこの形をしており、`Absences::Cancel` / `LeaveRequests::Withdraw` の `destroy!` が DELETE 側になる — 4-2c-3a 設計）
+
 ### ShowExceptions ミドルウェア経由の例外応答は session が commit されない
 
 - **WHAT**: 例外を middleware の 404/500 描画に任せると、そのリクエストでの `reset_session` や Warden ログインが**クライアントに届かない**（連続リクエストのテストで 2 回目が 302 になる等）
@@ -176,6 +183,41 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - verified: turbo-rails 2.0.23 / Rails 8.1 / 2026-06-27（4-1c Task 5 で件数 broadcast 追加時に実踏・当初 `.at_least(:once)` 案を review が判別性喪失と指摘→payload マーカーで仕留め）
 
 ---
+
+### `disable_referential_integrity` は非トランザクション文脈で raise すると FK・追記専用トリガーを**無効のまま**残す
+
+- **WHAT**: ブロックが例外を投げると、test DB の全 FK と全ユーザートリガーが無効化されたまま残る（実測: 20 テーブル・170 トリガーが `pg_trigger.tgenabled='D'`）。以後の run では複合 FK の越境が素通しになり、`attendance_histories_no_mutate` / `no_truncate`（§4.14 追記専用の**真の backstop**）まで黙って外れる。`connection.truncate_tables` は内部でこれを呼ぶため同じ罠を持つ（FK で参照されているテーブルを引数から取りこぼすと `PG::FeatureNotSupported` で落ちる）
+- **WHY**: PostgreSQL アダプタの実装（activerecord-8.1.3 `postgresql/referential_integrity.rb:33-38`）は `ALTER TABLE ... DISABLE TRIGGER ALL` → `yield` → `ENABLE TRIGGER ALL` の 3 段だが、**`ensure` が無い**。`yield` が raise すると再有効化に到達しない。`ALTER TABLE ... DISABLE TRIGGER` は**セッションではなくテーブルに効く DDL** で、`pg_constraint.convalidated` は `'t'` のままゆえ制約定義を眺めても異常に見えない
+- **HOW**: **`use_transactional_tests = true` の中でなら安全**（DDL もトランザクショナルなので example 末尾の ROLLBACK で巻き戻る。既存の `spec/services/approvals/route_resolver_spec.rb` が越境データを植えるのに使えているのはこの構造による）。**`self.use_transactional_tests = false` の文脈でだけ危険**。非トランザクションの後片付けは `truncate_tables` を避け **DELETE ベース**で行う（次項参照 — TRUNCATE はこのスキーマでは追記専用トリガーに阻まれる）。検知は `SELECT count(*) FROM pg_trigger WHERE tgenabled='D'`、復旧は `bin/rails db:test:prepare`。**症状は「FK を検証しているテストだけが赤くなる」**ため、防衛ではなくテストの方を疑いがちなのが最大の罠
+- verified: Rails 8.1.3 / PostgreSQL 18 / 2026-07-10（4-2c-3a の並行テスト足場を試作中に実踏。transactional な `route_resolver_spec` 実行後は無効トリガー 0 件・非トランザクションで `disable_referential_integrity { raise }` 後は 170 件を実測。`db:test:prepare` で復旧）
+
+### 追記専用テーブルがあると `TRUNCATE ... CASCADE` は非トランザクション後片付けに使えない（DELETE で総当たり）
+
+- **WHAT**: 非トランザクションテストの後片付けに `TRUNCATE TABLE <全テーブル> RESTART IDENTITY CASCADE` は使えない。`attendance_histories` の `BEFORE TRUNCATE ... FOR EACH STATEMENT` トリガー（`attendance_histories_no_truncate`）が**行の有無を問わず無条件に発火**し `attendance_histories is append-only; TRUNCATE is blocked` で落ちるため。しかも PostgreSQL は「そのテーブルを参照する FK が存在する」というスキーマ構造だけで、親テーブル（`organizations` / `users`）の TRUNCATE に CASCADE か同時指定を要求し、CASCADE は追記専用テーブルまで巻き込む。よって親を含む TRUNCATE は**必ず**このトリガーに衝突する
+- **WHY**: 「捨てプローブでは TRUNCATE CASCADE が通った」という観測は罠だった — 直前の `truncate_tables` 失敗（前項）が `no_truncate` トリガーを `tgenabled='D'` にしたまま残しており、**無効化されたトリガーの上で TRUNCATE が空振りしただけ**。`db:test:prepare` で復旧させると同じ TRUNCATE が拒否される。「テストが緑」は防衛が生きている証拠ではなく、直前の失敗が防衛を外していた証拠だった
+- **HOW**: `TRUNCATE` でなく **`DELETE`** で消す。`DELETE` は行が実在する場合のみ FK 違反になり、`attendance_histories_no_mutate` は `FOR EACH ROW` ゆえ 0 件なら発火しない（＝履歴を書かないテストでは安全に完走）。依存順は固定リストにせず「削除できたテーブルから外す総当たり（消せた行が 1 つも無くなったら残りを報告して raise）」で解く（schema 変更・migration 順に依存しない）。実装は `spec/support/concurrency_helpers.rb#truncate_all_tables!`。`RESTART IDENTITY` 相当は失う（`DELETE` は sequence を戻さない）が、行ロック検証テストはそれに依存しない。**追記専用テーブルに実際に行を書く非トランザクションテストはこの helper では消せない**（親の DELETE が FK 違反で残る）— それは §4.14 の設計意図どおりの正しい失敗で、そのテストは transactional test にすべきという signal
+- verified: Rails 8.1.3 / PostgreSQL 18 / 2026-07-12（Task 1 実装者が TRUNCATE 版の brief コードで FAIL を実測 → psql で `no_truncate`＝`FOR EACH STATEMENT`・`no_mutate`＝`FOR EACH ROW` を確認し DELETE 版へ。controller が単体 TRUNCATE の拒否を再実測して裏取り）
+
+### 行ロックの競合テストは 2 接続が要る（バグの再現は 1 接続で足りる）
+
+- **WHAT**: 「ロックが無いと壊れる」ことの証明と「ロックがあれば壊れない」ことの証明は、必要な足場が違う
+- **WHY**: 「消えた行への read-modify-write」は SQL と Rails の性質であって並行性の性質ではない。1 接続で `read → delete_all → save!` と並べれば同じ SQL 列が流れる。一方 `SELECT ... FOR UPDATE` の効果は**他 tx を待たせること**なので、待ち手のいない 1 接続では観測できない
+- **HOW**: 待たせる側の証明だけ 2 接続にする。① 対象 example group で `self.use_transactional_tests = false`（別接続は未コミットデータを見られない）② 保持スレッドは `ActiveRecord::Base.connection_pool.with_connection` で自前の接続を取る ③ **`ActsAsTenant.test_tenant` は `Thread.current` 局所**なので、スレッド内では改めて `ActsAsTenant.with_tenant(org)` で包む ④ 待ちを sleep で測らず `SET lock_timeout = '300ms'` を撃って `ActiveRecord::LockWaitTimeout` を期待する（決定的になる）⑤ 後片付けは `spec/support/concurrency_helpers.rb#truncate_all_tables!`（DELETE 総当たり — TRUNCATE は追記専用トリガーに阻まれる・前項）。`config/database.yml` の `max_connections: 5` でスレッド 2 本は収まる。足場は `ConcurrencyHelpers#hold_row_lock` / `#truncate_all_tables!` に固めてある
+- verified: Rails 8.1.3 / PostgreSQL 18 / acts_as_tenant 1.0.1 / 2026-07-10（捨てプローブで A/B とも実測。既存の `spec/services/holiday_work_requests/apply_approval_spec.rb` は `Relation#lock` の `first` を 1 回だけ nil にする 1 接続シミュレーションで、下流は実挙動を走らせている＝この使い分けの先例）
+
+### `hold_row_lock(...) { 同じ行への無 timeout write }` は自己デッドロックする
+
+- **WHAT**: `hold_row_lock(AttendanceRecord, rec.id, org:) { AttendanceRecord.where(id: rec.id).delete_all }` のように、ロック保持ブロックの yield 内で**保持中の行そのもの**を待ち無し（`lock_timeout` 無し）で更新・削除すると、rspec が無期限ハングする（実測 5 分で kill）
+- **WHY**: `hold_row_lock` はロック解放（`release << :go`）を `ensure` で**yield 復帰後**に行う設計。ところが yield 内の `delete_all` は保持スレッドが握る行ロックを待ち、その解放は yield が返るまで来ない → 相互待ち。Task 1 の `concurrency_helpers_spec.rb` の正しい使い方が `SET lock_timeout = '300ms'` を撃って `LockWaitTimeout` を**期待**しているのは、素の write が無期限に待つこの性質を回避するため
+- **HOW**: 「保持スレッドが握る行を、別スレッドが待つ」構図で競合を作るなら 2 通り。① 待つ側に `lock_timeout` を設定し `LockWaitTimeout` を期待する（Task 1 helper spec の型）。② **保持を hold_row_lock に任せず**、deleter（未コミット DELETE を短時間保持）と approver（実サービス呼び出し）を別スレッド・別接続で並走させ、deleter が commit する前に approver をロック待ちへ入れる（Task 2 `apply_approval_spec.rb` の 2 接続テストの型 — `hold_row_lock` は「読み取り FOR UPDATE を保持して別 tx の write を待たせる」用途に向き、「実サービスの内部 write を競合させる」用途には deleter/approver 並走が要る）
+- verified: Rails 8.1.3 / PostgreSQL 18 / 2026-07-12（Task 2 実装者が brief の hold_row_lock 流用コードでハングを実測 → deleter/approver 並走へ再設計。修正前 `rows.count=0` で判別性を確認）
+
+### `find_each` はカスタム `order` を無視して id 昇順を強制する
+
+- **WHAT**: `scope.order(:work_date).find_each { ... }` と書いても **work_date 順にならず id 昇順**で回る（Rails が警告を出しつつ order を捨てる）。行ロックを「特定の列順で取りたい」意図が黙って id 順にすり替わる
+- **WHY**: `find_each` / `find_in_batches` はカーソルを主キー（id）で分割してバッチングするため、任意の order と両立しない。設計上 id 順が強制される
+- **HOW**: ロック取得順を制御したい・件数が小さい（1 リクエストの日数ぶん等）なら `find_each` をやめて **`.order(:col).each`** にする（全件ロードするがバッチング不要な規模なら問題ない）。4-2c-3a では `Withdraw#restore_attendance_records` を `find_each`（id 順）→ `.order(:work_date).each` にして `ApplyApproval`（work_date 昇順でロック）と同一テーブル内のロック取得順を揃え、循環待ちを構造的に消した（設計書 §3.3 の同一テーブル内順序規約）。「find_each + order」は id 順に落ちるため**順序を揃えたつもりで揃っていない**罠になる
+- verified: Rails 8.1.3 / 2026-07-12（4-2c-3a Task 3 レビューで実踏。`AttendanceRecord` は `[user_id, work_date]` unique ゆえ work_date が決定的な全順序キー）
 
 ## 生成物・設定
 

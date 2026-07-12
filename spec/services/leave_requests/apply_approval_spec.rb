@@ -223,4 +223,119 @@ RSpec.describe LeaveRequests::ApplyApproval do
       expect(AttendanceHistory.where(event_type: :absence_to_paid)).not_to exist
     end
   end
+
+  describe "行ロック（4-2c-3a・削除済み行への 0 行 UPDATE を防ぐ）" do
+    it "承認が読んだ AR が承認確定前に消えても、absent の残骸ではなく新規 on_leave AR を作る" do
+      # absent の AR を作る（事後有給の対象）
+      record = create(:attendance_record, user:, work_date: start_date,
+                      status: :absent, absence_reason: :unauthorized, clock_in: nil)
+      balance = create(:leave_balance, user:, leave_type: paid_type,
+                       fiscal_year:, granted_days: 20, used_days: 0)
+
+      # 対象日の AR が承認前に消えた状態を 1 接続で作る（intent-spec）。ApplyApproval が消えた行に
+      # 出会っても absent の残骸を UPDATE で復活させず、新規 on_leave AR を INSERT することを記述する。
+      # 注: この 1 接続版は修正前（find_or_initialize_by）でも「見つからない → new」に落ちて PASS する
+      # ため**非判別**（0 行 UPDATE の実害は別 tx が未コミット DELETE を保持する 2 接続版でのみ再現する）。
+      # 真の判別は下の describe "並行（2 接続・FOR UPDATE でシリアライズ）" が担う。
+      AttendanceRecord.where(id: record.id).delete_all
+
+      lr = leave(type: paid_type, days: 1)
+      apply(lr)
+
+      rec = AttendanceRecord.find_by(user_id: user.id, work_date: start_date)
+      expect(rec).to be_present
+      expect(rec).to be_on_leave
+      expect(balance.reload.used_days).to eq(BigDecimal("1"))
+    end
+
+    describe "並行（2 接続・FOR UPDATE でシリアライズ）" do
+      include ConcurrencyHelpers
+      self.use_transactional_tests = false
+
+      # 外側の around { with_tenant(org) } はこのネストでは未使用だが、use_transactional_tests
+      # = false 下では org 生成が commit される。after フックが正常に完走すれば下記の理由で
+      # 毎回きれいに消えるが、途中で process が落ちる等 after 自体が走らない事態への保険として
+      # 連番 subdomain を避け、次回実行時の衝突要因を作らないようにしておく。
+      let(:org) { create(:organization, subdomain: "aa-lock-unused-#{SecureRandom.hex(4)}") }
+
+      # ApplyApproval は実処理として必ず AttendanceHistory（§4.14 追記専用）を書くため、素の
+      # truncate_all_tables! では attendance_histories が削除不能で organizations/users も巻き添えで
+      # 残り、連番 subdomain の他 spec と衝突し得る。追記専用トリガーを単一 tx 内で安全に外して
+      # 片付ける共有 helper（Task 2 レビュー Important で集約）を使う。詳細・安全性の根拠は
+      # ConcurrencyHelpers#purge_append_only_and_truncate! のコメントと concurrency_helpers_spec.rb を参照。
+      after { purge_append_only_and_truncate! }
+
+      # brief 記載の `hold_row_lock(...) { AttendanceRecord.where(id: rec.id).delete_all }` は
+      # 採用しない。hold_row_lock は「yield が返ってから release する」設計（yield 中はロック保持・
+      # release は ensure で yield 復帰後）だが、その yield 自身が同じ行への delete_all だと
+      # Postgres の行ロック待ちに入り、それを解く release は yield 復帰後にしか実行されない
+      # ため自己デッドロックする（実測: 5 分ハングで kill。Task 1 自身の
+      # concurrency_helpers_spec.rb 内 "#hold_row_lock" では同じ delete_all を SET
+      # lock_timeout = '300ms' 付きで LockWaitTimeout を期待しており、素の delete_all が
+      # 無期限に待つことを自ら証明している）。
+      #
+      # 代わりに、削除側（deleter）・承認側（approver）を別スレッド・別接続で真に並行実行する。
+      # deleter は delete_all を投げた直後に自分の transaction を意図的に一定時間開いたまま保持し、
+      # approver（ApplyApproval.call）がその間にロック待ちへ入るのを待ってから commit する。
+      # 修正前: find_or_initialize_by の SELECT は素の SELECT（READ COMMITTED 下では
+      #   deleter の未コミット DELETE をブロックせず素通りし、削除前の行を「まだある」と誤認する）
+      #   → 後続の save! が実 UPDATE を発行する段になって初めて deleter の行ロックを待つ
+      #   → deleter が commit（行が実際に消える）→ UPDATE は 0 行に成功し AR は復活しない（RAILS_GOTCHAS）。
+      # 修正後: lock.find_by 自体が SELECT ... FOR UPDATE として deleter の行ロックを待ち、
+      #   commit 後は行が無いため nil に解決 → 新規 INSERT に落ちる。
+      it "別 tx が保持する AR ロックを承認が待ち、修正版は 0 行 UPDATE を踏まない" do
+        # subdomain は固定値にしない。org2 は AttendanceHistory から参照され truncate 不能で
+        # 恒久的に test DB へ残るため、固定値だと次回実行時に一意制約衝突する（実測済み）。
+        org2 = create(:organization, subdomain: "aa-lock-#{SecureRandom.hex(4)}")
+        u = mgr = ptype = bal = rec = lr = nil
+        ActsAsTenant.with_tenant(org2) do
+          mgr   = create(:user, :manager_role)
+          u     = create(:user)
+          ptype = create(:leave_type, system_type: :annual, paid_leave: true)
+          bal   = create(:leave_balance, user: u, leave_type: ptype,
+                         fiscal_year: org2.fiscal_year_for(Date.new(2026, 5, 1)),
+                         granted_days: 20, used_days: 0)
+          rec   = create(:attendance_record, user: u, work_date: Date.new(2026, 5, 1),
+                         status: :absent, absence_reason: :unauthorized, clock_in: nil)
+          lr    = create(:leave_request, requester: u, leave_type: ptype,
+                         start_date: Date.new(2026, 5, 1), end_date: Date.new(2026, 5, 1),
+                         half_day_type: :none, days_requested: 1)
+        end
+
+        locked = Queue.new
+
+        deleter = Thread.new do
+          ActiveRecord::Base.connection_pool.with_connection do
+            ActsAsTenant.with_tenant(org2) do
+              AttendanceRecord.transaction do
+                AttendanceRecord.where(id: rec.id).delete_all
+                locked << :ok
+                sleep 0.3 # 未コミットのまま保持し、approver がロック待ちへ入る猶予を作る
+              end
+            end
+          end
+        end
+
+        locked.pop # delete_all が発行済み（未コミット）になるまで待つ
+
+        approver = Thread.new do
+          ActiveRecord::Base.connection_pool.with_connection do
+            ActsAsTenant.with_tenant(org2) do
+              LeaveRequests::ApplyApproval.call(leave_request: lr, acting_user: mgr)
+            end
+          end
+        end
+
+        deleter.join
+        approver.join
+
+        ActsAsTenant.with_tenant(org2) do
+          rows = AttendanceRecord.where(user_id: u.id, work_date: Date.new(2026, 5, 1))
+          expect(rows.count).to eq(1)
+          expect(rows.first).to be_on_leave
+          expect(bal.reload.used_days).to eq(BigDecimal("1"))
+        end
+      end
+    end
+  end
 end

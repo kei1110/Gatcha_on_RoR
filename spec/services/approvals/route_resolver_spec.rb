@@ -67,7 +67,11 @@ RSpec.describe Approvals::RouteResolver do
       foreign = ActsAsTenant.with_tenant(other) { create(:user, :manager_role, organization: other) }
       emp = create(:user, organization: org)
       # 複合 FK（organization_id, manager_id）が DB レベルで越境を防ぐため、
-      # disable_referential_integrity でセッション内の FK チェックを一時停止して植える
+      # disable_referential_integrity で FK チェックを一時停止して植える。
+      # これは「セッション」ではなく `ALTER TABLE ... DISABLE TRIGGER ALL` ＝**テーブルに効く DDL** で、
+      # Rails の実装に ensure が無い（ブロックが raise すると再有効化されない）。
+      # ここが安全なのは transactional test の中だからで、example 末尾の ROLLBACK が DDL ごと巻き戻す。
+      # `use_transactional_tests = false` の文脈で同じ書き方をすると test DB の FK が恒久的に死ぬ（RAILS_GOTCHAS）
       ActiveRecord::Base.connection.disable_referential_integrity do
         emp.update_column(:manager_id, foreign.id)
       end

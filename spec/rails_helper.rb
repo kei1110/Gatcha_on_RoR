@@ -26,7 +26,11 @@ require 'pundit/rspec'
 # directory. Alternatively, in the individual `*_spec.rb` files, manually
 # require only the support files necessary.
 #
-Rails.root.glob("spec/support/**/*.rb").sort_by(&:to_s).each { |f| require f }
+# spec/support/concurrency_helpers_spec.rb は上記警告どおり helper の自己検証を _spec.rb で
+# 置いているため、ここで除外しないと RSpec の load（重複排除なし）と require（重複排除あり）
+# の非対称性により二重実行される（4-2c-3a・実測: 除外前は 1 example が 2 examples として走った）。
+Rails.root.glob("spec/support/**/*.rb").reject { |f| f.to_s.end_with?("_spec.rb") }
+  .sort_by(&:to_s).each { |f| require f }
 
 # Ensures that the test database schema matches the current schema file.
 # If there are pending migrations it will invoke `db:test:prepare` to
