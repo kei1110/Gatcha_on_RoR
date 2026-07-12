@@ -88,4 +88,42 @@ module ConcurrencyHelpers
       end
     end
   end
+
+  # truncate_all_tables! の拡張版。attendance_histories（§4.14 追記専用）に実際に行を書く
+  # 非トランザクションテスト向け（4-2c-3a Task 2 レビュー Important — 各テストへ生 SQL を
+  # コピペで増やさないための集約）。
+  #
+  # なぜ TRUNCATE でなくこの手順か: attendance_histories_no_mutate（FOR EACH ROW）は
+  # UPDATE/DELETE を無条件に拒否する。truncate_all_tables! 単体は DELETE ベースだが、
+  # このトリガーがある限り attendance_histories 自体は削除できず、それを参照する
+  # organizations/users も FK でテーブルごと削除不能になり残り続ける（truncate_all_tables!
+  # のコメント・docs/RAILS_GOTCHAS.md 194 行）。
+  #
+  # なぜ単一 transaction が安全か: DISABLE TRIGGER → DELETE → ENABLE TRIGGER を 1 つの
+  # `conn.transaction do ... end` に収め、成功時のみ commit する。ALTER TABLE ... TRIGGER は
+  # PostgreSQL では transactional DDL のため、途中で例外が起きれば DISABLE も含めて丸ごと
+  # ROLLBACK され、無効化した状態のまま残ることはない。接続断（kill 等）で commit に届かな
+  # かった場合も同様に未コミットのまま破棄される。これは `disable_referential_integrity` を
+  # 素の（transaction で囲わない）DISABLE として使う罠（docs/RAILS_GOTCHAS.md 187〜191 行 —
+  # 例外時に無効化だけが永続し以後の run で FK 検証テストが理由不明で赤くなる）とは異なる。
+  #
+  # 対象はテスト用データのみ。本番の 5 年法定保存（労基法 109 条・§4.14）には一切関与しない。
+  #
+  # spec/support/tenant.rb の before(:each) が作る環境 tenant（本 helper を使うテストでは
+  # 通常未使用）も、何にも参照されないうちに個別削除しておく。truncate_all_tables! は
+  # テーブル単位の一括 DELETE のため、追記専用テーブルを参照する行が organizations に
+  # 1 つでも残っていると、無関係な環境 tenant までテーブルごと削除不能になり、連番
+  # subdomain が別 spec の let(:org) と衝突し得る（4-2c-3a で実測）。
+  def purge_append_only_and_truncate!
+    Organization.where(id: ActsAsTenant.test_tenant&.id).delete_all
+
+    conn = ActiveRecord::Base.connection
+    conn.transaction do
+      conn.execute("ALTER TABLE attendance_histories DISABLE TRIGGER attendance_histories_no_mutate")
+      conn.execute("DELETE FROM attendance_histories")
+      conn.execute("ALTER TABLE attendance_histories ENABLE TRIGGER attendance_histories_no_mutate")
+    end
+
+    truncate_all_tables!
+  end
 end
