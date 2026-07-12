@@ -232,16 +232,14 @@ RSpec.describe LeaveRequests::ApplyApproval do
       balance = create(:leave_balance, user:, leave_type: paid_type,
                        fiscal_year:, granted_days: 20, used_days: 0)
 
-      # ApplyApproval が record を読んだ「後」に別経路が destroy する状況を、
-      # find_or_initialize_by の戻り値に stale な record を注入して再現する（1 接続シミュレーション・
-      # holiday_work_requests/apply_approval_spec と同型: 読み取りだけを過去に置き下流は実挙動）。
-      stale = AttendanceRecord.find(record.id)
-      AttendanceRecord.where(id: record.id).delete_all # 行だけ消える（stale は persisted? のまま）
+      # 対象日の AR が承認前に消えた状態を 1 接続で作る（intent-spec）。ApplyApproval が消えた行に
+      # 出会っても absent の残骸を UPDATE で復活させず、新規 on_leave AR を INSERT することを記述する。
+      # 注: この 1 接続版は修正前（find_or_initialize_by）でも「見つからない → new」に落ちて PASS する
+      # ため**非判別**（0 行 UPDATE の実害は別 tx が未コミット DELETE を保持する 2 接続版でのみ再現する）。
+      # 真の判別は下の describe "並行（2 接続・FOR UPDATE でシリアライズ）" が担う。
+      AttendanceRecord.where(id: record.id).delete_all
 
       lr = leave(type: paid_type, days: 1)
-
-      # 修正前: find_or_initialize_by が stale を返すと save! が 0 行 UPDATE で成功し AR が復活しない。
-      # 修正後: lock.find_by が nil を返し新規 INSERT に落ちる。
       apply(lr)
 
       rec = AttendanceRecord.find_by(user_id: user.id, work_date: start_date)
