@@ -48,9 +48,12 @@ module LeaveRequests
                                                .day_classifications(@leave_request.start_date,
                                                                     @leave_request.end_date)
       LeaveDaysCalculator.counted_dates(classifications).each do |date|
-        record = AttendanceRecord.find_or_initialize_by(
+        # 既存行はロックを取ってから読む（4-2c-3a）。attendance_records に lock_version が無く、
+        # ロックなし SELECT → save! は削除済み行への 0 行 UPDATE を黙認する（RAILS_GOTCHAS）。
+        # FOR UPDATE は削除済み行に 0 行を返すため nil に落ち INSERT 経路へ。呼び出し元 with_lock 内ゆえ保持される
+        record = AttendanceRecord.lock.find_by(
           user_id: @leave_request.requester_id, work_date: date
-        )
+        ) || AttendanceRecord.new(user_id: @leave_request.requester_id, work_date: date)
         was_absent = record.absent? # §12② 遷移前 status を代入前に捕捉（silent no-op 回避）
         previous_absence_reason = record.absence_reason # 監査へ退避（クリア前に読む）
         previous_note = record.note                     # other の自由記述（クリア前に読む）
