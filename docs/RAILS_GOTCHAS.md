@@ -205,6 +205,13 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **HOW**: 待たせる側の証明だけ 2 接続にする。① 対象 example group で `self.use_transactional_tests = false`（別接続は未コミットデータを見られない）② 保持スレッドは `ActiveRecord::Base.connection_pool.with_connection` で自前の接続を取る ③ **`ActsAsTenant.test_tenant` は `Thread.current` 局所**なので、スレッド内では改めて `ActsAsTenant.with_tenant(org)` で包む ④ 待ちを sleep で測らず `SET lock_timeout = '300ms'` を撃って `ActiveRecord::LockWaitTimeout` を期待する（決定的になる）⑤ 後片付けは `spec/support/concurrency_helpers.rb#truncate_all_tables!`（DELETE 総当たり — TRUNCATE は追記専用トリガーに阻まれる・前項）。`config/database.yml` の `max_connections: 5` でスレッド 2 本は収まる。足場は `ConcurrencyHelpers#hold_row_lock` / `#truncate_all_tables!` に固めてある
 - verified: Rails 8.1.3 / PostgreSQL 18 / acts_as_tenant 1.0.1 / 2026-07-10（捨てプローブで A/B とも実測。既存の `spec/services/holiday_work_requests/apply_approval_spec.rb` は `Relation#lock` の `first` を 1 回だけ nil にする 1 接続シミュレーションで、下流は実挙動を走らせている＝この使い分けの先例）
 
+### `hold_row_lock(...) { 同じ行への無 timeout write }` は自己デッドロックする
+
+- **WHAT**: `hold_row_lock(AttendanceRecord, rec.id, org:) { AttendanceRecord.where(id: rec.id).delete_all }` のように、ロック保持ブロックの yield 内で**保持中の行そのもの**を待ち無し（`lock_timeout` 無し）で更新・削除すると、rspec が無期限ハングする（実測 5 分で kill）
+- **WHY**: `hold_row_lock` はロック解放（`release << :go`）を `ensure` で**yield 復帰後**に行う設計。ところが yield 内の `delete_all` は保持スレッドが握る行ロックを待ち、その解放は yield が返るまで来ない → 相互待ち。Task 1 の `concurrency_helpers_spec.rb` の正しい使い方が `SET lock_timeout = '300ms'` を撃って `LockWaitTimeout` を**期待**しているのは、素の write が無期限に待つこの性質を回避するため
+- **HOW**: 「保持スレッドが握る行を、別スレッドが待つ」構図で競合を作るなら 2 通り。① 待つ側に `lock_timeout` を設定し `LockWaitTimeout` を期待する（Task 1 helper spec の型）。② **保持を hold_row_lock に任せず**、deleter（未コミット DELETE を短時間保持）と approver（実サービス呼び出し）を別スレッド・別接続で並走させ、deleter が commit する前に approver をロック待ちへ入れる（Task 2 `apply_approval_spec.rb` の 2 接続テストの型 — `hold_row_lock` は「読み取り FOR UPDATE を保持して別 tx の write を待たせる」用途に向き、「実サービスの内部 write を競合させる」用途には deleter/approver 並走が要る）
+- verified: Rails 8.1.3 / PostgreSQL 18 / 2026-07-12（Task 2 実装者が brief の hold_row_lock 流用コードでハングを実測 → deleter/approver 並走へ再設計。修正前 `rows.count=0` で判別性を確認）
+
 ## 生成物・設定
 
 ### 生成された initializer の placeholder はレビュー網をすり抜ける
