@@ -27,9 +27,9 @@ description: 本リポジトリのテナント文脈規約に沿った RSpec（m
 
 4a. **DB 最終防衛（複合 FK・真の discriminating 防衛線）**: 他 org の id を代入し `save!(validate: false)` で `ActiveRecord::InvalidForeignKey`。model 検証を貫通して複合 FK `[organization_id, x_id]→table[organization_id, id]` の実在だけを露出する。
 
-4b. **model 検証（fail-closed）**: 他 org の id を代入 → invalid。**ただし判別性に注意**:
-   - ⚠️ **必須 belongs_to では `be_invalid` は非 discriminating**。acts_as_tenant が関連を自テナントに scope するため他 org id は `nil` ロード → **presence 検証だけで invalid**（`errors[:x]` にも presence エラーが入るので `errors[:x]` 検査でも判別不能）。`x_must_belong_to_same_organization` を消しても緑のまま ＝ validator を守れていない。必須参照は **4a（DB 層）が検証可能な防衛線**（`docs/RAILS_GOTCHAS.md`「必須 `belongs_to` の同一組織 validator は presence と二重発火」参照）。
-   - **optional belongs_to のみ model 検証が load-bearing**: nil ロードは presence を通る → custom validator だけが他テナントを弾く → model `be_invalid` が discriminating になる。
+4b. **model 検証（fail-closed）**: 他 org の id を代入 → invalid。**判別性に注意**（機序の詳細は `docs/RAILS_GOTCHAS.md`「必須 `belongs_to` の同一組織 validator は presence と二重発火」）:
+   - **必須 belongs_to では `be_invalid` は非 discriminating** — acts_as_tenant が他 org id を `nil` ロードし presence だけで invalid になるため、validator を消しても緑。必須参照は **4a（DB 層）が検証可能な防衛線**。
+   - **optional belongs_to のみ model 検証が load-bearing** — nil ロードは presence を通り custom validator だけが他テナントを弾くので、model `be_invalid` が discriminating。
 
 ```ruby
 # 必須参照（target_user）— DB 複合 FK が discriminating な防衛線（4a）

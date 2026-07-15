@@ -39,6 +39,6 @@ SPEC・コードの法令引用を、`jp-labor-evidence` MCP（法令原典・�
 ## 設計原則
 
 - **判定せず材料提供** — MCP の原典とソース URL を併記し、最終判断は人に委ねる。法的判断を要する箇所は「社労士確認推奨」と明示する
-- **スコープの分離** — 「コード ↔ SPEC」の一致は `/spec-check`、本 skill は「**SPEC ↔ 法律**」の一致を見る。両者は直交する
+- **スコープの分離** — 「コード ↔ SPEC」の一致は `/spec-check`、本 skill は「**SPEC ↔ 法律**」の一致を見る（両者は直交）。本 skill は**引用の点検に絞った軽量インライン照合**であり、§8 の法定値定数化・判定ロジック・除外分岐まで含む総合レビューは `labor-law-compliance-reviewer` agent（subagent dispatch）が担う
 
 <!-- Last verified: 2026-06-09 -->

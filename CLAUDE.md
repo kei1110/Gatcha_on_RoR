@@ -53,7 +53,7 @@ bin/rails console                                   # 起動後まず鉄則 3 �
 - `/legal-citation-audit` — 労務法令を jp-labor-evidence MCP で原典照合 ／ `/preflight` — push 前 CI 等価チェック
 - `/create-migration` — 複合 FK `[organization_id, id]` 標的・partial unique・acts_as_tenant 列の migration 規約参照（§3.6 の DB 最終防衛 idiom）
 
-## レビュアー起動トリガー表（.claude/agents/・読み取り専用・DEVELOPMENT_WORKFLOW「マージ前最終」の正本）
+## レビュアー起動トリガー表（.claude/agents/・読み取り専用・DEVELOPMENT_WORKFLOW「マージ前最終」の正本・各 agent frontmatter が参照するトリガー SSOT）
 
 スライスが**実際に触れた面**（`git diff main...HEAD --name-only`）から導出する。複数行に該当したら**該当レビュアーをすべて**起動:
 
