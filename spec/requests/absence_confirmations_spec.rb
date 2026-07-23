@@ -268,7 +268,7 @@ RSpec.describe "AbsenceConfirmations", type: :request do
 
       expect(response).to have_http_status(:see_other)
       expect(AttendanceRecord.unscoped.count).to eq(0)
-      expect(AttendanceHistory.unscoped.count).to eq(0) # ephemeral：監査に残さない
+      expect(AttendanceHistory.unscoped.count).to eq(1) # 却下監査行を残す（4-2c-3b）
     end
 
     it "却下は猶予期限前でも可（確定と違い不利益処分でない）" do
@@ -307,6 +307,23 @@ RSpec.describe "AbsenceConfirmations", type: :request do
       sign_in employee
       delete absence_confirmation_url(c, host: tenant_host(org))
       expect(response).to have_http_status(:forbidden)
+    end
+
+    it "却下すると absence_dismissed の監査行が残る（4-2c-3b・痕跡ゼロ消去の封鎖）" do
+      c = candidate_for(sub)
+      sign_in manager
+
+      delete absence_confirmation_url(c, host: tenant_host(org))
+
+      candidate_exists = ActsAsTenant.with_tenant(org) do
+        AbsenceCandidate.where(id: c.id).exists?
+      end
+      expect(candidate_exists).to be false
+      history = ActsAsTenant.with_tenant(org) do
+        AttendanceHistory.find_by(event_type: :absence_dismissed, user_id: sub.id, event_date: c.target_date)
+      end
+      expect(history).to be_present
+      expect(history.actor_id).to eq(manager.id)
     end
   end
 end

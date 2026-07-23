@@ -30,12 +30,13 @@ class AbsenceConfirmationsController < ApplicationController
     render_ineligible("欠勤確定に失敗しました（記録の整合性エラー）。管理者へご連絡ください")
   end
 
-  # 却下(dismiss)＝候補を削除して一覧から除く（§11④・§12⑧）。監査には残さない（候補は ephemeral）。
+  # 却下(dismiss)＝候補を削除し absence_dismissed 監査行を残す（§11④・§12⑧・4-2c-3b D2）。
+  # 候補は再生成されないため監査を残さないと痕跡ゼロの完全消去が可能になる。
   # 不利益処分でないため猶予期限の制約は掛けない
   def destroy
     authorize AbsenceCandidate, :destroy?             # ① role ゲート（一般社員は 403）
     candidate = policy_scope(AbsenceCandidate).find(params[:id]) # ② 対象ゲート（scope 外は 404）
-    candidate.destroy!
+    Absences::Dismiss.call(candidate:, actor: current_user)
     redirect_to absence_confirmations_path, status: :see_other, notice: "欠勤候補を却下しました"
   end
 
