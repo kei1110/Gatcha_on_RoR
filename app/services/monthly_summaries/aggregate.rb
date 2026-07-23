@@ -39,7 +39,8 @@ module MonthlySummaries
         total_overtime_hours:   total_overtime_hours,
         overtime_hours_over_60: [ total_overtime_hours - 60, BigDecimal("0") ].max,
         late_days:              in_period.count(&:is_late),
-        early_leave_days:       in_period.count(&:is_early_leave)
+        early_leave_days:       in_period.count(&:is_early_leave),
+        interval_violation_count: interval_violation_count
       }.merge(LeaveAggregator.call(user: @user, period: @period))
     end
 
@@ -89,6 +90,14 @@ module MonthlySummaries
 
     def scheduled_work_days
       @period.range.count { day_types[_1] == :weekday }
+    end
+
+    # §6.9/§8.4: 違反回数の SSOT は AttendanceHistory(interval_shortage)（1 違反 = 1 イベント・
+    # event_date = 当日 work_date）。締め時派生で月中の MAS 行生成・AttendancePeriod.label 再現を
+    # 不要化する（設計 §13① — clock_in 経路は MAS に触れない）
+    def interval_violation_count
+      AttendanceHistory.where(user: @user, event_type: :interval_shortage,
+                              event_date: @period.range).count
     end
 
     def sum_hours(records, attr)

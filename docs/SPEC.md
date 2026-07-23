@@ -889,7 +889,7 @@ SolidQueue 定期ジョブ（毎日 `daily_batch_hour` 時）で前日分を検�
 
 ### 6.9 勤務間インターバルチェック（§8.4 と連動）
 
-出勤打刻時にリアルタイム判定。前日退勤と当日出勤の間隔が `rest_interval_hours`（既定 11）未満なら本人へ画面警告・管理者へ通知。`AttendanceRecord.note` に自動追記 + `interval_violation_count` インクリメント + `AttendanceHistory`（interval_shortage）記録。打刻はブロックしない。夜勤は翌々日の出勤で判定。
+出勤打刻時にリアルタイム判定（本人打刻・代理打刻の両経路）。直近の退勤（`clock_out` を持つ直近の記録 — 夜勤は自然に翌々日の出勤で判定される）と今回出勤の間隔が `rest_interval_hours`（既定 11）未満なら、本人へ画面警告（代理打刻時は操作者へ警告・本人へ通知）・管理者へ通知。`AttendanceRecord.note` に自動追記 + `AttendanceHistory`（interval_shortage）記録。`interval_violation_count` は月中に増分せず、締め時の集計エンジンが `interval_shortage` イベントを count して保存する（§8.4）。打刻はブロックしない。
 
 ### 6.10 欠勤確定フロー
 

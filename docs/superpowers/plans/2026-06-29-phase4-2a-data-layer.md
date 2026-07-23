@@ -369,6 +369,8 @@ git commit -m "feat: AbsenceCandidate テーブル（欠勤候補・複合 FK �
 - Produces: `MonthlyAttendanceSummary#interval_violation_count`（4-2d IntervalCheck がインクリメント）/ `OrganizationSetting#rest_interval_hours`（4-2d が閾値参照）。
 
 > §10④（org_settings は `rest_interval_hours` 1 列のみ・`daily_batch_hour` なし）/ §10⑩（`rest_interval_hours` は `1..24`・0 禁止）。`interval_violation_count` は AGGREGATE_COLUMNS に**入れない**（§5 集計でなく打刻時インクリメント）。
+>
+> **supersede 注記（2026-07-23・4-2d 着手前決定）:** 上の「打刻時インクリメント」前提は設計 §13①（§11⑨ の決着）で **Aggregate 派生に supersede**。4-2d は clock_in 時に `AttendanceHistory(interval_shortage)` を記録するのみで MAS を increment せず、`MonthlySummaries::Aggregate` が締め時に count して `interval_violation_count` へ保存する（`late_days` 同型）。正本は設計書 §13。
 
 - [ ] **Step 1: 失敗するテストを書く**
 

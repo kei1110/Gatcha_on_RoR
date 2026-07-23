@@ -60,4 +60,14 @@ module Clockings
       new_early_leave_minutes: current.early_leave_minutes
     )
   end
+
+  # インターバル判定を打刻保全しつつ実行（ClockingsController / ProxyClockingsController が共有）。
+  # 例外 = 実装バグだが打刻はブロックしない（recalculate_safely と同型・鉄則 6）。nil = 判定不能
+  def self.check_interval_safely(record:, actor:)
+    Clockings::IntervalCheck.call(record:, actor:)
+  rescue StandardError => e
+    Rails.error.report(e, severity: :error,
+                          context: { attendance_record_id: record.id }, source: "clockings")
+    nil
+  end
 end

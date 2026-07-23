@@ -92,9 +92,10 @@ RSpec.describe AttendanceHistory do
       expect(h.errors[:actor_id]).to be_present
     end
 
-    it "interval_shortage は actor 任意（Phase4 システムイベント）" do
+    it "interval_shortage は actor 必須（4-2d・打刻者を記録）" do
       h = build_history(event_type: :interval_shortage, actor: nil)
-      expect(h).to be_valid
+      expect(h).to be_invalid
+      expect(h.errors[:actor_id]).to be_present
     end
 
     it "他テナントの user を拒否" do

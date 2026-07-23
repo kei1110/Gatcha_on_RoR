@@ -131,7 +131,8 @@ ja:
     errors:
       already_clocked_in: すでに出勤済みです
       still_working: 前日の退勤が記録されていません。先に退勤を打刻してください
-      not_working: 出勤打刻がありません。過去日の退勤時刻は打刻変更申請（Phase 2 で提供予定）で記録します。それまでは管理者に連絡してください
+      not_working: 出勤打刻がありません。過去日の退勤時刻は打刻変更申請で記録できます。ご不明な点は管理者に連絡してください
+    interval_warning: 勤務間インターバルが不足しています（規定 %{threshold} 時間・不足 %{shortage} 分）。休息を確保してください
   proxy_clockings:
     clock_in:
       success: 代理出勤を記録しました
@@ -145,6 +146,7 @@ ja:
       self_proxy_forbidden: 自分自身には通常の打刻を使ってください
       reason_required: 代理打刻の理由を選択してください
       proxy_clock_failed: 代理打刻に失敗しました
+    interval_warning: "%{name} さんの勤務間インターバルが不足しています（規定 %{threshold} 時間・不足 %{shortage} 分）"
     index:
       title: 代理打刻
       empty: 代理打刻の対象者がいません

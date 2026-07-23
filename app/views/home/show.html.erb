@@ -1,10 +1,6 @@
 <main class="mx-auto w-full max-w-3xl p-4">
   <h1 class="text-2xl font-bold">Gatcha 勤怠</h1>
 
-  <% if @proxy_clock_event %>
-    <%= render "home/proxy_clock_banner", event: @proxy_clock_event, record: @today_record %>
-  <% end %>
-
   <%= render "home/clocking", state: @state %>
   <%= render Home::CalendarComponent.new(month: @month, today: @state.today,
                                          records: @records, day_types: @day_types) %>
