@@ -36,4 +36,12 @@ RSpec.describe Absences::Dismiss do
       .to raise_error(Absences::IneligibleError, /組織/)
     expect(AbsenceCandidate.where(id: candidate.id)).to exist
   end
+
+  it "候補 destroy が失敗すると履歴も残らない（同一 tx で束ねる）" do
+    allow_any_instance_of(AbsenceCandidate).to receive(:destroy!)
+      .and_raise(ActiveRecord::RecordNotDestroyed.new("boom", candidate))
+
+    expect { described_class.call(candidate:, actor: manager) }.to raise_error(ActiveRecord::RecordNotDestroyed)
+    expect(AttendanceHistory.where(event_type: :absence_dismissed, event_date: candidate.target_date)).not_to exist
+  end
 end
