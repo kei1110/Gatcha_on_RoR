@@ -3,11 +3,7 @@
 require "rails_helper"
 
 RSpec.describe "AbsenceConfirmations", type: :request do
-  let!(:org) { create(:organization, subdomain: "acme", time_zone: "Asia/Tokyo") }
-  let!(:hr)       { ActsAsTenant.with_tenant(org) { create(:user, :hr_admin, name: "人事 花子") } }
-  let!(:manager)  { ActsAsTenant.with_tenant(org) { create(:user, :manager_role, manager: hr, name: "上長 一郎") } }
-  let!(:sub)      { ActsAsTenant.with_tenant(org) { create(:user, manager: manager, name: "部下 太郎") } }
-  let!(:stranger) { ActsAsTenant.with_tenant(org) { create(:user, manager: hr, name: "他部 次郎") } }
+  include_context "absence roster"
 
   let(:target_date) { Date.new(2026, 5, 1) }   # 金曜 → 翌営業日 5/4(月) 17:00 が猶予期限
 
@@ -59,6 +55,47 @@ RSpec.describe "AbsenceConfirmations", type: :request do
 
       expect(response.body).to include("2026-05-04 17:00 以降に確定可")
       expect(response.body).to include("disabled")
+    end
+
+    it "確定済み欠勤セクションに部下の absent AR を表示し取消ボタンを出す（4-2c-3b）" do
+      ActsAsTenant.with_tenant(org) do
+        create(:attendance_record, user: sub, work_date: Date.new(2026, 5, 1), status: :absent,
+               absence_reason: :unauthorized)
+      end
+      sign_in manager
+
+      get absence_confirmations_url(host: tenant_host(org))
+
+      expect(response.body).to include("確定済み欠勤")
+      expect(response.body).to include("2026-05-01")
+      expect(response.body).to include("取消")
+    end
+
+    it "締め済み月の確定済み欠勤は表示するが取消不可（操作不可表示）" do
+      ActsAsTenant.with_tenant(org) do
+        d = Date.new(2026, 5, 1)
+        create(:attendance_record, user: sub, work_date: d, status: :absent, absence_reason: :unauthorized)
+        create(:monthly_attendance_summary, user: sub,
+               year_month: AttendancePeriod.containing(organization: org, date: d).label, status: :finalized)
+      end
+      sign_in manager
+
+      get absence_confirmations_url(host: tenant_host(org))
+
+      expect(response.body).to include("締め済み")
+    end
+
+    it "別部下（同一テナント）の確定済み欠勤は見えない（roster 起点）" do
+      ActsAsTenant.with_tenant(org) do
+        create(:attendance_record, user: stranger, work_date: Date.new(2026, 5, 1), status: :absent,
+               absence_reason: :unauthorized)
+      end
+      sign_in manager
+
+      get absence_confirmations_url(host: tenant_host(org))
+
+      # stranger は manager の部下でないため確定済み欠勤に出ない
+      expect(response.body).not_to include(stranger.name)
     end
   end
 
@@ -268,7 +305,7 @@ RSpec.describe "AbsenceConfirmations", type: :request do
 
       expect(response).to have_http_status(:see_other)
       expect(AttendanceRecord.unscoped.count).to eq(0)
-      expect(AttendanceHistory.unscoped.count).to eq(0) # ephemeral：監査に残さない
+      expect(AttendanceHistory.unscoped.count).to eq(1) # 却下監査行を残す（4-2c-3b）
     end
 
     it "却下は猶予期限前でも可（確定と違い不利益処分でない）" do
@@ -307,6 +344,23 @@ RSpec.describe "AbsenceConfirmations", type: :request do
       sign_in employee
       delete absence_confirmation_url(c, host: tenant_host(org))
       expect(response).to have_http_status(:forbidden)
+    end
+
+    it "却下すると absence_dismissed の監査行が残る（4-2c-3b・痕跡ゼロ消去の封鎖）" do
+      c = candidate_for(sub)
+      sign_in manager
+
+      delete absence_confirmation_url(c, host: tenant_host(org))
+
+      candidate_exists = ActsAsTenant.with_tenant(org) do
+        AbsenceCandidate.where(id: c.id).exists?
+      end
+      expect(candidate_exists).to be false
+      history = ActsAsTenant.with_tenant(org) do
+        AttendanceHistory.find_by(event_type: :absence_dismissed, user_id: sub.id, event_date: c.target_date)
+      end
+      expect(history).to be_present
+      expect(history.actor_id).to eq(manager.id)
     end
   end
 end

@@ -93,4 +93,10 @@ RSpec.describe Notification do
       end
     end
   end
+
+  describe "4-2c-3b source_type 追加" do
+    it "absence_canceled=8 が append されている" do
+      expect(Notification.source_types["absence_canceled"]).to eq(8)
+    end
+  end
 end
