@@ -423,3 +423,26 @@ MAS は締め時に `find_or_initialize_by(year_month: AttendancePeriod.label)` 
 
 ### 社労士確認事項（→ LABOR_LAW_REVIEW_NOTES.md 追記・#4）
 `absence_reason` の illness/family は就業規則で有給特別休暇（病気休暇・慶弔）と定められる場合があり、確定フローが**全種別を同一の unpaid absent** に落とすと乖離し得る（労基法 24 条）。illness/family を deducting absent 既定にしてよいか・確定 UI で有給振替検討の注意喚起を要するか（就業規則依存ゆえ会社差あり）。
+
+## 13. 4-2d 着手前決定（2026-07-23・binding 追補）
+
+4-2d writing-plans 前のブレインストーミングで確定した 4 点。**本節は §6.1〜6.2 と §11⑨ を確定・上書きする**（4-2d writing-plans は §6+§10+§11+本節を必須要件として扱う）。
+
+### ① `interval_violation_count` は Aggregate 派生に確定（§11⑨ の決着）
+- clock_in 時は `AttendanceHistory(interval_shortage)` の記録のみ。**MAS への increment はしない**。
+- `MonthlySummaries::Aggregate` が締め時に期間内の `interval_shortage` イベントを count し `interval_violation_count` へ保存（`late_days` 同型・冪等 upsert に自然に乗る）。イベント→期間の対応付け（`attendance_record.work_date` 経由 or AH 側の日付列）は writing-plans で確定。
+- 根拠: MAS は締め時遅延生成であり、月中 increment は `AttendancePeriod.label` の月中再現・`find_or_create`・atomic increment・lost-update 対策の全部を要求する（§11⑨）。回数の SSOT は既に AH が 1 違反 = 1 イベントで保持し、月中の速報 consumer は Phase 5 ダッシュボードまで不在。
+- 波及: SPEC §6.9 の「`interval_violation_count` インクリメント」文言は 4-2d PR で「締め時に Aggregate が集計」へ改訂（§8.4「月内回数を集計」とはむしろ整合）。4-2a plan（2026-06-29）の「AGGREGATE_COLUMNS に入れない」注記は supersede 済（同 plan に注記追記・2026-07-23）。
+
+### ② インターバル判定は代理出勤打刻経路でも実行（§6.1 の隙間を閉塞）
+- `Clockings::IntervalCheck` を `ProxyClockingsController#clock_in`（`ProxyClockIn` 成功・commit 後）にも接続。休息不足の事実と記録義務（§8.4 月内回数・労務記録の完全性）は打刻経路に依らない。
+- 記録（`AR.note` 追記 + AH）は本人打刻と同一。画面警告 flash は**操作者**（manager\|hr_admin）へ、**本人へは `Notifier(:interval_shortage)`**（本人打刻時の「画面警告」の代替送達）。
+
+### ③ 暫定代理打刻バナーは撤去（ROADMAP バックログ「代理退勤バナーの夜勤エッジ」完全消化）
+- `proxy_clocked` 通知（ベル + 一覧）が恒久解決であり、home の暫定バナー（Phase 1 前倒し・`@state.today_record` 依存）は 4-2d で削除。
+- 夜勤エッジ（前日 work_date 行への代理退勤がバナーに出ない表示欠落）はバナーごと消滅。通知はレコード単位発火ゆえ work_date に依存しない。
+
+### ④ 実装形の確定（§6.1 の精緻化・§10③ 準拠）
+- `Clockings::IntervalShortageCalculator`（PORO）: `(prev_clock_out:, clock_in:, threshold_hours:) → 不足分（分・整数） | nil`。**11h ちょうど = 非違反・下回れば違反**（`<` 境界・分単位、§10⑧ の丸め方向）。
+- 直前退勤の解決は「同一 user の直近の `clock_out` を持つ AR」を clock_out 降順で 1 件取得（**prev_day 固定にしない**）→ 夜勤の翌々日判定（§6.1）を検索条件だけで自然吸収。
+- `Clockings::IntervalCheck`（Service）: 検索 → calculator → 不足時 {`AR.note` 追記 + `AttendanceHistory(interval_shortage)`} を 1 tx で記録。Notifier は tx 外・commit 後（§9.5・判断 F）。打刻は一切ブロックしない（鉄則 6）。
