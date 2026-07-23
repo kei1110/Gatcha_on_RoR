@@ -263,10 +263,10 @@ RSpec.describe MonthlySummaries::Aggregate do
       )
     end
 
-    it "期間内の interval_shortage イベント数を count する（期間外は除外）" do
+    it "期間内の interval_shortage イベント数を count する（期首 2 件 + 翌期除外 — 暦月ハードコードなら 1 に落ちて FAIL する非対称配置）" do
       org.setting.update!(closing_day: 25)
-      shortage_event(Date.new(2026, 2, 26)) # 期首
-      shortage_event(Date.new(2026, 3, 25)) # 期末
+      shortage_event(Date.new(2026, 2, 26)) # 期首側 1 件
+      shortage_event(Date.new(2026, 2, 27)) # 期首側 2 件
       shortage_event(Date.new(2026, 3, 26)) # 翌期 → 除外
       summary = described_class.call(user:, period: period("2026-03"))
       expect(summary.interval_violation_count).to eq(2)
