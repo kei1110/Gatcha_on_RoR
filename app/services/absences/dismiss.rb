@@ -23,7 +23,7 @@ module Absences
       ActsAsTenant.with_tenant(@candidate.user.organization) do
         ActiveRecord::Base.transaction do
           AttendanceHistory.create!(
-            user_id: @candidate.user_id, actor: @actor,
+            user: @candidate.user, actor: @actor, # user オブジェクト渡しで検証の再 SELECT を防ぐ（cancel.rb 同型）
             event_type: :absence_dismissed, event_date: @candidate.target_date, note: @note
           )
           @candidate.destroy!
@@ -34,6 +34,8 @@ module Absences
 
     private
 
+    # ① with_tenant は文脈を「切り替える」昇格プリミティブで境界ではない。内側では複合 FK も
+    #    cross_tenant 検証も越境を検出できない。昇格前の検証が唯一の境界（Confirm/Cancel 同型）
     def guard_actor_same_organization!
       return if @actor.organization_id == @candidate.user.organization_id
 

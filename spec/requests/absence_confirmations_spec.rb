@@ -3,11 +3,7 @@
 require "rails_helper"
 
 RSpec.describe "AbsenceConfirmations", type: :request do
-  let!(:org) { create(:organization, subdomain: "acme", time_zone: "Asia/Tokyo") }
-  let!(:hr)       { ActsAsTenant.with_tenant(org) { create(:user, :hr_admin, name: "人事 花子") } }
-  let!(:manager)  { ActsAsTenant.with_tenant(org) { create(:user, :manager_role, manager: hr, name: "上長 一郎") } }
-  let!(:sub)      { ActsAsTenant.with_tenant(org) { create(:user, manager: manager, name: "部下 太郎") } }
-  let!(:stranger) { ActsAsTenant.with_tenant(org) { create(:user, manager: hr, name: "他部 次郎") } }
+  include_context "absence roster"
 
   let(:target_date) { Date.new(2026, 5, 1) }   # 金曜 → 翌営業日 5/4(月) 17:00 が猶予期限
 

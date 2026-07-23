@@ -6,8 +6,7 @@
 class AbsenceConfirmationsController < ApplicationController
   def index
     authorize :absence_confirmation, :index?
-    load_candidates
-    load_confirmed_absences
+    load_index_data
   end
 
   # 1 社員 × N 日付の一括確定（§6.10 step 3-5）。日付の権威は候補テーブル（params ではない）
@@ -43,6 +42,13 @@ class AbsenceConfirmationsController < ApplicationController
 
   private
 
+  # index と確定失敗の re-render（render_ineligible）が同じ画面データを揃える
+  # （§4.7「確定済み欠勤」セクションが 422 re-render で黙って消えないように・altitude F5）
+  def load_index_data
+    load_candidates
+    load_confirmed_absences
+  end
+
   def load_candidates
     @candidates = policy_scope(AbsenceCandidate).includes(:user).order(:user_id, :target_date)
     @grace = Absences::GracePeriod.new(organization: current_user.organization)
@@ -54,9 +60,10 @@ class AbsenceConfirmationsController < ApplicationController
   # 確定済み欠勤の一覧（roster × absent × 直近 92 日 ≒ 3 締め期間）。締め状態は 1 クエリ先読みし
   # メモリで突き合わせる（N+1 を作らない・設計 §4.7）。取消は AbsenceCancellationPolicy が認可する
   def load_confirmed_absences
-    return unless AbsenceCancellationPolicy.new(current_user, :absence_cancellation).create?
+    return unless policy(:absence_cancellation).create?
 
-    window = (current_user.organization.today - 92)..current_user.organization.today
+    today = current_user.organization.today
+    window = (today - 92)..today
     @confirmed_absences = AttendanceRecord.absent
                                           .where(user_id: cancellation_roster.select(:id), work_date: window)
                                           .includes(:user).order(:user_id, work_date: :desc).to_a
@@ -88,7 +95,7 @@ class AbsenceConfirmationsController < ApplicationController
   def parse_dates(raw) = Array(raw).map { |value| Date.iso8601(value.to_s) }
 
   def render_ineligible(message)
-    load_candidates
+    load_index_data
     flash.now[:alert] = message
     render :index, status: :unprocessable_entity
   end

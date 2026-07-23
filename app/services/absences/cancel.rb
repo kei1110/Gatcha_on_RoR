@@ -32,12 +32,11 @@ module Absences
             #    別物になり得る（事後有給の承認が absent→on_leave を書く窓）。承認済みの有給休暇日を
             #    取消が destroy する事故はこれでのみ防げる（設計 §4.1・§5 の不変条件が支える）
             guard_still_absent!
-            previous_reason = @record.absence_reason # capture-before-destroy
             AttendanceHistory.create!(
               user: @target_user, actor: @actor,
               event_type: :absence_canceled, event_date: @record.work_date,
               previous_status: AttendanceRecord.statuses[:absent], new_status: nil,
-              absence_reason: previous_reason, note: @note
+              absence_reason: @record.absence_reason, note: @note
             )
             @record.destroy!
             # 取消しても「その日が未説明」である事実は変わらない。notified_on:nil で作り直し
