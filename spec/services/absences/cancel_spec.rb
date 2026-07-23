@@ -80,14 +80,32 @@ RSpec.describe Absences::Cancel do
       expect { cancel(record:) }.to raise_error(Absences::ClosingLockedError)
       expect(AttendanceRecord.where(id: record.id)).to exist
     end
+
+    it "締め済み（submitted）月も ClosingLockedError（AR は残る・finalized と対称）" do
+      record = absent_record
+      create(:monthly_attendance_summary, user:,
+             year_month: AttendancePeriod.containing(organization: org, date: work_date).label,
+             status: :submitted)
+      expect { cancel(record:) }.to raise_error(Absences::ClosingLockedError)
+      expect(AttendanceRecord.where(id: record.id)).to exist
+    end
   end
 
   describe "不変条件（設計 §5・4-2c-3a 前提）" do
     it "ロック後に status が absent でなければ IneligibleError（事後有給の振替を取消が destroy しない）" do
       record = absent_record
-      # with_lock 内の reload で status が on_leave に化ける状況を stub で作る。
-      # guard_still_absent! が with_lock の内側にあることの証明
-      allow_any_instance_of(AttendanceRecord).to receive(:absent?).and_return(false)
+      # with_lock の内側で「別 tx が事後有給の振替を書き込んだ」状況を再現する
+      # （spec/services/clockings/clock_out_spec.rb:79-96 と同型）。全インスタンス一様に absent?
+      # を差し替えるのではなく、with_lock の block 実行**前**に対象行だけ status を書き換えることで、
+      # guard_still_absent! が with_lock の内側にあるときだけ検出できる形にする。
+      # 外に出すと update_columns 前（まだ absent）の @record.status で判定してしまい、この it は FAIL する
+      # （判別性は 2026-07-23 の修正で実測 — 一時的に guard_still_absent! を with_lock 外へ移し FAIL を確認済み）。
+      # absence_reason は nil クリア（実変換パス ApplyApproval#call と同じ・DB CHECK
+      # `absence_reason IS NULL OR status = absent` との整合が必須）
+      allow_any_instance_of(AttendanceRecord).to receive(:with_lock) do |rec, &block|
+        rec.update_columns(status: AttendanceRecord.statuses[:on_leave], absence_reason: nil)
+        block.call
+      end
 
       expect { cancel(record:) }.to raise_error(Absences::IneligibleError, /振り替え|欠勤ではありません/)
     end
