@@ -7,6 +7,7 @@ class AbsenceConfirmationsController < ApplicationController
   def index
     authorize :absence_confirmation, :index?
     load_candidates
+    load_confirmed_absences
   end
 
   # 1 社員 × N 日付の一括確定（§6.10 step 3-5）。日付の権威は候補テーブル（params ではない）
@@ -49,6 +50,36 @@ class AbsenceConfirmationsController < ApplicationController
 
   # policy_scope(User) は top-level UserPolicy 不在で NotDefinedError ゆえ scope class 明示（RAILS_GOTCHAS）
   def roster = policy_scope(User, policy_scope_class: AbsenceConfirmationPolicy::Scope)
+
+  # 確定済み欠勤の一覧（roster × absent × 直近 92 日 ≒ 3 締め期間）。締め状態は 1 クエリ先読みし
+  # メモリで突き合わせる（N+1 を作らない・設計 §4.7）。取消は AbsenceCancellationPolicy が認可する
+  def load_confirmed_absences
+    return unless AbsenceCancellationPolicy.new(current_user, :absence_cancellation).create?
+
+    window = (current_user.organization.today - 92)..current_user.organization.today
+    @confirmed_absences = AttendanceRecord.absent
+                                          .where(user_id: cancellation_roster.select(:id), work_date: window)
+                                          .includes(:user).order(:user_id, work_date: :desc).to_a
+    @locked_summary_keys = locked_summary_keys(@confirmed_absences)
+  end
+
+  def cancellation_roster = policy_scope(User, policy_scope_class: AbsenceCancellationPolicy::Scope)
+
+  # (user_id, year_month) の締めロック集合を 1 クエリで作る。view は absence_closed? で判定する
+  def locked_summary_keys(records)
+    return Set.new if records.empty?
+
+    MonthlyAttendanceSummary
+      .where(user_id: records.map(&:user_id).uniq, status: MonthlySummaries::ClosingLock::LOCKED)
+      .pluck(:user_id, :year_month).to_set
+  end
+
+  # その確定済み欠勤が締め済み期間に属するか（純計算・DB を叩かない）
+  helper_method :absence_closed?
+  def absence_closed?(record)
+    label = AttendancePeriod.containing(organization: record.user.organization, date: record.work_date).label
+    @locked_summary_keys.include?([ record.user_id, label ])
+  end
 
   # 厳格 ISO8601。Date.parse は "2026-13-99" 等のゴミを黙認し得る（RAILS_GOTCHAS）
   def parse_dates(raw) = Array(raw).map { |value| Date.iso8601(value.to_s) }

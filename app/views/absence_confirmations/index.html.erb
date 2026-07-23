@@ -60,4 +60,44 @@
       </section>
     <% end %>
   <% end %>
+
+  <% if @confirmed_absences.present? %>
+    <section class="mt-10 border-t border-gray-200 pt-6">
+      <h2 class="text-xl font-bold">確定済み欠勤</h2>
+      <p class="mt-2 text-sm text-gray-600">
+        誤って確定した欠勤を取り消せます（直近 92 日）。取消は本人へ通知され、賃金控除の対象から除外されます。
+      </p>
+
+      <ul class="mt-4 divide-y divide-gray-100">
+        <% @confirmed_absences.each do |record| %>
+          <li class="flex flex-wrap items-center justify-between gap-3 py-2 text-sm">
+            <div class="flex items-center gap-3">
+              <span class="font-medium"><%= record.work_date %></span>
+              <span class="text-gray-700"><%= record.user.name %>（<%= record.user.employee_code %>）</span>
+              <% if record.absence_reason %>
+                <span class="text-xs text-gray-500">
+                  <%= t("activerecord.attributes.attendance_record.absence_reasons.#{record.absence_reason}") %>
+                </span>
+              <% end %>
+            </div>
+
+            <% if absence_closed?(record) %>
+              <span class="text-xs text-gray-400">締め済み・取消不可</span>
+            <% else %>
+              <%= form_with url: absence_cancellations_path, method: :post,
+                            class: "flex flex-wrap items-center gap-2" do %>
+                <%= hidden_field_tag :user_id, record.user_id %>
+                <%= hidden_field_tag :work_date, record.work_date.iso8601 %>
+                <%= text_field_tag :note, nil, required: true, placeholder: "取消理由（必須）",
+                      class: "rounded border-gray-300 text-sm" %>
+                <%= submit_tag "取消",
+                      class: "rounded border border-red-300 px-3 py-1 text-red-700 hover:bg-red-50",
+                      data: { turbo_confirm: "#{record.work_date} #{record.user.name} さんの欠勤確定を取り消します。よろしいですか？" } %>
+              <% end %>
+            <% end %>
+          </li>
+        <% end %>
+      </ul>
+    </section>
+  <% end %>
 </main>

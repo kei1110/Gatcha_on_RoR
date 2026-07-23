@@ -60,6 +60,47 @@ RSpec.describe "AbsenceConfirmations", type: :request do
       expect(response.body).to include("2026-05-04 17:00 以降に確定可")
       expect(response.body).to include("disabled")
     end
+
+    it "確定済み欠勤セクションに部下の absent AR を表示し取消ボタンを出す（4-2c-3b）" do
+      ActsAsTenant.with_tenant(org) do
+        create(:attendance_record, user: sub, work_date: Date.new(2026, 5, 1), status: :absent,
+               absence_reason: :unauthorized)
+      end
+      sign_in manager
+
+      get absence_confirmations_url(host: tenant_host(org))
+
+      expect(response.body).to include("確定済み欠勤")
+      expect(response.body).to include("2026-05-01")
+      expect(response.body).to include("取消")
+    end
+
+    it "締め済み月の確定済み欠勤は表示するが取消不可（操作不可表示）" do
+      ActsAsTenant.with_tenant(org) do
+        d = Date.new(2026, 5, 1)
+        create(:attendance_record, user: sub, work_date: d, status: :absent, absence_reason: :unauthorized)
+        create(:monthly_attendance_summary, user: sub,
+               year_month: AttendancePeriod.containing(organization: org, date: d).label, status: :finalized)
+      end
+      sign_in manager
+
+      get absence_confirmations_url(host: tenant_host(org))
+
+      expect(response.body).to include("締め済み")
+    end
+
+    it "別部下（同一テナント）の確定済み欠勤は見えない（roster 起点）" do
+      ActsAsTenant.with_tenant(org) do
+        create(:attendance_record, user: stranger, work_date: Date.new(2026, 5, 1), status: :absent,
+               absence_reason: :unauthorized)
+      end
+      sign_in manager
+
+      get absence_confirmations_url(host: tenant_host(org))
+
+      # stranger は manager の部下でないため確定済み欠勤に出ない
+      expect(response.body).not_to include(stranger.name)
+    end
   end
 
   describe "POST create（確定）" do
