@@ -11,7 +11,7 @@ class AttendanceHistory < ApplicationRecord
   belongs_to :actor, class_name: "User", optional: true   # 操作者（§3.5 オーナー/操作者分離）
   belongs_to :source, polymorphic: true, optional: true
 
-  # §4.14 が全 10 値を順序固定する taxonomy（AttendanceRecord.status の非宣言予約とは扱いが違う）。
+  # §4.14 が順序固定する taxonomy（AttendanceRecord.status の非宣言予約とは扱いが違う）。
   # 整数マッピングは append-only/凍結（リオーダ禁止 — 履歴の誤デコードを防ぐ）
   enum :event_type, {
     clock_in: 0, clock_out: 1, leave_approved: 2, leave_withdrawn: 3,

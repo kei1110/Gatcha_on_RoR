@@ -567,8 +567,8 @@ polymorphic 関連（`ApprovalAssignment.approvable` / `AttendanceHistory.source
 | user_id | bigint | 対象社員（オーナー＝当事者・§3.5） |
 | actor_id | bigint | 操作者（NULL=システム起因。代理打刻はオーナーと別人を記録・§3.5。`proxy_clock` では必須） |
 | event_date | date | 対象勤務日 |
-| event_type | integer (enum) | clock_in / clock_out / leave_approved / leave_withdrawn / clock_change_approved / absence_confirmed / absence_to_paid / proxy_clock / interval_shortage / clock_change_withdrawn / **absence_restored**（10・撤回で事後有給から欠勤へ戻した記録） |
-| absence_reason | integer (enum), null 可 | この履歴行が指す欠勤理由。`absence_confirmed`=確定した理由 / `absence_to_paid`=振替**前**の理由 / `absence_restored`=復元した理由 |
+| event_type | integer (enum) | clock_in / clock_out / leave_approved / leave_withdrawn / clock_change_approved / absence_confirmed / absence_to_paid / proxy_clock / interval_shortage / clock_change_withdrawn / **absence_restored**（10・撤回で事後有給から欠勤へ戻した記録）/ **absence_canceled**（11・欠勤確定の取消。`absent` AR を削除し取り消した欠勤理由を構造化保持）/ **absence_dismissed**（12・欠勤候補の却下の監査。理由列を持たない） |
+| absence_reason | integer (enum), null 可 | この履歴行が指す欠勤理由。`absence_confirmed`=確定した理由 / `absence_to_paid`=振替**前**の理由 / `absence_restored`=復元した理由 / `absence_canceled`=取り消した欠勤の理由。`absence_dismissed` は候補の却下で理由列を持たない（null） |
 | source_type / source_id | string / bigint | 起因レコード（polymorphic: LeaveRequest 等） |
 | previous_status / new_status | integer | 前後の AttendanceRecord.status |
 | previous_clock_in / new_clock_in | timestamptz | 前後の出勤時刻 |
