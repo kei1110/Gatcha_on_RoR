@@ -308,6 +308,24 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 
 ---
 
+### method-level `rescue RecordNotFound` は「同一アクション内の別の find」由来の例外まで一括捕捉する（4-2c-3b・verified 2026-07-23）
+
+- **WHAT**: controller の `create` に、認可の `roster.find(params[:user_id])`（scope 外 = IDOR → `rescue_from` で 404 に落としたい）と、対象取得の `find_by!` / `with_lock` reload（対象消失 = 競合 → その場で 422/see_other に落としたい）の**両方**があり、`create` の method-level `rescue ActiveRecord::RecordNotFound` で後者だけを捕まえたつもりだった。Ruby の method-level rescue は**例外の発生元を区別しない**ため、`roster.find` の RecordNotFound（IDOR）まで同じ arm に飲まれ、`ApplicationController#rescue_from`（404）に届かず see_other に化けた。IDOR テスト（404 期待）が 303 で落ちて発覚
+- **WHY**: 「roster.find が先に評価されるから 404 が先に返る」という直感は誤り。rescue は評価順ではなく**例外クラスの一致**で捕まえる。同一メソッドに「伝播させたい RecordNotFound」と「その場で握りたい RecordNotFound」が同居すると、後から書いた rescue が前者も奪う
+- **HOW**: 「その場で握りたい find」だけを private メソッドへ切り出し、`rescue RecordNotFound` をそのメソッドに閉じ込める。「伝播させたい find」（認可の roster.find 等）は rescue を持たないメソッドに残し、`ApplicationController` の `rescue_from ActiveRecord::RecordNotFound`（404）へ届かせる。二段 find を持つ controller を書くときは「どの find の例外をどこで捕まえるか」を find ごとに設計する
+- verified: Rails 8.1.3 / 2026-07-23（4-2c-3b Task 6 で implementer が plan のコードのバグとして検出・修正。task-reviewer が呼び出しグラフを独立トレースし `application_controller.rb` の `rescue_from` 実在を確認）
+
+---
+
+### `.includes(:user)` は孫関連（`user.organization`）を preload しない — ループ内で辿ると N+1（4-2c-3b・verified 2026-07-23）
+
+- **WHAT**: `AttendanceRecord.absent.includes(:user)` した collection を view でループし、helper が `record.user.organization` を辿った。`includes(:user)` は `user` までしか eager load せず `user.organization`（孫）は各 record で lazy に引かれるため、distinct user 数に比例した SELECT が飛ぶ。コメントに「純計算・DB を叩かない」と書いていたが実態は N+1
+- **WHY**: `includes` は指定した関連の 1 段だけを preload する。孫まで欲しければ `includes(user: :organization)` とネストが要る。だが本ケースは**そもそも record 依存で organization を引く必要が無かった**: `AttendanceRecord`（と `User`）は `acts_as_tenant` で単一テナントに絞られるため `record.user.organization` は request 中ずっと `current_user.organization` と同値
+- **HOW**: テナントスコープ下で「record から辿った organization」を使う helper は、`current_user.organization`（Devise が request 単位でメモ化・追加 SELECT は高々 1 回）に置き換えられる。より一般には、view ループ内の helper が関連を辿っていないかを N+1 の観点で確認する（`includes` のネスト漏れは静かに N+1 化する）。コメントで「DB を叩かない」と書くなら実際に叩かないことを確認してから書く
+- verified: Rails 8.1.3 / 2026-07-23（4-2c-3b Task 7・task-reviewer が「includes は user までで organization は preload しない」と指摘・current_user.organization への 1 行置換で解消）
+
+---
+
 ## テスト / 検証プロセス
 
 ### bin/brakeman は `--ensure-latest` 注入 — 新版リリースで突然 exit 5
