@@ -74,10 +74,13 @@ class AbsenceConfirmationsController < ApplicationController
       .pluck(:user_id, :year_month).to_set
   end
 
-  # その確定済み欠勤が締め済み期間に属するか（純計算・DB を叩かない）
+  # その確定済み欠勤が締め済み期間に属するか（純計算・DB を叩かない）。
+  # AttendanceRecord は acts_as_tenant で単一テナントに絞られるため record.user.organization は
+  # current_user.organization と常に同一 — record ごとに引くと .includes(:user) は organization まで
+  # preload しないため N+1 になる（user 数に比例）。current_user.organization を使い回すことで回避する
   helper_method :absence_closed?
   def absence_closed?(record)
-    label = AttendancePeriod.containing(organization: record.user.organization, date: record.work_date).label
+    label = AttendancePeriod.containing(organization: current_user.organization, date: record.work_date).label
     @locked_summary_keys.include?([ record.user_id, label ])
   end
 
