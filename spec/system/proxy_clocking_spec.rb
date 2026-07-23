@@ -25,7 +25,7 @@ RSpec.describe "代理打刻", type: :system do
     click_button "ログイン"
   end
 
-  it "manager がロスターから部下に代理出勤でき、部下のホームにバナーが出る" do
+  it "manager がロスターから部下に代理出勤でき、部下へ通知が届く（暫定バナーは撤去済み・§13③）" do
     login(manager)
     click_link "代理打刻"
     expect(page).to have_content(sub.name)
@@ -39,7 +39,11 @@ RSpec.describe "代理打刻", type: :system do
     visit root_path
     click_button "ログアウト"
     login(sub)
-    expect(page).to have_content("代理打刻")
+    # 暫定バナーが無いこと（恒久解決 = 通知への一本化）
+    expect(page).not_to have_content("代理打刻です")
+    # 通知一覧に proxy_clocked 通知が届いていること
+    visit notifications_path
+    expect(page).to have_content("勤怠が代理で打刻されました")
     expect(page).to have_content(manager.name)
   end
 end

@@ -1,7 +1,0 @@
-<div class="mt-4 rounded border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900">
-  <p>
-    本日の打刻は <strong><%= event.actor&.name %></strong> による<strong>代理打刻</strong>です
-    （理由: <%= t("activerecord.attributes.attendance_record.proxy_clock_reasons.#{record.proxy_clock_reason}") %>）。
-  </p>
-  <p class="mt-1">時刻が異なる場合は打刻変更申請を提出してください（Phase 2 で提供予定）。</p>
-</div>
