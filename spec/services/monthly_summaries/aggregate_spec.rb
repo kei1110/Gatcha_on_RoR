@@ -254,4 +254,49 @@ RSpec.describe MonthlySummaries::Aggregate do
       expect(summary.paid_leave_days_used).to eq(1)
     end
   end
+
+  describe "interval_violation_count（§6.9/§8.4・4-2d = AH 派生集計・設計 §13①）" do
+    def shortage_event(date)
+      AttendanceHistory.create!(
+        user:, actor: user, event_type: :interval_shortage, event_date: date,
+        note: "勤務間インターバル不足：テスト", new_status: AttendanceRecord.statuses[:working]
+      )
+    end
+
+    it "期間内の interval_shortage イベント数を count する（期間外は除外）" do
+      org.setting.update!(closing_day: 25)
+      shortage_event(Date.new(2026, 2, 26)) # 期首
+      shortage_event(Date.new(2026, 3, 25)) # 期末
+      shortage_event(Date.new(2026, 3, 26)) # 翌期 → 除外
+      summary = described_class.call(user:, period: period("2026-03"))
+      expect(summary.interval_violation_count).to eq(2)
+    end
+
+    it "イベントが無ければ 0（既定値の再確認・再集計の冪等）" do
+      org.setting.update!(closing_day: 31)
+      summary = described_class.call(user:, period: period("2026-03"))
+      expect(summary.interval_violation_count).to eq(0)
+    end
+
+    it "他 user のイベントは count しない" do
+      org.setting.update!(closing_day: 31)
+      other = create(:user, organization: org)
+      AttendanceHistory.create!(
+        user: other, actor: other, event_type: :interval_shortage, event_date: Date.new(2026, 3, 10),
+        note: "他人", new_status: AttendanceRecord.statuses[:working]
+      )
+      summary = described_class.call(user:, period: period("2026-03"))
+      expect(summary.interval_violation_count).to eq(0)
+    end
+
+    it "interval_shortage 以外のイベントは count しない（proxy_clock 等）" do
+      org.setting.update!(closing_day: 31)
+      AttendanceHistory.create!(
+        user:, actor: user, event_type: :proxy_clock, event_date: Date.new(2026, 3, 10),
+        note: "代理", new_status: AttendanceRecord.statuses[:working]
+      )
+      summary = described_class.call(user:, period: period("2026-03"))
+      expect(summary.interval_violation_count).to eq(0)
+    end
+  end
 end
