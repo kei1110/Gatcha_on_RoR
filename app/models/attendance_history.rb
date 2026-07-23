@@ -37,6 +37,7 @@ class AttendanceHistory < ApplicationRecord
   validates :actor_id, presence: true, if: :absence_restored?  # 4-2c-2 撤回時の欠勤復元
   validates :actor_id, presence: true, if: :absence_canceled?  # 4-2c-3b 欠勤確定の取消（§4.14・不変ゆえ事前防御）
   validates :actor_id, presence: true, if: :absence_dismissed? # 4-2c-3b 却下(dismiss) の監査行
+  validates :actor_id, presence: true, if: :interval_shortage? # 4-2d（打刻者 = 本人 or 代理操作者）
   validate :user_must_belong_to_same_organization
   validate :actor_must_belong_to_same_organization
   validate :source_must_belong_to_same_organization
