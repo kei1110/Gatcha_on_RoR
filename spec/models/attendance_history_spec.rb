@@ -237,7 +237,7 @@ RSpec.describe AttendanceHistory do
         "clock_in" => 0, "clock_out" => 1, "leave_approved" => 2, "leave_withdrawn" => 3,
         "clock_change_approved" => 4, "absence_confirmed" => 5, "absence_to_paid" => 6,
         "proxy_clock" => 7, "interval_shortage" => 8, "clock_change_withdrawn" => 9,
-        "absence_restored" => 10
+        "absence_restored" => 10, "absence_canceled" => 11, "absence_dismissed" => 12
       )
     end
 
@@ -275,6 +275,42 @@ RSpec.describe AttendanceHistory do
       h = build(:attendance_history, user: create(:user), actor: nil,
                                      event_type: :absence_restored, event_date: Date.new(2026, 5, 1))
       expect(h).to be_invalid
+      expect(h.errors[:actor_id]).to be_present
+    end
+  end
+
+  describe "4-2c-3b event_type 追加" do
+    it "absence_canceled=11 / absence_dismissed=12 が append されている" do
+      expect(AttendanceHistory.event_types["absence_canceled"]).to eq(11)
+      expect(AttendanceHistory.event_types["absence_dismissed"]).to eq(12)
+    end
+
+    it "absence_canceled は absence_reason を許す（ABSENCE_EVENT_TYPES に含む）" do
+      h = build(:attendance_history, user: create(:user), event_type: :absence_canceled,
+                actor: create(:user, :manager_role),
+                absence_reason: :unauthorized, note: "誤検知のため", event_date: Date.new(2026, 5, 1))
+      expect(h).to be_valid
+    end
+
+    it "absence_dismissed は absence_reason を許さない（候補は理由列を持たない）" do
+      h = build(:attendance_history, user: create(:user), event_type: :absence_dismissed,
+                actor: create(:user, :manager_role),
+                absence_reason: :unauthorized, event_date: Date.new(2026, 5, 1))
+      expect(h).not_to be_valid
+      expect(h.errors[:absence_reason]).to be_present
+    end
+
+    it "absence_canceled は actor 必須" do
+      h = build(:attendance_history, user: create(:user), event_type: :absence_canceled, actor: nil,
+                event_date: Date.new(2026, 5, 1))
+      expect(h).not_to be_valid
+      expect(h.errors[:actor_id]).to be_present
+    end
+
+    it "absence_dismissed は actor 必須" do
+      h = build(:attendance_history, user: create(:user), event_type: :absence_dismissed, actor: nil,
+                event_date: Date.new(2026, 5, 1))
+      expect(h).not_to be_valid
       expect(h.errors[:actor_id]).to be_present
     end
   end

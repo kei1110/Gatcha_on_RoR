@@ -17,7 +17,7 @@ class AttendanceHistory < ApplicationRecord
     clock_in: 0, clock_out: 1, leave_approved: 2, leave_withdrawn: 3,
     clock_change_approved: 4, absence_confirmed: 5, absence_to_paid: 6,
     proxy_clock: 7, interval_shortage: 8, clock_change_withdrawn: 9,
-    absence_restored: 10
+    absence_restored: 10, absence_canceled: 11, absence_dismissed: 12
   }, validate: true
 
   # 「この履歴行が指す欠勤理由」を構造化して保存する（4-2c-2 レビュー）。
@@ -35,6 +35,8 @@ class AttendanceHistory < ApplicationRecord
   validates :actor_id, presence: true, if: :absence_confirmed?  # 4-2c 欠勤確定（§12⑥・不変ゆえ事前防御）
   validates :actor_id, presence: true, if: :absence_to_paid?    # 4-2c 事後有給振替（§12⑥）
   validates :actor_id, presence: true, if: :absence_restored?  # 4-2c-2 撤回時の欠勤復元
+  validates :actor_id, presence: true, if: :absence_canceled?  # 4-2c-3b 欠勤確定の取消（§4.14・不変ゆえ事前防御）
+  validates :actor_id, presence: true, if: :absence_dismissed? # 4-2c-3b 却下(dismiss) の監査行
   validate :user_must_belong_to_same_organization
   validate :actor_must_belong_to_same_organization
   validate :source_must_belong_to_same_organization
@@ -49,7 +51,7 @@ class AttendanceHistory < ApplicationRecord
 
   # 欠勤に関わる 3 イベント以外は absence_reason を持たない（`attendance_records` の
   # DB CHECK `absence_reason IS NULL OR status = 5` と対称。追記専用ゆえ create 時の検証が唯一の砦）
-  ABSENCE_EVENT_TYPES = %w[absence_confirmed absence_to_paid absence_restored].freeze
+  ABSENCE_EVENT_TYPES = %w[absence_confirmed absence_to_paid absence_restored absence_canceled].freeze
 
   private
 
