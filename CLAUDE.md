@@ -29,7 +29,7 @@ Rails 8 / PostgreSQL 18 / Hotwire(Turbo+Stimulus)+ViewComponent / Devise / acts_
 ## 環境（整備済み）
 - **Ruby:** `.ruby-version` にピン（rbenv。PR #27/#28 で 3.3.11 → 4.0.2 に直行アップグレード済み）
 - **Postgres:** 18（`brew services` 常駐）。DB `gatcha_development` / `gatcha_test` 作成済み。psql は keg-only → `/opt/homebrew/opt/postgresql@18/bin`
-- **MCP（.mcp.json）:** jp-labor-evidence / sentry（OAuth 済み）/ rails / postgres — **全 4 サーバー接続済み**（詳細・再現手順は docs/MCP_SETUP.md）
+- **MCP:** 構成は `.mcp.json`、設定・有効化手順は docs/MCP_SETUP.md
 
 > **バージョン記法（drift 防止）:** 現行 Ruby 版は `.ruby-version` が SSOT。prose/docs に数字をベタ書きせずファイルを指す（CI の `setup-ruby` も無記述で追従・Dockerfile ARG だけは build 用 literal で同期コメント付き）。過去の移行記録（PR #27 の 3.3.11 → 4.0.2 等・凍結事実）は数字可。
 
@@ -47,11 +47,6 @@ bin/rails console                                   # 起動後まず鉄則 3 �
 ## Git
 - このリポジトリのコミットは **kei1110 <eoh2145@gmail.com>**（local config 済み・グローバル設定とは別）
 - gh CLI はアカウント 2 つ登録（kei1110 / sub-account）。**PR・API 操作の前に `gh api user --jq .login` で active を確認**し、違えば `gh auth switch -u kei1110`（エラーを待たない — 別 identity で PR を作ると 2 つの identity が公開物で結びつく）
-
-## カスタムスキル（.claude/skills/）
-- `/spec-check` — SPEC↔実装の整合 ／ `/multi-perspective-review` — 多視点並列 critique ／ `/gen-spec` — spec 雛形生成
-- `/legal-citation-audit` — 労務法令を jp-labor-evidence MCP で原典照合 ／ `/preflight` — push 前 CI 等価チェック
-- `/create-migration` — 複合 FK `[organization_id, id]` 標的・partial unique・acts_as_tenant 列の migration 規約参照（§3.6 の DB 最終防衛 idiom）
 
 ## レビュアー起動トリガー表（.claude/agents/・読み取り専用・DEVELOPMENT_WORKFLOW「マージ前最終」の正本・各 agent frontmatter が参照するトリガー SSOT）
 
