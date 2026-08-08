@@ -59,10 +59,11 @@ gem "cgi", "~> 0.5"
 # UI 部品（SPEC §2.1。Admin タブナビが初出。devise と同じ悲観固定方針）
 gem "view_component", "~> 4.0"
 
-# Use Active Storage variants [https://guides.rubyonrails.org/active_storage_overview.html#transforming-images]
-gem "image_processing", "~> 2.0"
-# libvips backend for image_processing (soft dependency since 2.0); require: false so boot doesn't need libvips (lazy-loaded on variant use)
-gem "ruby-vips", "~> 2.0", require: false
+# Active Storage の variant 用 gem（image_processing / ruby-vips）は 8.1.3.1 で外した。
+# CVE-2026-66066 の修正が variant processing を boot 時に解決するようになり、
+# `require: false` による libvips の遅延ロード前提が崩れて起動不能になったため。
+# 添付（has_one_attached 等）も variant 利用も現時点で 0 件ゆえ削除で解決する。
+# variant を使い始める PR で戻すこと（そのとき libvips の段取り＝ローカル brew / CI apt も要る）。
 
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem

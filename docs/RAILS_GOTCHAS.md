@@ -221,6 +221,13 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 
 ## 生成物・設定
 
+### `gem ..., require: false` はネイティブ依存の遅延ロードを保証しない（Rails 側が boot 時に触れば崩れる）
+
+- **WHAT**: `gem "ruby-vips", require: false` は「Bundler.require が読まない」だけで、**フレームワークが initializer で解決すれば結局ロードされる**。Rails 8.1.3 → 8.1.3.1（CVE-2026-66066 の Active Storage variant processing 修正）で `config/environment.rb` の `initialize!` が libvips の実体を要求するようになり、`LoadError: Could not open library 'vips.42'` で**アプリが起動しなくなった**。パッチバージョンの更新で起きる
+- **WHY**: `require: false` が制御するのは Bundler の一括 require のみ。gem が Gemfile.lock に在る限り、他所からの `require` は妨げられない。「boot に不要」と書いたコメントは**その時点の Rails 実装への依存**であって、契約ではない
+- **HOW**: 未使用の重い依存は `require: false` で飼い慣らすより**外す**。使い始める PR で戻し、そのときネイティブライブラリの段取り（ローカル・CI 双方）を同じ PR に入れる。CVE 対応で `bundle update` する際は、**lock の差分だけでなく boot を必ず確認する**（`bin/rails runner 'puts 1'` で足りる）— rspec は boot 失敗を「150 errors occurred outside of examples」の形で出し、原因行が埋もれる
+- verified: Rails 8.1.3.1 / 2026-08-08（activestorage CVE-2026-66066 対応。添付・variant とも使用 0 件だったため `image_processing` / `ruby-vips` を削除して解決）
+
 ### 生成された initializer の placeholder はレビュー網をすり抜ける
 
 - **WHAT**: devise の `config.mailer_sender` が `please-change-me-at-...` のまま、丁寧に作り込んだ招待メールを送っていた
