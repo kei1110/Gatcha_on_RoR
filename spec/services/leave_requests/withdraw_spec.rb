@@ -194,13 +194,12 @@ RSpec.describe LeaveRequests::Withdraw do
         expect(history.note).to include(surviving.id.to_s) # その日を「今どの申請が所有するか」
       end
 
-      # ApplyApproval#recalculate と同一ガード（on_leave なら早期 return）を意図的に採った判断を固定する。
-      # 打刻済 AR へ全休を貼ると計算列が stale に残るが、それは承認経路が既に持つ既知の穴
-      # （ROADMAP「clocked 済 AR への全休承認で計算列が stale」）と同型。ここだけ非対称に塞がない
-      it "打刻済 AR の貼り直しでも計算列は引き直さない（承認経路の既知の穴と対称）" do
-        live_other_leave # paid_type・全休 → 貼り直し後は on_leave
-        # work_pattern は必須（Recalculate は pattern nil で何もせず返るため、
-        # 付け忘れるとガードを外しても緑のまま＝判別性を失う）
+      # 打刻のある日を全休へ再分類すると Aggregate の WORKED_STATUSES から外れ、実労働が
+      # 総労働時間・時間外・60h 超の母数から丸ごと消える（打刻列は行に残るのに集計から落ちる）。
+      # 同 service の分岐②「実打刻がある → 実労働を欠勤として記録しない」と同じ原則を守り、
+      # status の変更は未打刻日に限る。帰属（leave_type_id）は常に直す（labor-law レビュー C1）
+      it "打刻のある日は status を保ち leave_type_id だけ貼り直す（実労働を集計から落とさない）" do
+        live_other_leave # paid_type・全休
         record = create(:attendance_record, :done, user:, work_date: start_date,
                                                    clock_in: Time.utc(2026, 5, 1, 0), # JST 09:00
                                                    status: :afternoon_half, leave_type: unpaid_type,
@@ -210,9 +209,21 @@ RSpec.describe LeaveRequests::Withdraw do
         withdraw(leave(type: unpaid_type, half: :afternoon, days: BigDecimal("0.5")))
 
         record.reload
-        expect(record.status).to eq("on_leave")                        # 貼り直しは起きる
-        expect(record.late_minutes).to eq(30)                          # 計算列は触らない
-        expect(record.actual_work_hours).to eq(BigDecimal("4"))
+        expect(record.status).to eq("afternoon_half")                      # 集計母数に残り続ける
+        expect(MonthlySummaries::Aggregate::WORKED_STATUSES).to include(:afternoon_half)
+        expect(record.leave_type_id).to eq(paid_type.id)                   # 帰属だけ直る
+        expect(record.late_minutes).to eq(30)                              # 計算列も動かさない
+      end
+
+      it "既に生存 LR の属性と一致する日は履歴を作らない（append-only の台帳にノイズを残さない）" do
+        # 撤回対象が複数日・生存 LR が単日で後から承認された日は、既に生存 LR の属性になっている
+        live_other_leave # paid_type・全休
+        create(:attendance_record, user:, work_date: start_date, status: :on_leave,
+                                   leave_type: paid_type, clock_in: nil)
+
+        withdraw(leave(type: unpaid_type))
+
+        expect(AttendanceHistory.where(event_type: :leave_reassigned)).not_to exist
       end
 
       # 実害は AR の属性ではなく §8.6 監視の数字ゆえ、集計レベルで固定する

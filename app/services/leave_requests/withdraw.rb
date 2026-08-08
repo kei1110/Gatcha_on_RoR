@@ -119,31 +119,34 @@ module LeaveRequests
       end
     end
 
-    # AR を「生存 LR が ApplyApproval を通したのと同じ姿」へ揃える。
+    # AR の帰属（leave_type_id）を生存 LR へ揃える。
+    #
+    # **status を変えるのは未打刻日に限る**（labor-law レビュー C1）。打刻のある日を全休へ
+    # 再分類すると `MonthlySummaries::Aggregate::WORKED_STATUSES` から外れ、打刻列が行に残ったまま
+    # その日の実労働が総労働時間・時間外・60h 超の母数から消える。これは分岐②「実打刻がある →
+    # 実労働を欠勤として記録しない」と同じ原則であり、しかも本経路は**別の申請を撤回した副作用**
+    # として人の判断を経ずに起きるため、承認経路の既知の穴より危険。半休のまま残せば §8.6 は
+    # 過少（= 義務残日数を多く見せる安全側）に振れる。
+    #
+    # status も leave_type_id も既に一致する日は書き込まない — append-only の台帳に
+    # 「起きていない貼り直し」を主張する行を恒久に残さないため（レビュー I2）。
     # previous_status は update! の**前**に捕捉する（capture-before-assign・restore_absence 同型）。
-    # AR の note は触らない — この日に残る別種の記述を潰さないため、所有者の移動は履歴側にだけ書く。
-    # source は撤回された LR（= 貼り直しの原因）ゆえ、note には移動**先**を記す（双方向に追える）
+    # AR の note は触らない（その日に残る別種の記述を潰さない）。source は撤回された LR ゆえ、
+    # note には移動元と移動先の種別を記す（構造化列だけでは leave_type の変化が見えない・レビュー M1）
     def reassign_to_leave(record, surviving)
+      new_status = record.clock_in.blank? ? surviving.leave_status.to_s : record.status
+      return if record.status == new_status && record.leave_type_id == surviving.leave_type_id
+
       previous_status = AttendanceRecord.statuses[record.status]
-      record.update!(status: surviving.leave_status, leave_type_id: surviving.leave_type_id)
+      previous_type_name = record.leave_type&.name || "種別なし"
+      record.update!(status: new_status, leave_type_id: surviving.leave_type_id)
       AttendanceHistory.create!(
         user_id: @leave_request.requester_id, actor: @acting_user, source: @leave_request,
         event_type: :leave_reassigned, event_date: record.work_date,
         previous_status: previous_status,
         new_status: AttendanceRecord.statuses[record.status],
-        note: "撤回により休暇申請 ##{surviving.id}（#{surviving.leave_type.name}）へ貼り直し"
+        note: "撤回により #{previous_type_name} → #{surviving.leave_type.name}（休暇申請 ##{surviving.id}）へ貼り直し"
       )
-      recalculate(record)
-    end
-
-    # ApplyApproval#recalculate と同一ガード（半休 clocked_out のみ LateEarly を引き直す）。
-    # 打刻済 AR へ全休を貼ると計算列が stale のまま残るが、それは承認経路が既に持つ既知の穴
-    # （ROADMAP「clocked 済 AR への全休承認で計算列が stale」）と同型。ここだけ非対称に塞がない
-    def recalculate(record)
-      return if record.on_leave?
-      return if record.clock_out.blank?
-
-      Clockings::Recalculate.call(record:)
     end
 
     # その日の欠勤 conversion の最終状態（source を問わない）。absence_to_paid が最後なら未復元。
