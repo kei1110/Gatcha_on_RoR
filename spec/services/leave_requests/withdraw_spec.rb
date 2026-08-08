@@ -194,6 +194,27 @@ RSpec.describe LeaveRequests::Withdraw do
         expect(history.note).to include(surviving.id.to_s) # その日を「今どの申請が所有するか」
       end
 
+      # ApplyApproval#recalculate と同一ガード（on_leave なら早期 return）を意図的に採った判断を固定する。
+      # 打刻済 AR へ全休を貼ると計算列が stale に残るが、それは承認経路が既に持つ既知の穴
+      # （ROADMAP「clocked 済 AR への全休承認で計算列が stale」）と同型。ここだけ非対称に塞がない
+      it "打刻済 AR の貼り直しでも計算列は引き直さない（承認経路の既知の穴と対称）" do
+        live_other_leave # paid_type・全休 → 貼り直し後は on_leave
+        # work_pattern は必須（Recalculate は pattern nil で何もせず返るため、
+        # 付け忘れるとガードを外しても緑のまま＝判別性を失う）
+        record = create(:attendance_record, :done, user:, work_date: start_date,
+                                                   clock_in: Time.utc(2026, 5, 1, 0), # JST 09:00
+                                                   status: :afternoon_half, leave_type: unpaid_type,
+                                                   work_pattern: create(:work_pattern),
+                                                   late_minutes: 30, actual_work_hours: BigDecimal("4"))
+
+        withdraw(leave(type: unpaid_type, half: :afternoon, days: BigDecimal("0.5")))
+
+        record.reload
+        expect(record.status).to eq("on_leave")                        # 貼り直しは起きる
+        expect(record.late_minutes).to eq(30)                          # 計算列は触らない
+        expect(record.actual_work_hours).to eq(BigDecimal("4"))
+      end
+
       # 実害は AR の属性ではなく §8.6 監視の数字ゆえ、集計レベルで固定する
       it "貼り直し後の paid_leave_days_used が生存する年休 1.0 を計上する（§8.6）" do
         org.setting.update!(closing_day: 31)
