@@ -219,7 +219,21 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **HOW**: ロック取得順を制御したい・件数が小さい（1 リクエストの日数ぶん等）なら `find_each` をやめて **`.order(:col).each`** にする（全件ロードするがバッチング不要な規模なら問題ない）。4-2c-3a では `Withdraw#restore_attendance_records` を `find_each`（id 順）→ `.order(:work_date).each` にして `ApplyApproval`（work_date 昇順でロック）と同一テーブル内のロック取得順を揃え、循環待ちを構造的に消した（設計書 §3.3 の同一テーブル内順序規約）。「find_each + order」は id 順に落ちるため**順序を揃えたつもりで揃っていない**罠になる
 - verified: Rails 8.1.3 / 2026-07-12（4-2c-3a Task 3 レビューで実踏。`AttendanceRecord` は `[user_id, work_date]` unique ゆえ work_date が決定的な全順序キー）
 
+### 実時刻の「直近 N 日」窓を固定日付の spec で叩くと、経過日数だけで後から破裂する
+
+- **WHAT**: controller が `window = (organization.today - 92)..today` のような**実時刻起点**の窓で絞る一方、request spec が `travel_to` なしで `Date.new(2026, 5, 1)` の固定日付レコードを置くと、**マージ時は緑・数か月後に赤**になる。作った本人は気づかず、無関係な PR の作者が「自分が壊した」と誤診する
+- **WHY**: spec の日付は凍結、窓は毎日ずれる。両者の差が N を超えた日が破裂日で、コード変更とは無相関。同じファイル内の他の example が `travel_to` で時刻を固定していると、**固定漏れの数例だけが時限爆弾**として残り、レビューでも目立たない
+- **HOW**: 実時刻を読む述語（`Date.current` / `Time.current` / `organization.today`）に依存する example は、固定日付を使うなら**必ず `travel_to` で包む**。既存の時刻固定ヘルパーがあるなら、意図の違う別名を与えて（例: `after_grace` → `within_confirmed_window`）「なぜ固定するのか」をコード上に残す。逆向き（レコード側を `Date.current - 1` 等の相対日付にする）は、月末・締め期間・曜日依存の判定と干渉するため勧めない。**検出**: `grep -L travel_to` ではなく、controller/service 側で実時刻述語を書いたときに「この窓を叩く spec は時刻を固定しているか」を確認する側から辿る
+- verified: Rails 8.1.3 / 2026-08-08（`absence_confirmations_spec` の 2 例が 2026-05-01 固定 × 92 日窓で破裂。実測で main 単体でも赤いことを確認してから、無関係な PR と切り分けた）
+
 ## 生成物・設定
+
+### `gem ..., require: false` はネイティブ依存の遅延ロードを保証しない（Rails 側が boot 時に触れば崩れる）
+
+- **WHAT**: `gem "ruby-vips", require: false` は「Bundler.require が読まない」だけで、**フレームワークが initializer で解決すれば結局ロードされる**。Rails 8.1.3 → 8.1.3.1（CVE-2026-66066 の Active Storage variant processing 修正）で `config/environment.rb` の `initialize!` が libvips の実体を要求するようになり、`LoadError: Could not open library 'vips.42'` で**アプリが起動しなくなった**。パッチバージョンの更新で起きる
+- **WHY**: `require: false` が制御するのは Bundler の一括 require のみ。gem が Gemfile.lock に在る限り、他所からの `require` は妨げられない。「boot に不要」と書いたコメントは**その時点の Rails 実装への依存**であって、契約ではない
+- **HOW**: 未使用の重い依存は `require: false` で飼い慣らすより**外す**。使い始める PR で戻し、そのときネイティブライブラリの段取り（ローカル・CI 双方）を同じ PR に入れる。CVE 対応で `bundle update` する際は、**lock の差分だけでなく boot を必ず確認する**（`bin/rails runner 'puts 1'` で足りる）— rspec は boot 失敗を「150 errors occurred outside of examples」の形で出し、原因行が埋もれる
+- verified: Rails 8.1.3.1 / 2026-08-08（activestorage CVE-2026-66066 対応。添付・variant とも使用 0 件だったため `image_processing` / `ruby-vips` を削除して解決）
 
 ### 生成された initializer の placeholder はレビュー網をすり抜ける
 
