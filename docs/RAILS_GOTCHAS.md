@@ -219,6 +219,13 @@ Rails / Devise / Turbo / テスト基盤の落とし穴台帳。**実装・レ�
 - **HOW**: ロック取得順を制御したい・件数が小さい（1 リクエストの日数ぶん等）なら `find_each` をやめて **`.order(:col).each`** にする（全件ロードするがバッチング不要な規模なら問題ない）。4-2c-3a では `Withdraw#restore_attendance_records` を `find_each`（id 順）→ `.order(:work_date).each` にして `ApplyApproval`（work_date 昇順でロック）と同一テーブル内のロック取得順を揃え、循環待ちを構造的に消した（設計書 §3.3 の同一テーブル内順序規約）。「find_each + order」は id 順に落ちるため**順序を揃えたつもりで揃っていない**罠になる
 - verified: Rails 8.1.3 / 2026-07-12（4-2c-3a Task 3 レビューで実踏。`AttendanceRecord` は `[user_id, work_date]` unique ゆえ work_date が決定的な全順序キー）
 
+### `Clockings::Recalculate` は `work_pattern` nil で黙って no-op — 再計算の有無を問う spec は偽の緑になる
+
+- **WHAT**: `Recalculate#call` は先頭で `pattern = @record.work_pattern; next @record if pattern.nil?` と早期 return する（未割当日は「全列 NULL = 未計算」の意味論）。`attendance_records` factory は `work_pattern` を設定しないため、**work_pattern を明示せずに作った AR で「再計算が走る／走らない」を検証すると、実装のどちらでも緑**になる
+- **WHY**: 検証したい分岐（呼び出し側のガード）より下流に、もう一つの無音の早期 return がある。テストは「計算列が変わらないこと」を assert するが、変わらない理由が**ガードではなく pattern nil** にすり替わる。assert は通るので気づけない
+- **HOW**: 再計算の有無を問う spec は AR に **`work_pattern: create(:work_pattern)` を明示**し、`clock_in` も対象 `work_date` と同じ日に揃える（factory 既定の `clock_in` は 2026-06-01 固定で、`work_date` だけ変えると日付がずれる）。**判別性は必ず実証する** — 呼び出し側のガード行を一時的に削って spec が FAIL することを確認し、確認後に revert する。緑のままなら、そのテストは何も守っていない
+- verified: Rails 8.1.3 / 2026-08-08（重複 LR 撤回の貼り直しで `return if record.on_leave?` の判断を固定しようとした spec が、work_pattern 欠落でガード削除後も緑だった。付与後は `late_minutes: 30 → 0` で FAIL し判別性を得た）
+
 ### 実時刻の「直近 N 日」窓を固定日付の spec で叩くと、経過日数だけで後から破裂する
 
 - **WHAT**: controller が `window = (organization.today - 92)..today` のような**実時刻起点**の窓で絞る一方、request spec が `travel_to` なしで `Date.new(2026, 5, 1)` の固定日付レコードを置くと、**マージ時は緑・数か月後に赤**になる。作った本人は気づかず、無関係な PR の作者が「自分が壊した」と誤診する

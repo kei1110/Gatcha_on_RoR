@@ -105,12 +105,7 @@ module LeaveRequests
       Clockings::Recalculate.call(record:)
     end
 
-    def leave_status
-      case @leave_request.half_day_type
-      when "none" then :on_leave
-      when "morning" then :morning_half
-      when "afternoon" then :afternoon_half
-      end
-    end
+    # 対応表の正本は LeaveRequest#leave_status（Withdraw の貼り直しと共有）
+    def leave_status = @leave_request.leave_status
   end
 end

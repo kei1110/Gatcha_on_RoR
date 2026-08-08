@@ -31,6 +31,17 @@ class LeaveRequest < ApplicationRecord
   # end < start（不正入力）は空を返して締め制限をバイパス（存在検証は end_date_not_before_start_date に委ねる）。
   def closing_target_dates = (start_date && end_date && end_date >= start_date) ? (start_date..end_date) : []
 
+  # この申請が AttendanceRecord へ書く leave status（half_day_type の純関数）。
+  # 承認（ApplyApproval）と重複撤回時の貼り直し（Withdraw）が同一の対応表を読むための単一ソース。
+  # 二重定義は「承認で書いた status と貼り直した status が食い違う」drift を生む
+  def leave_status
+    case half_day_type
+    when "none" then :on_leave
+    when "morning" then :morning_half
+    when "afternoon" then :afternoon_half
+    end
+  end
+
   # 承認確定時の副作用（§6.2・§13.6）。Approve エンジンの with_lock 内・同一 tx で呼ばれる。
   def apply_approval_effects!(acting_user:)
     LeaveRequests::ApplyApproval.call(leave_request: self, acting_user:)

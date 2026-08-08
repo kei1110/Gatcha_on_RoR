@@ -233,12 +233,13 @@ RSpec.describe AttendanceHistory do
   end
 
   describe "enum マッピングの凍結（append-only・鉄則 7）" do
-    it "event_type は既存 0〜9 を保持し absence_restored を 10 で append する" do
+    it "event_type は既存 0〜12 を保持し leave_reassigned を 13 で append する" do
       expect(described_class.event_types).to eq(
         "clock_in" => 0, "clock_out" => 1, "leave_approved" => 2, "leave_withdrawn" => 3,
         "clock_change_approved" => 4, "absence_confirmed" => 5, "absence_to_paid" => 6,
         "proxy_clock" => 7, "interval_shortage" => 8, "clock_change_withdrawn" => 9,
-        "absence_restored" => 10, "absence_canceled" => 11, "absence_dismissed" => 12
+        "absence_restored" => 10, "absence_canceled" => 11, "absence_dismissed" => 12,
+        "leave_reassigned" => 13
       )
     end
 
