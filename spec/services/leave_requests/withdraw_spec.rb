@@ -106,10 +106,10 @@ RSpec.describe LeaveRequests::Withdraw do
     end
 
     # LIVE_LEAVE_STATUSES の 2 つの境界判断を固定する（4-2c-2 approval-engine 再レビュー W2）
-    it "他の LR が withdrawal_requested でも AR を destroy しない（副作用は未反転・reject_withdrawal で approved へ戻り得る）" do
-      create(:leave_request, requester: user, leave_type: paid_type, start_date:, end_date: start_date,
-                             half_day_type: :none, days_requested: 1,
-                             approval_status: :withdrawal_requested, withdrawal_reason: "他の申請")
+    it "他の LR が withdrawal_requested でも AR を destroy せず、その LR へ貼り直す（副作用は未反転・reject_withdrawal で approved へ戻り得る）" do
+      other = create(:leave_request, requester: user, leave_type: paid_type, start_date:, end_date: start_date,
+                                     half_day_type: :none, days_requested: 1,
+                                     approval_status: :withdrawal_requested, withdrawal_reason: "他の申請")
       create(:attendance_record, user:, work_date: start_date, status: :on_leave, clock_in: nil)
 
       withdraw(leave(type: unpaid_type))
@@ -117,6 +117,8 @@ RSpec.describe LeaveRequests::Withdraw do
       record = AttendanceRecord.find_by(user_id: user.id, work_date: start_date)
       expect(record).to be_present
       expect(record.status).to eq("on_leave")
+      # status は元から on_leave ゆえ、境界が no-op → 貼り直しへ広がったことは leave_type_id でしか判別できない
+      expect(record.leave_type_id).to eq(other.leave_type_id)
     end
 
     it "他の LR が applying なら従来どおり destroy する（ApplyApproval 未通過ゆえ AR を所有していない）" do

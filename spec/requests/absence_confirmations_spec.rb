@@ -95,16 +95,23 @@ RSpec.describe "AbsenceConfirmations", type: :request do
     end
 
     it "別部下（同一テナント）の確定済み欠勤は見えない（roster 起点）" do
-      ActsAsTenant.with_tenant(org) do
-        create(:attendance_record, user: stranger, work_date: Date.new(2026, 5, 1), status: :absent,
-               absence_reason: :unauthorized)
+      # 窓（直近 92 日）の内側へ固定しないと、否定 assertion は「roster で弾かれた」のではなく
+      # 「窓外で何も出ていない」ために緑となり、永久に空振りする（破裂もしないぶん質が悪い）。
+      # sub を併置して「sub は出るが stranger は出ない」＝ roster が効いていることを判別可能にする
+      within_confirmed_window do
+        ActsAsTenant.with_tenant(org) do
+          create(:attendance_record, user: stranger, work_date: Date.new(2026, 5, 1), status: :absent,
+                 absence_reason: :unauthorized)
+          create(:attendance_record, user: sub, work_date: Date.new(2026, 5, 1), status: :absent,
+                 absence_reason: :unauthorized)
+        end
+        sign_in manager
+
+        get absence_confirmations_url(host: tenant_host(org))
+
+        expect(response.body).to include(sub.name)          # 部下は出る
+        expect(response.body).not_to include(stranger.name) # 部下でない者は出ない
       end
-      sign_in manager
-
-      get absence_confirmations_url(host: tenant_host(org))
-
-      # stranger は manager の部下でないため確定済み欠勤に出ない
-      expect(response.body).not_to include(stranger.name)
     end
   end
 
