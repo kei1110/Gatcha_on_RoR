@@ -106,7 +106,7 @@ RSpec.describe LeaveRequests::Withdraw do
     end
 
     # LIVE_LEAVE_STATUSES の 2 つの境界判断を固定する（4-2c-2 approval-engine 再レビュー W2）
-    it "他の LR が withdrawal_requested でも AR を触らない（副作用は未反転・reject_withdrawal で approved へ戻り得る）" do
+    it "他の LR が withdrawal_requested でも AR を destroy しない（副作用は未反転・reject_withdrawal で approved へ戻り得る）" do
       create(:leave_request, requester: user, leave_type: paid_type, start_date:, end_date: start_date,
                              half_day_type: :none, days_requested: 1,
                              approval_status: :withdrawal_requested, withdrawal_reason: "他の申請")
@@ -145,6 +145,70 @@ RSpec.describe LeaveRequests::Withdraw do
       withdraw(leave(type: unpaid_type))
 
       expect(AttendanceRecord.find_by(user_id: user.id, work_date: start_date)).to be_nil
+    end
+
+    # 分岐①は「AR を触らない」だと撤回された側の status / leave_type_id が残る。
+    # LeaveAggregator#paid_weight / #weight がこれを直読するため §8.6 の有給 5 日義務が過少に振れる
+    # （4-2c-2 approval-engine W1 / labor-law W-f）。生存 LR が一意に決まる場合だけ貼り直す
+    describe "生存 LR への貼り直し" do
+      def reassign_scenario
+        create(:attendance_record, user:, work_date: start_date, status: :morning_half,
+                                   leave_type: unpaid_type, clock_in: nil)
+      end
+
+      it "生きた LR がちょうど 1 件なら AR をその LR の属性へ貼り直す" do
+        live_other_leave # paid_type・全休
+        record = reassign_scenario
+
+        withdraw(leave(type: unpaid_type, half: :morning, days: BigDecimal("0.5")))
+
+        record.reload
+        expect(record.status).to eq("on_leave")             # 生存 LR の half_day_type: none 由来
+        expect(record.leave_type_id).to eq(paid_type.id)
+      end
+
+      it "生きた LR が 2 件以上なら貼り直さない（どちらが所有者か決められない）" do
+        live_other_leave
+        create(:leave_request, requester: user, leave_type: paid_type, start_date:, end_date: start_date,
+                               half_day_type: :none, days_requested: 1, approval_status: :approved)
+        record = reassign_scenario
+
+        withdraw(leave(type: unpaid_type, half: :morning, days: BigDecimal("0.5")))
+
+        record.reload
+        expect(record.status).to eq("morning_half")
+        expect(record.leave_type_id).to eq(unpaid_type.id)
+      end
+
+      it "貼り直しは leave_reassigned 履歴を残す（台帳の変更を追える・§4.14）" do
+        surviving = live_other_leave
+        reassign_scenario
+
+        withdraw(leave(type: unpaid_type, half: :morning, days: BigDecimal("0.5")))
+
+        history = AttendanceHistory.find_by(event_type: :leave_reassigned, event_date: start_date)
+        expect(history).to be_present
+        expect(history.actor_id).to eq(approver.id)
+        expect(history.previous_status).to eq(AttendanceRecord.statuses[:morning_half])
+        expect(history.new_status).to eq(AttendanceRecord.statuses[:on_leave])
+        expect(history.note).to include(surviving.id.to_s) # その日を「今どの申請が所有するか」
+      end
+
+      # 実害は AR の属性ではなく §8.6 監視の数字ゆえ、集計レベルで固定する
+      it "貼り直し後の paid_leave_days_used が生存する年休 1.0 を計上する（§8.6）" do
+        org.setting.update!(closing_day: 31)
+        create(:user_work_pattern, user:, start_date: Date.new(2026, 1, 1),
+                                   work_pattern: create(:work_pattern, standard_work_hours: 8))
+        live_other_leave
+        reassign_scenario
+
+        withdraw(leave(type: unpaid_type, half: :morning, days: BigDecimal("0.5")))
+
+        result = MonthlySummaries::LeaveAggregator.call(
+          user:, period: AttendancePeriod.new(organization: org, year_month: "2026-05")
+        )
+        expect(result[:paid_leave_days_used]).to eq(BigDecimal("1"))
+      end
     end
   end
 

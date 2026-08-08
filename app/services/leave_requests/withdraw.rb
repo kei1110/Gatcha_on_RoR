@@ -62,8 +62,11 @@ module LeaveRequests
     # **「範囲内 leave-status AR = この休暇の日」は成り立たない**（4-2c-2 レビュー C1'）。
     # LeaveRequest には同一日重複の検証も DB 制約も無く、同じ日を覆う承認済 LR が複数あり得る
     # （AR は 1 日 1 行・status 単一ゆえ後勝ちで上書きされる）。したがって分岐は 4 段:
-    #   ① 他に生きた LR がその日を覆う → **AR に触らない**（その日はなお休暇。destroy すれば台帳が、
-    #      absent へ復元すれば承認済の休暇日が「無届欠勤」に化けて賃金控除される）
+    #   ① 他に生きた LR がその日を覆う → **destroy も absent 復元もしない**（その日はなお休暇。destroy すれば
+    #      台帳が、absent へ復元すれば承認済の休暇日が「無届欠勤」に化けて賃金控除される）。
+    #      ただし AR には撤回された側の status / leave_type_id が残っており、LeaveAggregator が
+    #      これを直読して §8.6 の有給 5 日義務を過少に見せる（4-2c-2 approval-engine W1 / labor-law W-f）
+    #      → 生存 LR が**ちょうど 1 件**ならその LR の属性へ貼り直す。2 件以上は所有者を決められないので no-op
     #   ② 実打刻がある → working/clocked_out へ戻す（実労働を欠勤として記録しない・CCR #48 解禁への備え）
     #   ③ 未復元の欠勤 conversion がある → absent へ復元（**source で絞らない**。2 件目の LR は
     #      `was_absent=false` ゆえ absence_to_paid を書かず、source 絞りだと自分の履歴が無い＝
@@ -82,8 +85,9 @@ module LeaveRequests
           # 同一テーブル内のロック取得順を揃えるため（id 昇順の find_each だと id と work_date の相対順序が
           # branch④ destroy+再作成で逆転し循環待ちの余地が残る・設計書 §3.3 の同一テーブル内順序規約）。
           record.lock!
-          if other_live_leave_covers?(record.work_date)
-            report_covered_by_other_leave(record)
+          live_leaves = live_leaves_covering(record.work_date)
+          if live_leaves.any?
+            handle_covered_by_other_leave(record, live_leaves)
           elsif record.clock_in.present?
             record.update!(status: record.clock_out.present? ? :clocked_out : :working, leave_type_id: nil)
             Clockings::Recalculate.call(record:) if record.clock_out.present?
@@ -95,13 +99,51 @@ module LeaveRequests
         end
     end
 
-    # 撤回対象**以外**の生きた休暇申請が、その日をなお覆っているか
-    def other_live_leave_covers?(date)
+    # 撤回対象**以外**の生きた休暇申請のうち、その日をなお覆っているもの。
+    # exists? ではなく実体を返すのは、一意に決まる場合に AR をその LR へ貼り直すため。
+    # 2 件だけ引けば「1 件か / 2 件以上か」の判別に足りる（重複 LR は例外ゆえ全件ロードしない）
+    def live_leaves_covering(date)
       LeaveRequest
         .where(requester_id: @leave_request.requester_id, approval_status: LIVE_LEAVE_STATUSES)
         .where.not(id: @leave_request.id)
         .where(start_date: ..date).where(end_date: date..)
-        .exists?
+        .limit(2).to_a
+    end
+
+    # 生存 LR が一意なら貼り直し、複数なら現状維持（可視化のみ）
+    def handle_covered_by_other_leave(record, live_leaves)
+      if live_leaves.one?
+        reassign_to_leave(record, live_leaves.first)
+      else
+        report_covered_by_other_leave(record)
+      end
+    end
+
+    # AR を「生存 LR が ApplyApproval を通したのと同じ姿」へ揃える。
+    # previous_status は update! の**前**に捕捉する（capture-before-assign・restore_absence 同型）。
+    # AR の note は触らない — この日に残る別種の記述を潰さないため、所有者の移動は履歴側にだけ書く。
+    # source は撤回された LR（= 貼り直しの原因）ゆえ、note には移動**先**を記す（双方向に追える）
+    def reassign_to_leave(record, surviving)
+      previous_status = AttendanceRecord.statuses[record.status]
+      record.update!(status: surviving.leave_status, leave_type_id: surviving.leave_type_id)
+      AttendanceHistory.create!(
+        user_id: @leave_request.requester_id, actor: @acting_user, source: @leave_request,
+        event_type: :leave_reassigned, event_date: record.work_date,
+        previous_status: previous_status,
+        new_status: AttendanceRecord.statuses[record.status],
+        note: "撤回により休暇申請 ##{surviving.id}（#{surviving.leave_type.name}）へ貼り直し"
+      )
+      recalculate(record)
+    end
+
+    # ApplyApproval#recalculate と同一ガード（半休 clocked_out のみ LateEarly を引き直す）。
+    # 打刻済 AR へ全休を貼ると計算列が stale のまま残るが、それは承認経路が既に持つ既知の穴
+    # （ROADMAP「clocked 済 AR への全休承認で計算列が stale」）と同型。ここだけ非対称に塞がない
+    def recalculate(record)
+      return if record.on_leave?
+      return if record.clock_out.blank?
+
+      Clockings::Recalculate.call(record:)
     end
 
     # その日の欠勤 conversion の最終状態（source を問わない）。absence_to_paid が最後なら未復元。
