@@ -57,7 +57,7 @@ gem "csv", "~> 3.3"
 gem "cgi", "~> 0.5"
 
 # UI 部品（SPEC §2.1。Admin タブナビが初出。devise と同じ悲観固定方針）
-gem "view_component", "~> 4.0"
+gem "view_component", "~> 4.15"
 
 # Active Storage の variant 用 gem（image_processing / ruby-vips）は 8.1.3.1 で外した。
 # CVE-2026-66066 の修正が variant processing を boot 時に解決するようになり、
