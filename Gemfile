@@ -43,7 +43,7 @@ gem "devise", "~> 5.0"
 
 # 標準文言の日本語化（AR エラー・日付等 / devise flash）。手書き ja.yml は attributes 最小（0b-2 設計 §5）
 gem "rails-i18n", "~> 8.0"
-gem "devise-i18n", "~> 1.15"
+gem "devise-i18n", "~> 1.16"
 
 # Authorization
 gem "pundit"
